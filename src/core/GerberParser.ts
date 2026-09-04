@@ -276,10 +276,18 @@ function convertExcellonToGerber(text: string, projectUnits: 'mm' | 'in'): strin
   
   let curXStr = "0"
   let curYStr = "0"
+  let intDigits = isMetric ? 3 : 2
 
   for (const dLine of lines) {
     const lineTrim = dLine.trim()
     if (!lineTrim || lineTrim === '%' || lineTrim === 'M48' || lineTrim === 'M30' || lineTrim === 'G90') continue
+
+    // Parse FILE_FORMAT if present (e.g., ;FILE_FORMAT=4:4 or ;FILE_FORMAT=2:5)
+    const fmtMatch = lineTrim.match(/;FILE_FORMAT=(\d+):(\d+)/i)
+    if (fmtMatch) {
+      intDigits = parseInt(fmtMatch[1], 10)
+      continue
+    }
 
     // Tool Definition: T3C0.039F200S100 or T1F00S00C0.01181
     const defMatch = lineTrim.match(/^T(\d+).*?C([0-9\.]+)/i)
@@ -329,11 +337,13 @@ function convertExcellonToGerber(text: string, projectUnits: 'mm' | 'in'): strin
            if (str.includes('.')) return parseFloat(str) * sign
            
            // If no decimal point, assume 2 digits integer, rest is fraction (Altium 2:5 format)
-           if (str.length >= 2) {
-             const intPart = str.substring(0, 2)
-             const fracPart = str.substring(2)
+           if (str.length >= intDigits) {
+             const intPart = str.substring(0, intDigits)
+             const fracPart = str.substring(intDigits)
              return parseFloat(intPart + '.' + fracPart) * sign
            }
+           // Fallback if shorter than intDigits (e.g. '0' or '1')
+           return parseFloat(str) * sign
            return parseFloat(str) * sign
         }
 
@@ -356,11 +366,13 @@ function convertExcellonToGerber(text: string, projectUnits: 'mm' | 'in'): strin
          if (str.startsWith('-')) { sign = -1; str = str.substring(1) }
          else if (str.startsWith('+')) { str = str.substring(1) }
          if (str.includes('.')) return parseFloat(str) * sign
-         if (str.length >= 2) {
-           const intPart = str.substring(0, 2)
-           const fracPart = str.substring(2)
-           return parseFloat(intPart + '.' + fracPart) * sign
-         }
+         if (str.length >= intDigits) {
+             const intPart = str.substring(0, intDigits)
+             const fracPart = str.substring(intDigits)
+             return parseFloat(intPart + '.' + fracPart) * sign
+           }
+           // Fallback if shorter than intDigits (e.g. '0' or '1')
+           return parseFloat(str) * sign
          return parseFloat(str) * sign
       }
 
