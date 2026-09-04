@@ -1,0 +1,39 @@
+{
+  "name": "vite-temp",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "lint": "oxlint",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@tracespace/parser": "^5.0.0-next.0",
+    "@tracespace/plotter": "^5.0.0-alpha.0",
+    "@tracespace/renderer": "^5.0.0-alpha.0",
+    "@types/three": "^0.185.4",
+    "hast-util-to-html": "^9.0.5",
+    "jszip": "^3.10.1",
+    "node-unrar-js": "^2.0.2",
+    "pcb-stackup": "^4.2.8",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "three": "^0.185.1",
+    "whats-that-gerber": "^4.2.7"
+  },
+  "devDependencies": {
+    "@types/node": "^24.13.3",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.4",
+    "@vitejs/plugin-react": "^6.1.0",
+    "electron": "^44.0.0",
+    "oxlint": "^1.79.0",
+    "typescript": "~6.0.2",
+    "vite": "^8.2.2",
+    "vite-plugin-electron": "^1.1.1",
+    "vite-plugin-electron-renderer": "^1.0.0"
+  },
+  "main": "dist-electron/main.js"
+}

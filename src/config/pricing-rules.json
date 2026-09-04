@@ -1,0 +1,22 @@
+{
+  "note": "File cấu hình bảng giá - chỉnh sửa trực tiếp ở đây, không cần sửa code.",
+  "materialPricePerCm2": 0,
+  "layerSurcharge": {
+    "1": 0,
+    "2": 0,
+    "4": 0,
+    "6": 0
+  },
+  "surfaceFinishSurcharge": {
+    "HASL": 0,
+    "ENIG": 0,
+    "OSP": 0
+  },
+  "drillPricePerHole": 0,
+  "setupFee": 0,
+  "quantityTierDiscount": [
+    { "minQty": 1, "discountPercent": 0 },
+    { "minQty": 100, "discountPercent": 0 },
+    { "minQty": 500, "discountPercent": 0 }
+  ]
+}
