@@ -85,15 +85,15 @@ export const Viewer3D: React.FC = () => {
           // Color customization for realistic 3D appearance
           let strokeFill = layer.color
           if (layer.type === 'copper') {
-            strokeFill = '#c8963e' // Shiny golden copper
+            strokeFill = '#2a6a3a' // Darker green trace relief under mask
           } else if (layer.type === 'silkscreen') {
             strokeFill = selectedColor === 'White' ? '#111827' : '#ffffff'
           } else if (layer.type === 'outline') {
-            strokeFill = '#f59e0b'
+            strokeFill = 'rgba(0,0,0,0)' // Hide outline in texture mapping to avoid artifacts
           } else if (layer.type === 'drill') {
             strokeFill = '#0a0a0a' // Punch holes
           } else if (layer.type === 'soldermask') {
-            strokeFill = '#e5c07b' // Exposed shiny solder pads
+            strokeFill = '#d4af37' // Exposed shiny gold/copper pads!
           }
 
           svgStr = svgStr.replace(/fill="currentColor"/g, `fill="${strokeFill}"`)
