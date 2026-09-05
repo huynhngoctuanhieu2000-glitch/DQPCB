@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { Viewer2D } from '../modules/viewer2d/Viewer2D'
 import { Viewer3D } from '../modules/viewer3d/Viewer3D'
+import { Viewer2DWebGL } from '../modules/viewer2d/Viewer2D.WebGL'
 import { BoardDataModel } from '../models/BoardDataModel'
 import { GerberParser } from '../core/GerberParser'
 import JSZip from 'jszip'
@@ -26,6 +27,21 @@ export const Layout: React.FC = () => {
     try {
       const parsedData = await GerberParser.parseInputFiles(files)
       BoardDataModel.loadBoardData(parsedData)
+
+      // Auto-fallback: nếu tracespace không parse được layer nào có nội dung (svgContent rỗng hết)
+      // → tự chuyển sang WebGL engine để web-gerber thử render trực tiếp từ rawFiles.
+      const svgLayers = parsedData.layers.filter(
+        (l) => l.svgContent && l.svgContent.length > 100 && l.type !== 'drawing'
+      )
+      if (svgLayers.length === 0 && parsedData.rawFiles.length > 0) {
+        console.warn(
+          '[Auto-fallback] Tracespace không dựng được lớp nào → chuyển sang WebGL (web-gerber).'
+        )
+        BoardDataModel.setRendererEngine('webgl')
+        setErrorMessage(
+          'Tracespace parser không đọc được bo này. Đã tự chuyển sang engine WebGL (web-gerber).'
+        )
+      }
     } catch (err: any) {
       console.error('Failed to parse Gerber files:', err)
       setErrorMessage(err?.message || 'Failed to read files. Please ensure it is a valid Gerber ZIP.')
@@ -162,6 +178,26 @@ export const Layout: React.FC = () => {
         </div>
 
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <button
+            onClick={() =>
+              BoardDataModel.setRendererEngine(
+                boardState.rendererEngine === 'webgl' ? 'tracespace' : 'webgl'
+              )
+            }
+            title="Chuyển giữa engine SVG (tracespace) và WebGL (web-gerber)"
+            style={{
+              backgroundColor: boardState.rendererEngine === 'webgl' ? '#7c3aed' : '#334155',
+              color: '#ffffff',
+              border: boardState.rendererEngine === 'webgl' ? '1px solid #a78bfa' : 'none',
+              borderRadius: '4px',
+              padding: '3px 10px',
+              fontSize: '12px',
+              cursor: 'pointer',
+              fontWeight: 600,
+            }}
+          >
+            {boardState.rendererEngine === 'webgl' ? '⚡ WebGL' : '🖼️ SVG'}
+          </button>
           <button
             onClick={loadDemoBoard}
             style={{
@@ -689,7 +725,13 @@ export const Layout: React.FC = () => {
           )}
 
           {/* Render 2D Canvas or 3D Canvas when loaded */}
-          {boardState.isLoaded && (boardState.activeView === '3D' ? <Viewer3D /> : <Viewer2D />)}
+          {boardState.isLoaded && (
+            boardState.activeView === '3D'
+              ? <Viewer3D />
+              : boardState.rendererEngine === 'webgl'
+                ? <Viewer2DWebGL />
+                : <Viewer2D />
+          )}
 
           {/* Error notice if any */}
           {errorMessage && (

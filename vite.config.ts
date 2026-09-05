@@ -4,6 +4,14 @@ import electron from 'vite-plugin-electron/simple'
 
 // https://vitejs.dev/config/
 export default defineConfig({
+  resolve: {
+    // Giữ đúng một bản three cho code của app (Viewer3D). Lưu ý: KHÔNG áp được cho
+    // web-gerber vì nó bundle sẵn three 0.175 vào dist, không import từ ngoài.
+    dedupe: ['three'],
+  },
+  optimizeDeps: {
+    include: ['three', 'web-gerber'],
+  },
   plugins: [
     react(),
     electron({

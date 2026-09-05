@@ -21,6 +21,7 @@
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "three": "^0.185.1",
+    "web-gerber": "^1.0.1",
     "whats-that-gerber": "^4.2.7"
   },
   "devDependencies": {
@@ -35,5 +36,8 @@
     "vite-plugin-electron": "^1.1.1",
     "vite-plugin-electron-renderer": "^1.0.0"
   },
-  "main": "dist-electron/main.js"
+  "main": "dist-electron/main.js",
+  "overrides": {
+    "three": "$three"
+  }
 }

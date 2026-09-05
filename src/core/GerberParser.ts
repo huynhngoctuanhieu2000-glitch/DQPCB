@@ -20,6 +20,11 @@ export interface ParsedGerberLayer {
   outlineMaxStroke?: number
 }
 
+export interface RawGerberFile {
+  name: string
+  content: string
+}
+
 export interface BoardParsedData {
   projectName: string
   layers: ParsedGerberLayer[]
@@ -33,6 +38,7 @@ export interface BoardParsedData {
   }
   layerCount: number
   drillCount: number
+  rawFiles: RawGerberFile[]
 }
 
 // 🎨 Comprehensive Layer Matcher for Altium, KiCad, Eagle, OrCAD, Sprint-Layout, Proteus, EasyEDA, CAM350
@@ -737,6 +743,7 @@ export class GerberParser {
       },
       layerCount: Math.max(copperLayers.length, 2),
       drillCount: drillLayers.length,
+      rawFiles,
     }
   }
 }

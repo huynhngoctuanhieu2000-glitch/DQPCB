@@ -1,4 +1,4 @@
-import type { ParsedGerberLayer, BoardParsedData } from '../core/GerberParser'
+import type { ParsedGerberLayer, BoardParsedData, RawGerberFile } from '../core/GerberParser'
 
 export interface BoardState {
   projectName: string
@@ -18,6 +18,8 @@ export interface BoardState {
   isLoaded: boolean
   activeView: 'CAM' | 'Real' | '3D'
   sideFilter: 'all' | 'top' | 'bottom'
+  rawFiles: RawGerberFile[]
+  rendererEngine: 'tracespace' | 'webgl'
 }
 
 let boardState: BoardState = {
@@ -31,6 +33,8 @@ let boardState: BoardState = {
   isLoaded: false,
   activeView: 'CAM',
   sideFilter: 'all',
+  rawFiles: [],
+  rendererEngine: 'tracespace',
 }
 
 type Listener = (state: BoardState) => void
@@ -51,7 +55,13 @@ export const BoardDataModel = {
       drillCount: data.drillCount,
       isLoaded: true,
       sideFilter: 'all',
+      rawFiles: data.rawFiles ?? [],
     }
+    BoardDataModel.notify()
+  },
+
+  setRendererEngine: (engine: 'tracespace' | 'webgl') => {
+    boardState = { ...boardState, rendererEngine: engine }
     BoardDataModel.notify()
   },
 
@@ -132,6 +142,8 @@ export const BoardDataModel = {
       isLoaded: false,
       activeView: 'CAM',
       sideFilter: 'all',
+      rawFiles: [],
+      rendererEngine: boardState.rendererEngine,
     }
     BoardDataModel.notify()
   },
