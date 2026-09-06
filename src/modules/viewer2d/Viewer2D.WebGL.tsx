@@ -86,13 +86,11 @@ const stitchOutline = (tree: any) => {
 const REAL = {
   background: 0xeeeeee,
   Oil: 0x1c7a3c,         // soldermask xanh phủ vùng không có đồng
-  // Đồng nằm DƯỚI mask nên mắt không thấy màu đồng thật, mà thấy màu đồng đã bị
-  // mask xanh lọc qua. Đây chính là kết quả trộn 0.88·Oil + 0.12·đồng(0xb87333):
-  // ngả ấm hơn Oil rất ít -> đường mạch chỉ ánh lên mờ, không "xuyên" như X-quang.
-  Copper: 0x2d7b3d,
-  // Ở 3D mục đích là xem cấu trúc bo chứ không phải chụp ảnh sản phẩm, nên đường mạch
-  // cần đọc được: dùng tông xanh sáng hơn hẳn lớp mask thay vì gần trùng như view 2D.
-  Copper3D: 0x49b06a,
+  // Đồng nằm DƯỚI mask nên thấy màu đồng đã bị mask xanh lọc qua — sáng hơn nền mask
+  // rõ rệt, đúng như bo thật soi thẳng. Trước đây để gần trùng màu Oil vì tưởng đó là
+  // nguyên nhân "nhìn xuyên", nhưng thủ phạm thật là lõi FR-4 bị thủng (xem stitchOutline);
+  // sửa xong lõi rồi thì mạch nổi lên vẫn không hề bị xuyên xuống mặt dưới.
+  Copper: 0x49b06a,
   MaskOpening: 0xc9a227, // lỗ mở mask = pad đồng mạ ENIG
   Silkscreen: 0xf2f2f2,
   BaseBoard: 0xbfaf42,
@@ -248,7 +246,7 @@ export const Viewer2DWebGL: React.FC<Viewer2DWebGLProps> = ({
 
         const color = camMode
           ? (isOutline ? CAM_BOARD : CAM[`${id.type}/${id.side ?? 'all'}`] ?? CAM_FALLBACK)
-          : id.type === 'copper' ? (threeDMode ? REAL.Copper3D : REAL.Copper) :
+          : id.type === 'copper' ? REAL.Copper :
             id.type === 'soldermask' ? REAL.MaskOpening :
             id.type === 'silkscreen' ? REAL.Silkscreen :
             id.type === 'drill' ? REAL.Drill :
