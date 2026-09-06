@@ -17,11 +17,14 @@ export interface ParsedGerberLayer {
   size: [number, number, number, number] // [minX, minY, maxX, maxY] in mm
   units: 'mm' | 'in'
   outlineMaxStroke?: number
-}
-
-export interface RawGerberFile {
-  name: string
-  content: string
+  /**
+   * Hình học đã plot (ImageTree của web-gerber), dùng lại cho viewer thay vì parse lần
+   * hai. Trước đây viewer tự parse từ rawFiles, và hai đường đi đã lệch nhau hai lần:
+   * một lần ở phân loại lớp, một lần ở chuẩn hoá file khoan.
+   */
+  imageTree: any
+  /** Số lỗ khoan (chỉ có ý nghĩa với layer type 'drill') */
+  holeCount: number
 }
 
 export interface BoardParsedData {
@@ -37,7 +40,6 @@ export interface BoardParsedData {
   }
   layerCount: number
   drillCount: number
-  rawFiles: RawGerberFile[]
   /** File phụ trợ bị bỏ qua (report, aperture list, BOM…) */
   ignoredFiles: string[]
   /** File có vẻ là Gerber/Drill nhưng parser không đọc được */
@@ -87,6 +89,57 @@ export const isAuxiliaryFile = (filename: string, allFilenames?: string[]): bool
   // .txt vừa có thể là NC-Drill (Altium) vừa là file ghi chú → chỉ loại khi tên rõ ràng là tài liệu
   if (/\.txt$/i.test(base) && AUXILIARY_NAME.test(base)) return true
   return false
+}
+
+/**
+ * KiCad xuất Edge_Cuts thành nhiều đoạn/cung RỜI RẠC và không theo thứ tự liền mạch
+ * (các lệnh D02 nhảy vị trí). plot(tree, true) trả về mỗi đoạn là một imagePath riêng,
+ * nên khi tô đặc nền bo sẽ sinh cạnh giả -> thủng mảng lớn hình "ngọn lửa".
+ * Nối các đoạn theo endpoint (đảo chiều khi cần) thành vòng kín trước khi render.
+ */
+const stitchOutline = (tree: any) => {
+  const segs: any[] = []
+  for (const c of tree?.children ?? []) if (c?.segments?.length) segs.push(...c.segments)
+  if (segs.length < 2) return tree
+
+  const TOL = 0.05 // mm — KiCad để hở vài µm giữa cung và đoạn thẳng
+  const near = (a: number[], b: number[]) => Math.hypot(a[0] - b[0], a[1] - b[1]) <= TOL
+  const reverse = (s: any) => ({ ...s, start: s.end, end: s.start })
+
+  const remaining = segs.slice()
+  const chains: any[][] = []
+  while (remaining.length > 0) {
+    const chain = [remaining.shift()]
+    let grew = true
+    while (grew && remaining.length > 0) {
+      grew = false
+      const tail = chain[chain.length - 1].end
+      for (let i = 0; i < remaining.length; i++) {
+        if (near(remaining[i].start, tail)) {
+          chain.push(remaining.splice(i, 1)[0])
+          grew = true
+          break
+        }
+        if (near(remaining[i].end, tail)) {
+          chain.push(reverse(remaining.splice(i, 1)[0]))
+          grew = true
+          break
+        }
+      }
+    }
+    chains.push(chain)
+  }
+
+  // web-gerber dựng outline bằng cách duyệt từng child và nối vào một shape, nhưng
+  // nó CHỈ chấp nhận child có đúng 1 segment:
+  //     if (n.segments.length != 1) -> warn("Invalid outline segments length"), null
+  // Gộp cả chuỗi vào một child sẽ bị từ chối và lõi bo không được dựng (nhìn xuyên
+  // xuống mặt dưới). Nên trả về mỗi segment một child, chỉ khác là ĐÚNG THỨ TỰ.
+  const template = tree.children.find((c: any) => c?.segments?.length) ?? tree.children[0]
+  return {
+    ...tree,
+    children: chains.flat().map((seg) => ({ ...template, segments: [seg] })),
+  }
 }
 
 // Chuẩn hoá tên (bỏ đuôi, thay mọi ký tự không phải chữ/số bằng khoảng trắng)
@@ -359,149 +412,6 @@ function convertIncrementalToAbsolute(content: string): string {
   return outLines.join('\n')
 }
 
-// Convert Excellon Tap/Drl to Gerber RS-274X Flashes
-function convertExcellonToGerber(text: string, projectUnits: 'mm' | 'in'): string {
-  const lines = text.split(/\r?\n/)
-  const isMetric = /METRIC/i.test(text) || projectUnits === 'mm'
-  const units = isMetric ? '%MOMM*%' : '%MOIN*%'
-
-  const tools = new Map<number, { dCode: number; diameter: number }>()
-  const bodyCommands: string[] = []
-  
-  let curXStr = "0"
-  let curYStr = "0"
-  let intDigits = isMetric ? 3 : 2
-
-  for (const dLine of lines) {
-    const lineTrim = dLine.trim()
-    if (!lineTrim || lineTrim === '%' || lineTrim === 'M48' || lineTrim === 'M30' || lineTrim === 'G90') continue
-
-    // Parse FILE_FORMAT if present (e.g., ;FILE_FORMAT=4:4 or ;FILE_FORMAT=2:5)
-    const fmtMatch = lineTrim.match(/;FILE_FORMAT=(\d+):(\d+)/i)
-    if (fmtMatch) {
-      intDigits = parseInt(fmtMatch[1], 10)
-      continue
-    }
-
-    // Tool Definition: T3C0.039F200S100 or T1F00S00C0.01181
-    const defMatch = lineTrim.match(/^T(\d+).*?C([0-9\.]+)/i)
-    if (defMatch) {
-      const tNum = parseInt(defMatch[1], 10)
-      const diameter = parseFloat(defMatch[2])
-      const dCode = 10 + tNum
-      tools.set(tNum, { dCode, diameter })
-      continue
-    }
-
-    const toolMatch = lineTrim.match(/^T(\d+)$/i)
-    if (toolMatch) {
-      const tNum = parseInt(toolMatch[1], 10)
-      const toolInfo = tools.get(tNum)
-      if (toolInfo) {
-        bodyCommands.push(`D${toolInfo.dCode}*`)
-      }
-      continue
-    }
-
-    // Coordinate drill: X002300Y-022000
-    if (lineTrim.startsWith('X') || lineTrim.startsWith('Y')) {
-      let xStr = curXStr
-      let yStr = curYStr
-      let matched = false
-      const xMatch = lineTrim.match(/X([+-]?\d+)/i)
-      if (xMatch) {
-        xStr = xMatch[1]
-        matched = true
-      }
-      const yMatch = lineTrim.match(/Y([+-]?\d+)/i)
-      if (yMatch) {
-        yStr = yMatch[1]
-        matched = true
-      }
-
-      if (matched) {
-        curXStr = xStr
-        curYStr = yStr
-        
-        let parseCoord = (str: string) => {
-           let sign = 1
-           if (str.startsWith('-')) { sign = -1; str = str.substring(1) }
-           else if (str.startsWith('+')) { str = str.substring(1) }
-           
-           if (str.includes('.')) return parseFloat(str) * sign
-           
-           // If no decimal point, assume 2 digits integer, rest is fraction (Altium 2:5 format)
-           if (str.length >= intDigits) {
-             const intPart = str.substring(0, intDigits)
-             const fracPart = str.substring(intDigits)
-             return parseFloat(intPart + '.' + fracPart) * sign
-           }
-           // Fallback if shorter than intDigits (e.g. '0' or '1')
-           return parseFloat(str) * sign
-           return parseFloat(str) * sign
-        }
-
-        let mx = parseCoord(xStr)
-        let my = parseCoord(yStr)
-        
-        let formattedX = Math.round(mx * 10000).toString().padStart(6, '0')
-        let formattedY = Math.round(my * 10000).toString().padStart(6, '0')
-        bodyCommands.push(`X${formattedX}Y${formattedY}D03*`)
-      }
-      continue
-    }
-    
-    const repMatch = lineTrim.match(/^R(\d+)(?:X([+-]?\d+))?(?:Y([+-]?\d+))?$/i)
-    if (repMatch) {
-      const count = parseInt(repMatch[1], 10)
-      
-      let parseCoord = (str: string) => {
-         let sign = 1
-         if (str.startsWith('-')) { sign = -1; str = str.substring(1) }
-         else if (str.startsWith('+')) { str = str.substring(1) }
-         if (str.includes('.')) return parseFloat(str) * sign
-         if (str.length >= intDigits) {
-             const intPart = str.substring(0, intDigits)
-             const fracPart = str.substring(intDigits)
-             return parseFloat(intPart + '.' + fracPart) * sign
-           }
-           // Fallback if shorter than intDigits (e.g. '0' or '1')
-           return parseFloat(str) * sign
-         return parseFloat(str) * sign
-      }
-
-      const dx = repMatch[2] ? parseCoord(repMatch[2]) : 0
-      const dy = repMatch[3] ? parseCoord(repMatch[3]) : 0
-      
-      let tempX = parseCoord(curXStr)
-      let tempY = parseCoord(curYStr)
-      for (let i = 0; i < count; i++) {
-        tempX += dx
-        tempY += dy
-        let formattedX = Math.round(tempX * 10000).toString().padStart(6, '0')
-        let formattedY = Math.round(tempY * 10000).toString().padStart(6, '0')
-        bodyCommands.push(`X${formattedX}Y${formattedY}D03*`)
-      }
-      
-      let formatBack = (num: number) => {
-         let s = Math.abs(num).toFixed(5).replace('.', '')
-         if (num < 0) s = '-' + s
-         return s
-      }
-      curXStr = formatBack(tempX)
-      curYStr = formatBack(tempY)
-      continue
-    }
-  }
-  if (tools.size === 0 && bodyCommands.length === 0) return text
-  
-  const toolDefs = Array.from(tools.values())
-    .map((t) => `%ADD${t.dCode}C,${t.diameter}*%`)
-    .join('\n')
-
-  return `${units}\n%FSLAX24Y24*%\n${toolDefs}\n${bodyCommands.join('\n')}\nM02*\n`
-}
-
 export class GerberParser {
   static async parseInputFiles(files: File[]): Promise<BoardParsedData> {
     let rawFiles: { name: string; content: string }[] = []
@@ -685,9 +595,9 @@ export class GerberParser {
         const isDrillFile = meta.type === 'drill'
 
         if (isDrillFile) {
-          if (!fileContent.includes('%FS') && !fileContent.includes('%MO')) {
-            fileContent = convertExcellonToGerber(fileContent, projectUnits)
-          }
+          // Để nguyên Excellon: parser của web-gerber đọc thẳng định dạng này và cho
+          // toạ độ chính xác hơn convertExcellonToGerber (hàm đó viết cho tracespace,
+          // đưa qua nó thì lỗ khoan KiCad lệch hẳn ra ngoài bo).
         } else {
           // Check if file is incremental natively
           const isFileIncremental = /%FS[LT]?I/i.test(fileContent)
@@ -712,9 +622,17 @@ export class GerberParser {
         // (`t.variableValues` undefined) ngay khi file có aperture macro %AM — mà
         // KiCad dùng macro RoundRect/RotRect cho mọi pad, nên toàn bộ lớp
         // copper/mask/silk của bo KiCad đều không đọc được.
+        // Một số CAD xuất định nghĩa aperture có dấu cách sau dấu phẩy
+        // ("%ADD10C, 0.20*%"). Chuẩn Gerber không cho phép, và parser bỏ qua luôn
+        // aperture đó -> mọi lệnh flash D03 dùng nó biến mất. Thực đo trên bo VOL LED:
+        // copper_top từ 0 lên 528 hình sau khi bỏ dấu cách.
+        fileContent = fileContent.replace(/(%ADD\d+[A-Za-z]*),[ \t]+/g, '$1,')
+
+        const isOutline = meta.type === 'outline'
         const parser = createParser()
         parser.feed(fileContent)
-        const imageTree = plot(parser.result(), meta.type === 'outline')
+        const plotted = plot(parser.result(), isOutline)
+        const imageTree = isOutline ? stitchOutline(plotted) : plotted
 
         let size: [number, number, number, number] = [0, 0, 0, 0]
         if (imageTree.size && imageTree.size.length === 4) {
@@ -777,7 +695,9 @@ export class GerberParser {
           visible: meta.type !== 'documentation',
           size,
           units: imageTree.units || 'mm',
-          outlineMaxStroke
+          outlineMaxStroke,
+          imageTree,
+          holeCount: isDrillFile ? (fileContent.match(/^X/gm) || []).length : 0,
         })
       } catch (err: any) {
         // Không nuốt lỗi im lặng: người dùng cần biết lớp nào bị mất và vì sao.
@@ -867,7 +787,6 @@ export class GerberParser {
       },
       layerCount: Math.max(copperLayers.length, 2),
       drillCount: drillLayers.length,
-      rawFiles,
       ignoredFiles,
       failedFiles,
     }

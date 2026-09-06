@@ -1,4 +1,4 @@
-import type { ParsedGerberLayer, BoardParsedData, RawGerberFile } from '../core/GerberParser'
+import type { ParsedGerberLayer, BoardParsedData } from '../core/GerberParser'
 
 export interface BoardState {
   projectName: string
@@ -18,7 +18,6 @@ export interface BoardState {
   isLoaded: boolean
   activeView: 'CAM' | 'Real' | '3D' | 'Both'
   sideFilter: 'all' | 'top' | 'bottom'
-  rawFiles: RawGerberFile[]
   /** File phụ trợ bị bỏ qua khi đọc (report, aperture list, BOM…) */
   ignoredFiles: string[]
   /** File Gerber/Drill mà parser không đọc được */
@@ -36,7 +35,6 @@ let boardState: BoardState = {
   isLoaded: false,
   activeView: 'CAM',
   sideFilter: 'all',
-  rawFiles: [],
   ignoredFiles: [],
   failedFiles: [],
 }
@@ -59,7 +57,6 @@ export const BoardDataModel = {
       drillCount: data.drillCount,
       isLoaded: true,
       sideFilter: 'all',
-      rawFiles: data.rawFiles ?? [],
       ignoredFiles: data.ignoredFiles ?? [],
       failedFiles: data.failedFiles ?? [],
     }
@@ -144,7 +141,6 @@ export const BoardDataModel = {
       isLoaded: false,
       activeView: 'CAM',
       sideFilter: 'all',
-      rawFiles: [],
       ignoredFiles: [],
       failedFiles: [],
     }

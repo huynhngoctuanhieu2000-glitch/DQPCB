@@ -20,56 +20,6 @@ import {
 //   OutLine -> oil(phủ cả bo, = oilColor) -> Copper -> SolderMask -> Silkscreen
 // Lớp "SolderMask" trong Gerber là các LỖ MỞ mask và được vẽ TRÊN CÙNG (đè lên copper),
 // nên muốn "bo xanh + pad đồng" thì phải tô lỗ mở bằng màu đồng, còn copper thì tô xanh.
-/**
- * KiCad xuất Edge_Cuts thành nhiều đoạn/cung RỜI RẠC và không theo thứ tự liền mạch
- * (các lệnh D02 nhảy vị trí). plot(tree, true) trả về mỗi đoạn là một imagePath riêng,
- * nên khi tô đặc nền bo sẽ sinh cạnh giả -> thủng mảng lớn hình "ngọn lửa".
- * Nối các đoạn theo endpoint (đảo chiều khi cần) thành vòng kín trước khi render.
- */
-const stitchOutline = (tree: any) => {
-  const segs: any[] = []
-  for (const c of tree?.children ?? []) if (c?.segments?.length) segs.push(...c.segments)
-  if (segs.length < 2) return tree
-
-  const TOL = 0.05 // mm — KiCad để hở vài µm giữa cung và đoạn thẳng
-  const near = (a: number[], b: number[]) => Math.hypot(a[0] - b[0], a[1] - b[1]) <= TOL
-  const reverse = (s: any) => ({ ...s, start: s.end, end: s.start })
-
-  const remaining = segs.slice()
-  const chains: any[][] = []
-  while (remaining.length > 0) {
-    const chain = [remaining.shift()]
-    let grew = true
-    while (grew && remaining.length > 0) {
-      grew = false
-      const tail = chain[chain.length - 1].end
-      for (let i = 0; i < remaining.length; i++) {
-        if (near(remaining[i].start, tail)) {
-          chain.push(remaining.splice(i, 1)[0])
-          grew = true
-          break
-        }
-        if (near(remaining[i].end, tail)) {
-          chain.push(reverse(remaining.splice(i, 1)[0]))
-          grew = true
-          break
-        }
-      }
-    }
-    chains.push(chain)
-  }
-
-  // web-gerber dựng outline bằng cách duyệt từng child và nối vào một shape, nhưng
-  // nó CHỈ chấp nhận child có đúng 1 segment:
-  //     if (n.segments.length != 1) -> warn("Invalid outline segments length"), null
-  // Gộp cả chuỗi vào một child sẽ bị từ chối và lõi bo không được dựng (nhìn xuyên
-  // xuống mặt dưới). Nên trả về mỗi segment một child, chỉ khác là ĐÚNG THỨ TỰ.
-  const template = tree.children.find((c: any) => c?.segments?.length) ?? tree.children[0]
-  return {
-    ...tree,
-    children: chains.flat().map((seg) => ({ ...template, segments: [seg] })),
-  }
-}
 
 // Đã thử tối ưu renderThree (chiếm ~86% thời gian dựng) bằng cách tắt
 // extrudeSettings.bevelEnabled và giảm curveSegments: nhanh 2.8x nhưng nền bo và
@@ -160,7 +110,7 @@ export const Viewer2DWebGL: React.FC<Viewer2DWebGLProps> = ({
 
   useEffect(() => {
     const el = containerRef.current
-    if (!el || !board.isLoaded || board.rawFiles.length === 0) return
+    if (!el || !board.isLoaded || board.layers.length === 0) return
 
     while (el.firstChild) el.removeChild(el.firstChild)
 
@@ -175,27 +125,18 @@ export const Viewer2DWebGL: React.FC<Viewer2DWebGLProps> = ({
 
     const t0 = performance.now()
     const bad: string[] = []
-    // Phân loại lấy từ board.layers (matchLayer trong GerberParser) — CHÍNH LÀ thứ
-    // sidebar đang hiển thị, nên hai bên luôn khớp nhau.
-    // Không dùng identifyLayers của web-gerber: nó chỉ bắt chữ top/bottom rồi mặc định
-    // copper, ví dụ PCB_soldermask_top.gbr và PCB_silkscreen_top.gbr đều ra copper/top
-    // -> soldermask/silk bị nhét vào ô Copper và ghi đè lẫn nhau.
-    const identity: Record<string, { type: string; side: string }> = {}
-    for (const l of board.layers) identity[l.filename] = { type: l.type, side: l.side }
 
     // --- Chọn file khoan ---
     // KiCad có thể xuất cả bản gộp (.drl, FileFunction MixedPlating) LẪN bộ tách
     // (-PTH.drl / -NPTH.drl). Bản gộp là đầy đủ nhất; nếu chỉ có bộ tách thì phải
     // dùng tất cả. pcb.Drill chỉ có 1 slot nên các file phụ được gắn làm con.
-    const countHoles = (s: string) => (s.match(/^X/gm) || []).length
-    const drills = board.rawFiles
-      .filter((f) => identity[f.name]?.type === 'drill')
-      .map((f) => ({
-        name: f.name,
-        holes: countHoles(f.content),
-        split: /-(N?PTH)\.\w+$/i.test(f.name),
+    const drills = board.layers
+      .filter((l) => l.type === 'drill' && l.holeCount > 0)
+      .map((l) => ({
+        name: l.filename,
+        holes: l.holeCount,
+        split: /-(N?PTH)\.\w+$/i.test(l.filename),
       }))
-      .filter((d) => d.holes > 0)
 
     const merged = drills.filter((d) => !d.split).sort((a, b) => b.holes - a.holes)
     const drillPlan = merged.length > 0 ? [merged[0]] : drills
@@ -225,16 +166,17 @@ export const Viewer2DWebGL: React.FC<Viewer2DWebGLProps> = ({
 
     let ok = 0
     let drillPlaced = 0
-    for (const raw of board.rawFiles) {
-      const id = identity[raw.name]
-      if (!id?.type) continue
+    // Dùng lại hình học GerberParser đã plot, KHÔNG parse lần hai. Trước đây viewer tự
+    // parse lại từ rawFiles nên tồn tại hai đường đi độc lập, và chúng đã lệch nhau hai
+    // lần: phân loại lớp (identifyLayers vs matchLayer) và chuẩn hoá file khoan.
+    for (const raw of board.layers) {
+      const id = { type: raw.type, side: raw.side }
+      if (!id.type) continue
 
       const isOutline = id.type === 'outline'
       try {
-        const parser = createParser()
-        parser.feed(raw.content)
-        const rawPlotted = plot(parser.result(), isOutline)
-        const plotted = isOutline ? stitchOutline(rawPlotted) : rawPlotted
+        const plotted = raw.imageTree
+        if (!plotted) continue
 
         if (plotted?.size?.length === 4) {
           const scale = plotted.units === 'in' ? 25.4 : 1
@@ -255,18 +197,24 @@ export const Viewer2DWebGL: React.FC<Viewer2DWebGLProps> = ({
         const obj = renderThree(plotted, color, undefined, isOutline)
         if (!obj) continue
 
-        byFile.set(raw.name, obj)
+        // Các lớp trong cùng một bộ có thể khác đơn vị — bo VOL LED có gerber theo mm
+        // nhưng file khoan theo inch. Bounds đã quy về mm sẵn, còn hình học thì giữ
+        // nguyên đơn vị gốc, nên lớp inch bị nhỏ đi 25.4 lần và văng khỏi bo.
+        // (assemblyPCBToThreeJS chỉ đụng tới scale.z nên scale x/y ở đây được giữ lại.)
+        if (plotted.units === 'in') obj.scale.set(25.4, 25.4, obj.scale.z)
+
+        byFile.set(raw.filename, obj)
 
         const slot = id.side === 'bottom' ? pcb.Btm : pcb.Top
         if (id.type === 'copper') slot.Copper = obj
         else if (id.type === 'soldermask') {
           slot.SolderMask = obj
-          maskFiles[id.side === 'bottom' ? 'bottom' : 'top'].push(raw.name)
+          maskFiles[id.side === 'bottom' ? 'bottom' : 'top'].push(raw.filename)
         }
         else if (id.type === 'silkscreen') slot.Silkscreen = obj
         else if (isOutline) pcb.OutLine = obj
         else if (id.type === 'drill') {
-          if (!drillUse.has(raw.name)) continue
+          if (!drillUse.has(raw.filename)) continue
           // Object rỗng khởi tạo ban đầu không có mesh -> file khoan đầu tiên thay thế nó,
           // các file sau gắn làm con để cùng chịu scale/transform của assembly.
           if (drillPlaced === 0) pcb.Drill = obj
@@ -277,8 +225,8 @@ export const Viewer2DWebGL: React.FC<Viewer2DWebGLProps> = ({
 
         ok++
       } catch (e) {
-        console.warn('[WebGL] lỗi lớp', raw.name, e)
-        bad.push(raw.name)
+        console.warn('[WebGL] lỗi lớp', raw.filename, e)
+        bad.push(raw.filename)
       }
     }
 
@@ -543,7 +491,7 @@ export const Viewer2DWebGL: React.FC<Viewer2DWebGLProps> = ({
     }
     // threeDMode phải nằm trong deps: chuyển Real 2D → 3D View không đổi camMode
     // (cả hai đều false) nên effect không chạy lại và cảnh vẫn là ảnh 2D phẳng.
-  }, [board.isLoaded, board.rawFiles, camMode, threeDMode, fromBelow])
+  }, [board.isLoaded, board.layers, camMode, threeDMode, fromBelow])
 
   // Bật/tắt lớp theo checkbox ở sidebar — chỉ đổi .visible, không dựng lại scene.
   // Sidebar được dựng từ GerberParser (tracespace), mà tracespace parse fail nhiều lớp
@@ -561,7 +509,7 @@ export const Viewer2DWebGL: React.FC<Viewer2DWebGLProps> = ({
     const anyShown = (files: string[]) => files.length === 0 || files.some(shown)
     if (s.topOil) s.topOil.visible = !s.camMode && anyShown(s.maskFiles.top)
     if (s.bottomOil) s.bottomOil.visible = !s.camMode && anyShown(s.maskFiles.bottom)
-  }, [board.visibleLayers, board.layers, board.rawFiles])
+  }, [board.visibleLayers, board.layers])
 
   if (!board.isLoaded) {
     return (
