@@ -492,8 +492,10 @@ export const Layout: React.FC = () => {
                       style={{ cursor: 'pointer', accentColor: layer.color }}
                     />
 
-                    {/* Color Swatch Dot */}
-                    <div
+                    {/* Ô màu — bấm để đổi màu lớp (áp dụng cho chế độ CAM 2D) */}
+                    <label
+                      title="Đổi màu lớp (chế độ CAM)"
+                      onClick={(e) => e.stopPropagation()}
                       style={{
                         width: '12px',
                         height: '12px',
@@ -501,8 +503,27 @@ export const Layout: React.FC = () => {
                         backgroundColor: layer.color,
                         border: '1px solid rgba(255,255,255,0.2)',
                         flexShrink: 0,
+                        cursor: 'pointer',
+                        display: 'block',
+                        position: 'relative',
                       }}
-                    />
+                    >
+                      <input
+                        type="color"
+                        value={layer.color}
+                        onChange={(e) => BoardDataModel.setLayerColor(layer.id, e.target.value)}
+                        style={{
+                          position: 'absolute',
+                          inset: 0,
+                          opacity: 0,
+                          width: '100%',
+                          height: '100%',
+                          padding: 0,
+                          border: 'none',
+                          cursor: 'pointer',
+                        }}
+                      />
+                    </label>
 
                     {/* Display Name */}
                     <div

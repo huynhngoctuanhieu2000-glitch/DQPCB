@@ -47,27 +47,12 @@ const REAL = {
   Drill: 0x2b2b2b,
 }
 
-// Màu CAM lấy trùng bảng màu của sidebar (matchLayer) để nhìn là biết lớp nào
-const CAM: Record<string, number> = {
-  'copper/top': 0xe55039,
-  'copper/bottom': 0x38bdf8,
-  'copper/inner': 0xe67e22,
-  'soldermask/top': 0x00b08b,
-  'soldermask/bottom': 0x16a085,
-  'silkscreen/top': 0xffffff,
-  'silkscreen/bottom': 0x8eaee0,
-  'solderpaste/top': 0xb5a672,
-  'solderpaste/bottom': 0xa59662,
-  'outline/all': 0xf1c40f,
-  'drill/all': 0x111111,
-}
+// Màu dự phòng khi layer chưa có màu hợp lệ
 const CAM_FALLBACK = 0x9b59b6
 
 // Stack-up phóng đại theo trục z. Giữ đúng tỉ lệ tương đối giữa các lớp, chỉ nhân lên
 // để depth buffer phân biệt được — nhìn thẳng từ trên xuống thì không thấy khác biệt.
 const LAMINAR = { Copper: 0.12, SolderMask: 0.14, Oil: 0.04, Silkscreen: 0.04, Total: 2.4 }
-// Ở chế độ CAM, vùng bo chỉ là nền tối để các lớp gia công nổi lên (tô vàng cả đĩa sẽ chói)
-const CAM_BOARD = 0x232833
 export interface Viewer2DWebGLProps {
   /** Ép chế độ hiển thị, bỏ qua activeView của model (dùng cho khung chia đôi Top/Bot) */
   viewOverride?: 'CAM' | 'Real' | '3D'
@@ -186,15 +171,22 @@ export const Viewer2DWebGL: React.FC<Viewer2DWebGLProps> = ({
           maxY = Math.max(maxY, plotted.size[3] * scale)
         }
 
+        // CAM lấy màu từ chính layer, tức ô màu người dùng bấm đổi được ở sidebar.
+        // Real/3D thì màu là mô phỏng vật liệu nên vẫn dùng bảng cố định.
         const color = camMode
-          ? (isOutline ? CAM_BOARD : CAM[`${id.type}/${id.side ?? 'all'}`] ?? CAM_FALLBACK)
+          ? parseInt(String(raw.color).replace('#', ''), 16) || CAM_FALLBACK
           : id.type === 'copper' ? REAL.Copper :
             id.type === 'soldermask' ? REAL.MaskOpening :
             id.type === 'silkscreen' ? REAL.Silkscreen :
             id.type === 'drill' ? REAL.Drill :
             REAL.BaseBoard
 
-        const obj = renderThree(plotted, color, undefined, isOutline)
+        // Tham số cuối của renderThree quyết định outline được TÔ ĐẶC hay vẽ VIỀN.
+        // Real/3D cần tô đặc vì đó là lõi FR-4 của bo. CAM thì outline là đường bao gia
+        // công, phải vẽ thành viền — tô đặc sẽ thành một mảng che hết, mà bật riêng lớp
+        // Outline lại chỉ thấy một mảng tối.
+        const fillOutline = isOutline && !camMode
+        const obj = renderThree(plotted, color, undefined, fillOutline)
         if (!obj) continue
 
         // Các lớp trong cùng một bộ có thể khác đơn vị — bo VOL LED có gerber theo mm
@@ -346,6 +338,30 @@ export const Viewer2DWebGL: React.FC<Viewer2DWebGLProps> = ({
     if (camMode) {
       if (topOil) topOil.visible = false
       if (bottomOil) bottomOil.visible = false
+
+      // CAM phải thấy ĐỦ MỌI LỚP cùng lúc. Nếu giữ nguyên xếp lớp theo vật lý bo thật
+      // thì các lớp mặt dưới nằm dưới nền FR-4 và bị nền che sạch — chỉ còn mặt trên.
+      // Nên xếp lại: nền bo xuống đáy, rồi chồng lần lượt các lớp bot và top lên trên.
+      const plate = pcb.OutLine
+      if (plate) plate.position.setZ(0)
+
+      const stack = [
+        pcb.Btm.Copper, pcb.Btm.Silkscreen, pcb.Btm.SolderMask,
+        pcb.Top.Copper, pcb.Top.Silkscreen, pcb.Top.SolderMask,
+      ].filter(Boolean)
+
+      const plateTop = plate ? plate.scale.z / 2 : 0
+      stack.forEach((o: any, k) => {
+        o.position.setZ(plateTop + EPS * (k + 1) + o.scale.z / 2)
+      })
+
+      if (pcb.Drill?.scale) {
+        const top = stack.length
+          ? Math.max(...stack.map((o: any) => o.position.z + o.scale.z / 2))
+          : plateTop
+        pcb.Drill.position.setZ(0)
+        pcb.Drill.scale.setZ((top + EPS) * 2)
+      }
     }
 
     sceneRef.current = { byFile, maskFiles, topOil, bottomOil, camMode }
@@ -486,6 +502,20 @@ export const Viewer2DWebGL: React.FC<Viewer2DWebGLProps> = ({
     return () => {
       cleanups.forEach((fn) => fn())
       sceneRef.current = null
+
+      // Renderer.dispose() KHÔNG giải phóng geometry/material — chúng giữ buffer trên
+      // GPU cho tới khi tự gọi dispose. Mỗi lần đổi chế độ hoặc đổi màu là một lần dựng
+      // lại toàn bộ, không dọn thì bộ nhớ dồn lại và lớp nặng nhất (silkscreen ~5 triệu
+      // đỉnh) sẽ là cái đầu tiên dựng hỏng.
+      try {
+        render.Scene?.traverse?.((o: any) => {
+          o.geometry?.dispose?.()
+          const mats = Array.isArray(o.material) ? o.material : o.material ? [o.material] : []
+          mats.forEach((m: any) => m?.dispose?.())
+        })
+        render.Scene?.clear?.()
+      } catch { /* ignore */ }
+
       try { render.Renderer?.dispose?.() } catch { /* ignore */ }
       while (el.firstChild) el.removeChild(el.firstChild)
     }

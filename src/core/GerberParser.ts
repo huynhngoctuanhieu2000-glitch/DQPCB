@@ -71,7 +71,10 @@ export interface LayerMeta {
 const AUXILIARY_EXT =
   /\.(apr|apr_lib|extrep|rul|rep|drr|ldp|ipc|cam|dri|gpi|lis|apt|gtd|gbrjob|rpt|log|max|csv|tsv|xls|xlsx|pdf|doc|docx|htm|html|md|ini|cfg|json|xml|bak|db|zip|rar|7z|jpe?g|png|gif|bmp|svg|step|stp|iges|igs|dwg|dxf)$/i
 
-const AUXILIARY_NAME = /\b(bom|pick[-_ ]?(and[-_ ]?)?place|pnp|readme|report|status|netlist|aperture)\b/i
+// "read[-_ ]?me" chứ không phải "readme": Proteus đặt tên READ-ME.TXT, mà .txt lại là
+// đuôi file khoan của Altium nên nếu lọt qua đây nó sẽ bị nhận thành lớp khoan.
+const AUXILIARY_NAME =
+  /\b(bom|pick[-_ ]?(and[-_ ]?)?place|pnp|read[-_ ]?me|report|status|netlist|aperture)\b/i
 
 /**
  * DipTrace đặt tên lớp bằng đuôi 3 ký tự (.top/.bot/.plc/.stp/.sbt…), trong đó .stp
@@ -214,10 +217,10 @@ export const matchLayer = (filename: string, allFilenames?: string[]): LayerMeta
   const byExt = EXT_MAP[ext]
   if (byExt) return { ...byExt }
 
-  // OrCAD/Allegro dùng chung đuôi .art cho mọi lớp, ý nghĩa nằm ở tên file. Các rule
-  // từ khoá bên dưới lo được SOLDERMASK_TOP/SILKSCREEN_TOP/PASTEMASK_TOP; riêng
-  // TOP.art / BOTTOM.art chỉ có mỗi tên mặt bo nên ngầm hiểu là lớp đồng.
-  if (ext === 'art' && /^(top|bottom|bot)$/.test(norm)) {
+  // Tên file CHỈ có mỗi mặt bo, không kèm chữ "copper": TOP.art / BOTTOM.art của
+  // OrCAD, TOP.gbr / BOT.gbr của các bộ xuất tối giản. Quy ước chung của ngành là
+  // lớp đồng. Bắt buộc khớp trọn vẹn để không đụng "Top Solder Resist", "MASKTOP"…
+  if (/^(top|bottom|bot)$/.test(norm)) {
     return norm === 'top' ? { ...META.copperTop } : { ...META.copperBot }
   }
 
@@ -241,11 +244,20 @@ export const matchLayer = (filename: string, allFilenames?: string[]): LayerMeta
   // Thứ tự: drill → paste → mask → silk → copper → outline → documentation
   const has = (re: RegExp) => re.test(norm)
 
+  // Dữ liệu khoan thật luôn là Excellon (.drl/.txt/.xln/.ncd…), không bao giờ mang đuôi
+  // ảnh Gerber. Proteus xuất kèm "… Drill.GBR" — đó là BẢN VẼ khoan, 74KB đồ hoạ. Nếu
+  // coi nó là dữ liệu khoan thì nó sẽ đè cả file .DRL thật (báo 3155 lỗ thay vì 91).
+  if (/^(gbr|ger|gbx|pho|art)$/.test(ext) && has(/\b(drill|drl|excellon)\b/)) {
+    return { ...META.doc, displayName: 'Drill Drawing' }
+  }
+
   if (has(/\b(drill|drl|excellon|npth|pth|holes|thruhole)\b/) && !has(/\b(drawing|guide|map|report)\b/)) {
     return { ...META.drill }
   }
-  if (has(/\b(top|t|f|front)\s*(solder\s*)?paste\b|\bpaste\s*(mask\s*)?(top|t|f|front)\b/)) return { ...META.pasteTop }
-  if (has(/\b(bot|bottom|b|back)\s*(solder\s*)?paste\b|\bpaste\s*(mask\s*)?(bot|bottom|b|back)\b/)) return { ...META.pasteBot }
+  // Cho phép một từ đệm giữa mặt bo và "paste": Proteus ghi "Top SMT Paste",
+  // chỗ khác ghi "Top Solder Paste" hoặc "Top Paste".
+  if (has(/\b(top|t|f|front)\s*(\w+\s+)?paste\b|\bpaste\s*(mask\s*)?(top|t|f|front)\b/)) return { ...META.pasteTop }
+  if (has(/\b(bot|bottom|b|back)\s*(\w+\s+)?paste\b|\bpaste\s*(mask\s*)?(bot|bottom|b|back)\b/)) return { ...META.pasteBot }
 
   if (has(/\b(top|t|f|front)\s*(solder|mask|resist|soldermask)\b|\b(mask|resist|soldermask)\s*(top|t|f|front)\b/)) return { ...META.maskTop }
   if (has(/\b(bot|bottom|b|back)\s*(solder|mask|resist|soldermask)\b|\b(mask|resist|soldermask)\s*(bot|bottom|b|back)\b/)) return { ...META.maskBot }
@@ -598,6 +610,29 @@ export class GerberParser {
           // Để nguyên Excellon: parser của web-gerber đọc thẳng định dạng này và cho
           // toạ độ chính xác hơn convertExcellonToGerber (hàm đó viết cho tracespace,
           // đưa qua nó thì lỗ khoan KiCad lệch hẳn ra ngoài bo).
+          //
+          // Ngoại lệ: Excellon METRIC không khai báo số chữ số thập phân. Chuẩn metric
+          // là 3.3 nhưng parser áp mặc định của hệ inch (2.4), nên toạ độ co lại 10 lần
+          // và cả cụm lỗ dồn vào một góc bo (thấy ở bản xuất Proteus: X+54500 phải là
+          // 54.500 mm chứ không phải 5.4500). Tự chèn dấu thập phân theo 3.3.
+          // Chỉ đụng khi CHẮC CHẮN mơ hồ: metric, chưa có dấu chấm, chưa khai báo format.
+          const coordLines = fileContent.match(/^[XY][^\n]*/gm) || []
+          const ambiguousMetric =
+            /^\s*METRIC/im.test(fileContent) &&
+            coordLines.length > 0 &&
+            !coordLines.some((l) => l.includes('.')) &&
+            !/FILE_FORMAT|;\s*FORMAT/i.test(fileContent)
+
+          if (ambiguousMetric) {
+            fileContent = fileContent.replace(
+              /([XY])([+-]?)(\d+)(?=\D|$)/g,
+              (whole, axis, sign, digits) => {
+                if (digits.length > 6) return whole
+                const padded = digits.padStart(6, '0')
+                return axis + sign + padded.slice(0, 3) + '.' + padded.slice(3)
+              }
+            )
+          }
         } else {
           // Check if file is incremental natively
           const isFileIncremental = /%FS[LT]?I/i.test(fileContent)
