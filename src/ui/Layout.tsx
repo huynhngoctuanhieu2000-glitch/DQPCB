@@ -1,6 +1,4 @@
 import React, { useState, useEffect, useRef } from 'react'
-import { Viewer2D } from '../modules/viewer2d/Viewer2D'
-import { Viewer3D } from '../modules/viewer3d/Viewer3D'
 import { Viewer2DWebGL } from '../modules/viewer2d/Viewer2D.WebGL'
 import { BoardDataModel } from '../models/BoardDataModel'
 import { GerberParser } from '../core/GerberParser'
@@ -27,21 +25,6 @@ export const Layout: React.FC = () => {
     try {
       const parsedData = await GerberParser.parseInputFiles(files)
       BoardDataModel.loadBoardData(parsedData)
-
-      // Auto-fallback: nếu tracespace không parse được layer nào có nội dung (svgContent rỗng hết)
-      // → tự chuyển sang WebGL engine để web-gerber thử render trực tiếp từ rawFiles.
-      const svgLayers = parsedData.layers.filter(
-        (l) => l.svgContent && l.svgContent.length > 100 && l.type !== 'drawing'
-      )
-      if (svgLayers.length === 0 && parsedData.rawFiles.length > 0) {
-        console.warn(
-          '[Auto-fallback] Tracespace không dựng được lớp nào → chuyển sang WebGL (web-gerber).'
-        )
-        BoardDataModel.setRendererEngine('webgl')
-        setErrorMessage(
-          'Tracespace parser không đọc được bo này. Đã tự chuyển sang engine WebGL (web-gerber).'
-        )
-      }
     } catch (err: any) {
       console.error('Failed to parse Gerber files:', err)
       setErrorMessage(err?.message || 'Failed to read files. Please ensure it is a valid Gerber ZIP.')
@@ -162,42 +145,17 @@ export const Layout: React.FC = () => {
           gap: '12px',
         }}
       >
-        <div style={{ display: 'flex', gap: '8px', color: '#94a3b8' }}>
+        <div style={{ display: 'flex', gap: '8px', color: '#94a3b8', alignItems: 'center' }}>
+          <span style={{ fontWeight: 600, color: '#e2e8f0' }}>DQPCB</span>
           <span
             style={{ cursor: 'pointer', padding: '2px 6px', borderRadius: '3px' }}
             onClick={() => fileInputRef.current?.click()}
           >
-            File(F)
+            File
           </span>
-          <span style={{ cursor: 'pointer', padding: '2px 6px' }}>Edit</span>
-          <span style={{ cursor: 'pointer', padding: '2px 6px' }}>View</span>
-          <span style={{ cursor: 'pointer', padding: '2px 6px' }}>Operations</span>
-          <span style={{ cursor: 'pointer', padding: '2px 6px' }}>Tools(T)</span>
-          <span style={{ cursor: 'pointer', padding: '2px 6px' }}>Settings</span>
-          <span style={{ cursor: 'pointer', padding: '2px 6px' }}>Help</span>
         </div>
 
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <button
-            onClick={() =>
-              BoardDataModel.setRendererEngine(
-                boardState.rendererEngine === 'webgl' ? 'tracespace' : 'webgl'
-              )
-            }
-            title="Chuyển giữa engine SVG (tracespace) và WebGL (web-gerber)"
-            style={{
-              backgroundColor: boardState.rendererEngine === 'webgl' ? '#7c3aed' : '#334155',
-              color: '#ffffff',
-              border: boardState.rendererEngine === 'webgl' ? '1px solid #a78bfa' : 'none',
-              borderRadius: '4px',
-              padding: '3px 10px',
-              fontSize: '12px',
-              cursor: 'pointer',
-              fontWeight: 600,
-            }}
-          >
-            {boardState.rendererEngine === 'webgl' ? '⚡ WebGL' : '🖼️ SVG'}
-          </button>
           <button
             onClick={loadDemoBoard}
             style={{
@@ -267,38 +225,6 @@ export const Layout: React.FC = () => {
           gap: '12px',
         }}
       >
-        {/* Action Pills */}
-        <div style={{ display: 'flex', gap: '6px' }}>
-          <button
-            style={{
-              backgroundColor: '#0284c7',
-              color: '#ffffff',
-              border: 'none',
-              borderRadius: '14px',
-              padding: '3px 12px',
-              fontSize: '12px',
-              fontWeight: 500,
-              cursor: 'pointer',
-            }}
-          >
-            PCBA Analysis
-          </button>
-          <button
-            style={{
-              backgroundColor: '#15803d',
-              color: '#ffffff',
-              border: 'none',
-              borderRadius: '14px',
-              padding: '3px 12px',
-              fontSize: '12px',
-              fontWeight: 500,
-              cursor: 'pointer',
-            }}
-          >
-            DFM Analysis
-          </button>
-        </div>
-
         {/* View Mode Buttons */}
         <div
           style={{
@@ -353,6 +279,22 @@ export const Layout: React.FC = () => {
             }}
           >
             3D View
+          </button>
+          <button
+            onClick={() => BoardDataModel.setActiveView('Both')}
+            style={{
+              backgroundColor: boardState.activeView === 'Both' ? '#3b82f6' : 'transparent',
+              color: boardState.activeView === 'Both' ? '#ffffff' : '#94a3b8',
+              border: 'none',
+              borderRadius: '12px',
+              padding: '2px 10px',
+              fontSize: '12px',
+              cursor: 'pointer',
+              fontWeight: 500,
+            }}
+            title="Xem đồng thời mặt Top và mặt Bot (mặt Bot đã lật gương)"
+          >
+            2 Mặt
           </button>
         </div>
 
@@ -410,17 +352,6 @@ export const Layout: React.FC = () => {
               }}
             >
               Layers ({boardState.layers.length})
-            </div>
-            <div
-              style={{
-                flex: 1,
-                padding: '8px',
-                textAlign: 'center',
-                fontSize: '12px',
-                color: '#64748b',
-              }}
-            >
-              Components
             </div>
           </div>
 
@@ -516,6 +447,12 @@ export const Layout: React.FC = () => {
               boardState.layers.map((layer, index) => {
                 const isVisible = boardState.visibleLayers.has(layer.id)
                 const isActive = boardState.activeLayerId === layer.id
+                // Nhiều lớp cùng loại (3 file khoan, nhiều lớp inner…) sẽ có cùng
+                // displayName → thêm phần tên riêng để phân biệt được trên panel.
+                const isDuplicate =
+                  boardState.layers.filter((l) => l.displayName === layer.displayName).length > 1
+                const label =
+                  isDuplicate && layer.shortName ? `${layer.displayName} · ${layer.shortName}` : layer.displayName
                 return (
                   <div
                     key={layer.id}
@@ -584,9 +521,9 @@ export const Layout: React.FC = () => {
                           fontWeight: isVisible ? 600 : 400,
                           color: isVisible ? '#f1f5f9' : '#64748b',
                         }}
-                        title={layer.filename}
+                        title={`${layer.filename}  —  ${layer.type}/${layer.side}`}
                       >
-                        {layer.displayName}
+                        {label}
                       </span>
                       <span
                         style={{
@@ -596,8 +533,9 @@ export const Layout: React.FC = () => {
                           overflow: 'hidden',
                           textOverflow: 'ellipsis',
                         }}
+                        title={layer.filename}
                       >
-                        {layer.filename}
+                        {layer.shortName || layer.filename}
                       </span>
                     </div>
 
@@ -626,6 +564,38 @@ export const Layout: React.FC = () => {
               })
             )}
           </div>
+
+          {/* Chẩn đoán: file bị bỏ qua / không đọc được — trước đây chỉ ghi console.warn
+              nên người dùng không biết vì sao thiếu lớp. */}
+          {(boardState.failedFiles.length > 0 || boardState.ignoredFiles.length > 0) && (
+            <div
+              style={{
+                borderTop: '1px solid #282b34',
+                padding: '6px 10px',
+                fontSize: '10px',
+                lineHeight: 1.5,
+                color: '#64748b',
+                backgroundColor: '#121418',
+                maxHeight: '120px',
+                overflowY: 'auto',
+                flexShrink: 0,
+              }}
+            >
+              {boardState.failedFiles.length > 0 && (
+                <div style={{ color: '#f87171' }}>
+                  ⚠ {boardState.failedFiles.length} file không đọc được:{' '}
+                  <span title={boardState.failedFiles.map((f) => `${f.name}: ${f.reason}`).join(' | ')}>
+                    {boardState.failedFiles.map((f) => f.name).join(', ')}
+                  </span>
+                </div>
+              )}
+              {boardState.ignoredFiles.length > 0 && (
+                <div title={boardState.ignoredFiles.join(' | ')}>
+                  ℹ {boardState.ignoredFiles.length} file phụ trợ đã bỏ qua (report / aperture / BOM)
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {/* ================= COLUMN 2: CENTER CANVAS VIEW ================= */}
@@ -724,14 +694,23 @@ export const Layout: React.FC = () => {
             </div>
           )}
 
-          {/* Render 2D Canvas or 3D Canvas when loaded */}
-          {boardState.isLoaded && (
-            boardState.activeView === '3D'
-              ? <Viewer3D />
-              : boardState.rendererEngine === 'webgl'
-                ? <Viewer2DWebGL />
-                : <Viewer2D />
-          )}
+          {/* Một viewer duy nhất phục vụ cả CAM 2D / Real 2D / 3D.
+              Chế độ "2 Mặt" dựng hai cảnh độc lập cạnh nhau: trái nhìn từ trên
+              (Top), phải nhìn từ dưới lên nên là ảnh lật gương (Bot) — đúng quy
+              ước bản vẽ lắp ráp của nhà máy. */}
+          {boardState.isLoaded &&
+            (boardState.activeView === 'Both' ? (
+              <div style={{ flex: 1, display: 'flex', minHeight: 0 }}>
+                <div style={{ flex: 1, minWidth: 0, borderRight: '1px solid #282b34' }}>
+                  <Viewer2DWebGL viewOverride="Real" faceSide="top" hideBadge />
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <Viewer2DWebGL viewOverride="Real" faceSide="bottom" hideBadge />
+                </div>
+              </div>
+            ) : (
+              <Viewer2DWebGL />
+            ))}
 
           {/* Error notice if any */}
           {errorMessage && (
@@ -785,50 +764,46 @@ export const Layout: React.FC = () => {
                 borderBottom: '2px solid #38bdf8',
               }}
             >
-              PCB Analysis
-            </div>
-            <div
-              style={{
-                flex: 1,
-                padding: '8px',
-                textAlign: 'center',
-                fontSize: '12px',
-                color: '#64748b',
-              }}
-            >
-              PCBA Analysis
+              Thông tin bo
             </div>
           </div>
 
-          {/* Parameters Table */}
+          {/* Parameters Table — chỉ hiển thị số liệu thật sự đọc được từ Gerber */}
           <div style={{ flex: 1, overflowY: 'auto', padding: '8px 12px' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
               <tbody>
-                <AnalysisRow label="Layer Count" value={boardState.isLoaded ? `${boardState.layerCount}` : '--'} />
+                <AnalysisRow label="Tên bo" value={boardState.projectName || '--'} />
                 <AnalysisRow
-                  label="Dimensions"
+                  label="Kích thước"
                   value={
                     boardState.bounds
-                      ? `${boardState.bounds.widthMM.toFixed(2)}X${boardState.bounds.heightMM.toFixed(2)}mm`
+                      ? `${boardState.bounds.widthMM.toFixed(2)} × ${boardState.bounds.heightMM.toFixed(2)} mm`
                       : '--'
                   }
-                  hasCheck
                 />
-                <AnalysisRow label="Trace Width/Spacing" value="Not analyzed" />
-                <AnalysisRow label="Opens/Shorts" value="Not analyzed" hasCheck />
-                <AnalysisRow label="Signal Integrity" value="Not analyzed" />
-                <AnalysisRow label="Smallest Trace Width" value="Not analyzed" hasCheck />
-                <AnalysisRow label="Smallest Trace Spacing" value="Not analyzed" hasCheck />
-                <AnalysisRow label="SMD Pad Spacing" value="Not analyzed" hasCheck />
-                <AnalysisRow label="Pad Size" value="Not analyzed" />
-                <AnalysisRow label="Hatched Copper Pour" value="Not analyzed" />
-                <AnalysisRow label="Annular Ring Size" value="Not analyzed" hasCheck />
-                <AnalysisRow label="Drill to Copper" value="Not analyzed" hasCheck />
-                <AnalysisRow label="Copper-to-Board Edge" value="Not analyzed" hasCheck />
-                <AnalysisRow label="Holes on SMD Pads" value="Not analyzed" hasCheck />
-                <AnalysisRow label="Drill Diameter" value="Not analyzed" hasCheck />
+                <AnalysisRow label="Số lớp đồng" value={boardState.isLoaded ? `${boardState.layerCount}` : '--'} />
+                <AnalysisRow label="File khoan" value={boardState.isLoaded ? `${boardState.drillCount}` : '--'} />
+                <AnalysisRow label="Tổng lớp đọc được" value={boardState.isLoaded ? `${boardState.layers.length}` : '--'} />
               </tbody>
             </table>
+
+            <div
+              style={{
+                marginTop: '16px',
+                padding: '10px',
+                borderRadius: '6px',
+                border: '1px dashed #334155',
+                color: '#64748b',
+                fontSize: '11px',
+                lineHeight: 1.6,
+              }}
+            >
+              <div style={{ color: '#94a3b8', fontWeight: 600, marginBottom: '4px' }}>
+                Chưa làm
+              </div>
+              DFM rule check (trace/space, annular ring, drill-to-copper, board edge…),
+              đo kích thước, ghép panel và xuất file — xem docs/plan.
+            </div>
           </div>
         </div>
       </div>
@@ -836,18 +811,19 @@ export const Layout: React.FC = () => {
   )
 }
 
-const AnalysisRow: React.FC<{ label: string; value: string; hasCheck?: boolean }> = ({
-  label,
-  value,
-  hasCheck,
-}) => (
+const AnalysisRow: React.FC<{ label: string; value: string }> = ({ label, value }) => (
   <tr style={{ borderBottom: '1px solid #22252e' }}>
     <td style={{ padding: '6px 0', color: '#94a3b8', fontSize: '11px' }}>{label}</td>
-    <td style={{ padding: '6px 4px', textAlign: 'right', color: '#f1f5f9', fontWeight: 500 }}>{value}</td>
-    {hasCheck && (
-      <td style={{ padding: '6px 0 6px 6px', textAlign: 'right', width: '36px' }}>
-        <span style={{ color: '#38bdf8', fontSize: '10px', cursor: 'pointer' }}>Check</span>
-      </td>
-    )}
+    <td
+      style={{
+        padding: '6px 0 6px 8px',
+        textAlign: 'right',
+        color: '#f1f5f9',
+        fontWeight: 500,
+        wordBreak: 'break-all',
+      }}
+    >
+      {value}
+    </td>
   </tr>
 )

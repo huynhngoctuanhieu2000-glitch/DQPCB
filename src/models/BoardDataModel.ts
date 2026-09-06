@@ -16,10 +16,13 @@ export interface BoardState {
   layerCount: number
   drillCount: number
   isLoaded: boolean
-  activeView: 'CAM' | 'Real' | '3D'
+  activeView: 'CAM' | 'Real' | '3D' | 'Both'
   sideFilter: 'all' | 'top' | 'bottom'
   rawFiles: RawGerberFile[]
-  rendererEngine: 'tracespace' | 'webgl'
+  /** File phụ trợ bị bỏ qua khi đọc (report, aperture list, BOM…) */
+  ignoredFiles: string[]
+  /** File Gerber/Drill mà parser không đọc được */
+  failedFiles: { name: string; reason: string }[]
 }
 
 let boardState: BoardState = {
@@ -34,7 +37,8 @@ let boardState: BoardState = {
   activeView: 'CAM',
   sideFilter: 'all',
   rawFiles: [],
-  rendererEngine: 'tracespace',
+  ignoredFiles: [],
+  failedFiles: [],
 }
 
 type Listener = (state: BoardState) => void
@@ -48,7 +52,7 @@ export const BoardDataModel = {
       ...boardState,
       projectName: data.projectName,
       layers: data.layers,
-      visibleLayers: new Set(data.layers.filter(l => l.type !== 'drawing').map(l => l.id)),
+      visibleLayers: new Set(data.layers.filter(l => l.type !== 'documentation').map(l => l.id)),
       activeLayerId: data.layers[0]?.id || null,
       bounds: data.bounds,
       layerCount: data.layerCount,
@@ -56,14 +60,12 @@ export const BoardDataModel = {
       isLoaded: true,
       sideFilter: 'all',
       rawFiles: data.rawFiles ?? [],
+      ignoredFiles: data.ignoredFiles ?? [],
+      failedFiles: data.failedFiles ?? [],
     }
     BoardDataModel.notify()
   },
 
-  setRendererEngine: (engine: 'tracespace' | 'webgl') => {
-    boardState = { ...boardState, rendererEngine: engine }
-    BoardDataModel.notify()
-  },
 
   toggleLayer: (id: string) => {
     const newVisible = new Set(boardState.visibleLayers)
@@ -90,17 +92,17 @@ export const BoardDataModel = {
   setSideFilter: (side: 'all' | 'top' | 'bottom') => {
     let newVisible: Set<string>
     if (side === 'all') {
-      newVisible = new Set(boardState.layers.filter(l => l.type !== 'drawing').map(l => l.id))
+      newVisible = new Set(boardState.layers.filter(l => l.type !== 'documentation').map(l => l.id))
     } else if (side === 'top') {
       newVisible = new Set(
         boardState.layers
-          .filter(l => (l.side === 'top' || l.side === 'all') && l.type !== 'drawing')
+          .filter(l => (l.side === 'top' || l.side === 'all') && l.type !== 'documentation')
           .map(l => l.id)
       )
     } else {
       newVisible = new Set(
         boardState.layers
-          .filter(l => (l.side === 'bottom' || l.side === 'all') && l.type !== 'drawing')
+          .filter(l => (l.side === 'bottom' || l.side === 'all') && l.type !== 'documentation')
           .map(l => l.id)
       )
     }
@@ -120,7 +122,7 @@ export const BoardDataModel = {
     BoardDataModel.notify()
   },
 
-  setActiveView: (view: 'CAM' | 'Real' | '3D') => {
+  setActiveView: (view: 'CAM' | 'Real' | '3D' | 'Both') => {
     boardState = { ...boardState, activeView: view }
     BoardDataModel.notify()
   },
@@ -143,7 +145,8 @@ export const BoardDataModel = {
       activeView: 'CAM',
       sideFilter: 'all',
       rawFiles: [],
-      rendererEngine: boardState.rendererEngine,
+      ignoredFiles: [],
+      failedFiles: [],
     }
     BoardDataModel.notify()
   },

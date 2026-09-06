@@ -5,10 +5,8 @@ import {
   createParser,
   plot,
   renderThree,
-  identifyLayers,
   assemblyPCBToThreeJS,
   NewRenderByElement,
-  DefaultLaminar,
 } from 'web-gerber'
 
 /**
@@ -61,8 +59,16 @@ const stitchOutline = (tree: any) => {
     chains.push(chain)
   }
 
+  // web-gerber dựng outline bằng cách duyệt từng child và nối vào một shape, nhưng
+  // nó CHỈ chấp nhận child có đúng 1 segment:
+  //     if (n.segments.length != 1) -> warn("Invalid outline segments length"), null
+  // Gộp cả chuỗi vào một child sẽ bị từ chối và lõi bo không được dựng (nhìn xuyên
+  // xuống mặt dưới). Nên trả về mỗi segment một child, chỉ khác là ĐÚNG THỨ TỰ.
   const template = tree.children.find((c: any) => c?.segments?.length) ?? tree.children[0]
-  return { ...tree, children: chains.map((segments) => ({ ...template, segments })) }
+  return {
+    ...tree,
+    children: chains.flat().map((seg) => ({ ...template, segments: [seg] })),
+  }
 }
 
 // Đã thử tối ưu renderThree (chiếm ~86% thời gian dựng) bằng cách tắt
@@ -79,8 +85,14 @@ const stitchOutline = (tree: any) => {
  */
 const REAL = {
   background: 0xeeeeee,
-  Oil: 0x1c7a3c,
-  Copper: 0x1d7d3f,      // chỉ nhạt hơn Oil một chút -> trace hiện mờ, không chói
+  Oil: 0x1c7a3c,         // soldermask xanh phủ vùng không có đồng
+  // Đồng nằm DƯỚI mask nên mắt không thấy màu đồng thật, mà thấy màu đồng đã bị
+  // mask xanh lọc qua. Đây chính là kết quả trộn 0.88·Oil + 0.12·đồng(0xb87333):
+  // ngả ấm hơn Oil rất ít -> đường mạch chỉ ánh lên mờ, không "xuyên" như X-quang.
+  Copper: 0x2d7b3d,
+  // Ở 3D mục đích là xem cấu trúc bo chứ không phải chụp ảnh sản phẩm, nên đường mạch
+  // cần đọc được: dùng tông xanh sáng hơn hẳn lớp mask thay vì gần trùng như view 2D.
+  Copper3D: 0x49b06a,
   MaskOpening: 0xc9a227, // lỗ mở mask = pad đồng mạ ENIG
   Silkscreen: 0xf2f2f2,
   BaseBoard: 0xbfaf42,
@@ -102,9 +114,31 @@ const CAM: Record<string, number> = {
   'drill/all': 0x111111,
 }
 const CAM_FALLBACK = 0x9b59b6
+
+// Stack-up phóng đại theo trục z. Giữ đúng tỉ lệ tương đối giữa các lớp, chỉ nhân lên
+// để depth buffer phân biệt được — nhìn thẳng từ trên xuống thì không thấy khác biệt.
+const LAMINAR = { Copper: 0.12, SolderMask: 0.14, Oil: 0.04, Silkscreen: 0.04, Total: 2.4 }
 // Ở chế độ CAM, vùng bo chỉ là nền tối để các lớp gia công nổi lên (tô vàng cả đĩa sẽ chói)
 const CAM_BOARD = 0x232833
-export const Viewer2DWebGL: React.FC = () => {
+export interface Viewer2DWebGLProps {
+  /** Ép chế độ hiển thị, bỏ qua activeView của model (dùng cho khung chia đôi Top/Bot) */
+  viewOverride?: 'CAM' | 'Real' | '3D'
+  /**
+   * Chỉ trình bày một mặt bo:
+   *   'top'    – nhìn từ trên xuống (mặc định)
+   *   'bottom' – nhìn từ dưới lên, tức là ảnh lật gương như bản vẽ lắp ráp mặt dưới
+   * Không ẩn lớp nào — chỉ đảo thứ tự vẽ để mặt cần xem nằm trên cùng.
+   */
+  faceSide?: 'top' | 'bottom'
+  /** Ẩn badge thông tin (khung chia đôi chỉ cần một badge) */
+  hideBadge?: boolean
+}
+
+export const Viewer2DWebGL: React.FC<Viewer2DWebGLProps> = ({
+  viewOverride,
+  faceSide = 'top',
+  hideBadge = false,
+}) => {
   const containerRef = useRef<HTMLDivElement>(null)
   // Giữ tham chiếu object đã dựng để effect bật/tắt lớp chạy được mà không phải render lại
   const sceneRef = useRef<{
@@ -121,7 +155,10 @@ export const Viewer2DWebGL: React.FC = () => {
 
   useEffect(() => BoardDataModel.subscribe(setBoard), [])
 
-  const camMode = board.activeView === 'CAM'
+  const effectiveView = viewOverride ?? board.activeView
+  const camMode = effectiveView === 'CAM'
+  const threeDMode = effectiveView === '3D'
+  const fromBelow = faceSide === 'bottom'
 
   useEffect(() => {
     const el = containerRef.current
@@ -140,7 +177,13 @@ export const Viewer2DWebGL: React.FC = () => {
 
     const t0 = performance.now()
     const bad: string[] = []
-    const identity = identifyLayers(board.rawFiles.map((f) => f.name))
+    // Phân loại lấy từ board.layers (matchLayer trong GerberParser) — CHÍNH LÀ thứ
+    // sidebar đang hiển thị, nên hai bên luôn khớp nhau.
+    // Không dùng identifyLayers của web-gerber: nó chỉ bắt chữ top/bottom rồi mặc định
+    // copper, ví dụ PCB_soldermask_top.gbr và PCB_silkscreen_top.gbr đều ra copper/top
+    // -> soldermask/silk bị nhét vào ô Copper và ghi đè lẫn nhau.
+    const identity: Record<string, { type: string; side: string }> = {}
+    for (const l of board.layers) identity[l.filename] = { type: l.type, side: l.side }
 
     // --- Chọn file khoan ---
     // KiCad có thể xuất cả bản gộp (.drl, FileFunction MixedPlating) LẪN bộ tách
@@ -205,7 +248,7 @@ export const Viewer2DWebGL: React.FC = () => {
 
         const color = camMode
           ? (isOutline ? CAM_BOARD : CAM[`${id.type}/${id.side ?? 'all'}`] ?? CAM_FALLBACK)
-          : id.type === 'copper' ? REAL.Copper :
+          : id.type === 'copper' ? (threeDMode ? REAL.Copper3D : REAL.Copper) :
             id.type === 'soldermask' ? REAL.MaskOpening :
             id.type === 'silkscreen' ? REAL.Silkscreen :
             id.type === 'drill' ? REAL.Drill :
@@ -242,15 +285,19 @@ export const Viewer2DWebGL: React.FC = () => {
     }
 
     try {
-      assemblyPCBToThreeJS(render.Scene, pcb, DefaultLaminar, REAL.Oil)
+      // Bề dày thật của các lớp (đồng 0.035mm, mask 0.04mm…) quá mỏng để depth buffer
+      // phân giải -> lớp mặt dưới lọt lên trên nền FR-4, nhìn như xuyên thấu.
+      // Nới khoảng cách z lên ~10 lần: nhìn từ trên xuống không khác gì, nhưng thứ tự
+      // che khuất trở nên chính xác.
+      assemblyPCBToThreeJS(render.Scene, pcb, LAMINAR, REAL.Oil)
     } catch (e) {
       console.error('[WebGL] assemblyPCBToThreeJS lỗi:', e)
       setStatus('Lỗi lắp PCB — xem console')
     }
 
-    // NewRenderByElement hard-code logarithmicDepthBuffer:true. Các lớp PCB chỉ cách nhau
-    // 0.01–0.04 mm nên depth buffer không phân giải nổi -> mask/silk bị copper đè.
-    // Nhìn từ trên xuống nên dùng painter's algorithm: tắt depth test, xếp theo renderOrder.
+    // Trước đây tắt depth test và xếp lớp bằng renderOrder — KHÔNG ăn thua: three vẫn
+    // vẽ theo độ sâu nên lớp mặt dưới lọt lên trên nền FR-4 (hiện tượng "nhìn xuyên").
+    // Giờ để depth buffer làm việc của nó; renderOrder chỉ còn là tie-break.
     const paintOrder = (obj: any, order: number) => {
       if (!obj) return
       obj.renderOrder = order
@@ -258,8 +305,8 @@ export const Viewer2DWebGL: React.FC = () => {
         o.renderOrder = order
         const mats = Array.isArray(o.material) ? o.material : o.material ? [o.material] : []
         mats.forEach((m: any) => {
-          m.depthTest = false
-          m.depthWrite = false
+          m.depthTest = true
+          m.depthWrite = true
         })
       })
     }
@@ -277,18 +324,77 @@ export const Viewer2DWebGL: React.FC = () => {
     const topOil = oils.find((o) => o.position.z > 0)
     const bottomOil = oils.find((o) => o.position.z < 0)
 
+    // Thứ tự đúng theo vật lý bo thật (kể từ nền FR-4 đi lên):
+    //   đồng -> soldermask (phủ lên đồng, hơi trong) -> in lụa -> pad lộ ra ở lỗ mở mask
+    // Vẽ đồng ĐÈ LÊN mask là sai: mọi đường mạch sẽ hiện rõ như ảnh X-quang.
+    // Mặt dưới xếp ngược lại vì nhìn từ trên xuống.
     // Silk vẽ TRƯỚC mask openings: nhà máy luôn cắt bỏ mực in lụa ở vùng pad,
     // nên pad đồng phải luôn nằm trên silk.
-    paintOrder(pcb.Btm.SolderMask, 0)
-    paintOrder(pcb.Btm.Silkscreen, 1)
-    paintOrder(pcb.Btm.Copper, 2)
-    paintOrder(bottomOil, 3)
+    //
+    // Lưu ý: đã thử xếp copper DƯỚI oil rồi cho oil bán trong suốt (đúng vật lý hơn),
+    // nhưng renderOrder không khống chế được thứ tự vẽ ở đây — copper vẫn đè lên oil
+    // và cả bo ra màu đồng. Nên giữ copper trên oil, và mô phỏng "đồng nhìn qua mask"
+    // bằng MÀU (xem REAL.Copper) thay vì bằng alpha.
+    //
+    // Khung "mặt dưới" nhìn ngược từ dưới lên nên phải đảo toàn bộ thứ tự: mặt Bot
+    // trở thành mặt trên cùng, mặt Top bị nền bo + oil che lại.
+    const near = fromBelow ? pcb.Btm : pcb.Top
+    const far = fromBelow ? pcb.Top : pcb.Btm
+    const nearOil = fromBelow ? bottomOil : topOil
+    const farOil = fromBelow ? topOil : bottomOil
+
+    paintOrder(far.SolderMask, 0)
+    paintOrder(far.Silkscreen, 1)
+    paintOrder(far.Copper, 2)
+    paintOrder(farOil, 3)
     paintOrder(pcb.OutLine, 4)
-    paintOrder(topOil, 5)
-    paintOrder(pcb.Top.Copper, 6)
-    paintOrder(pcb.Top.Silkscreen, 7)
-    paintOrder(pcb.Top.SolderMask, 8)
+    paintOrder(nearOil, 5)
+    paintOrder(near.Copper, 6)
+    paintOrder(near.Silkscreen, 7)
+    paintOrder(near.SolderMask, 8)
     paintOrder(pcb.Drill, 9)
+
+    // --- Chỉnh cao độ để pad và lỗ khoan đọc được ở view 3D ---
+    // Ở view 2D thứ tự do painter's algorithm quyết định, nhưng 3D bật depth test nên
+    // cao độ thật mới là thứ quyết định che khuất. Hai chỗ cần nắn:
+    //
+    // 1) Stack của web-gerber đặt in lụa CAO HƠN lớp mask, nên chữ in đè trắng lên pad.
+    //    Thực tế nhà máy luôn cắt bỏ mực in ở vùng pad -> nâng mask lên trên silk.
+    //    Pad chính là chỗ ĐỒNG lộ ra, nên mặt pad phải NGANG BẰNG mặt đồng. Neo cả
+    //    in lụa lẫn mask vào cao độ mặt đồng, chỉ chênh nhau EPS đủ để mask thắng
+    //    depth test. Nâng mask lên trên in lụa (silk ở 1.20 còn đồng chỉ 1.02) sẽ làm
+    //    pad cao hơn mặt đồng gần 0.2 — nhìn ngang thành cục vàng dựng đứng.
+    const EPS = 0.005
+    const flushToCopper = (slot: any, outward: 1 | -1) => {
+      if (!slot?.Copper) return
+      const copperOuter = slot.Copper.position.z + (outward * slot.Copper.scale.z) / 2
+      if (slot.Silkscreen) {
+        slot.Silkscreen.position.z =
+          copperOuter + outward * (EPS / 2 - slot.Silkscreen.scale.z / 2)
+      }
+      if (slot.SolderMask) {
+        slot.SolderMask.position.z =
+          copperOuter + outward * (EPS - slot.SolderMask.scale.z / 2)
+      }
+    }
+    flushToCopper(pcb.Top, 1)
+    flushToCopper(pcb.Btm, -1)
+
+    // 2) Trụ khoan phải cao ĐÚNG bằng bo (nhìn ngang mới không thấy nó thò ra), nhưng
+    //    đỉnh trùng khít cao độ mặt mask thì z-fighting và lỗ biến mất. Nên tính theo
+    //    bề mặt ngoài cùng thực tế rồi cộng thêm một lượng rất nhỏ.
+    if (pcb.Drill?.scale) {
+      const outer = [
+        pcb.Top.SolderMask, pcb.Top.Silkscreen, pcb.Top.Copper, topOil, pcb.OutLine,
+      ]
+        .filter(Boolean)
+        .map((o: any) => o.position.z + o.scale.z / 2)
+      const topOuter = Math.max(...outer)
+      if (Number.isFinite(topOuter) && topOuter > 0) {
+        pcb.Drill.position.setZ(0)
+        pcb.Drill.scale.setZ((topOuter + EPS) * 2)
+      }
+    }
 
     // Chế độ CAM xem file gia công -> bỏ lớp phủ mask xanh, chỉ còn nền bo + các lớp
     if (camMode) {
@@ -307,27 +413,53 @@ export const Viewer2DWebGL: React.FC = () => {
       const h = maxY - minY
 
       // NewRenderByElement chỉ tạo PerspectiveCamera và không cho thay bằng ortho.
-      // FOV rất nhỏ + camera rất xa => phối cảnh triệt tiêu, nhìn như orthographic
-      // (không lộ thành bo, nét chữ silkscreen không bị méo ở rìa).
-      cam.fov = 1.2
+      // View 2D: FOV rất nhỏ + camera rất xa => phối cảnh triệt tiêu, nhìn như
+      // orthographic (không lộ thành bo, chữ silkscreen không méo ở rìa).
+      // View 3D: FOV thường để thấy được độ dày và khối của bo.
+      // FOV 2D để nhỏ cho gần giống orthographic, nhưng KHÔNG được quá nhỏ: FOV càng
+      // nhỏ thì camera càng xa, mà logarithmicDepthBuffer (web-gerber hard-code) mất
+      // sạch độ chính xác khi near/far đều lớn và sát nhau.
+      cam.fov = threeDMode ? 40 : 6
       const fov = (cam.fov * Math.PI) / 180
 
       const aspectNow = () => (el.clientWidth || 800) / (el.clientHeight || 600)
       const fitDist = (Math.max(h, w / aspectNow()) / 2 / Math.tan(fov / 2)) * 1.15
 
-      const view = { x: (minX + maxX) / 2, y: (minY + maxY) / 2, dist: fitDist }
+      const cx = (minX + maxX) / 2
+      const cy = (minY + maxY) / 2
+      // 2D pan bằng dịch tâm nhìn; 3D orbit bằng góc phương vị/cao độ quanh tâm bo
+      const view = { x: cx, y: cy, dist: fitDist, az: -Math.PI / 2, el: fromBelow ? -0.9 : 0.9 }
+
       const apply = () => {
         // AddResizeListener của web-gerber gọi setSize() nhưng KHÔNG cập nhật
         // camera.aspect -> khung hình lệch tỉ lệ, bo tròn hiển thị thành elip.
         cam.aspect = aspectNow()
-        // Các lớp PCB chỉ cách nhau 0.01–0.04 mm. Với camera ở xa (trick FOV nhỏ),
-        // near/far rộng sẽ làm depth buffer không phân giải nổi -> z-fighting,
-        // mask/silk bị copper đè. Siết near/far ôm sát bề dày bo (±5 mm là dư).
-        cam.near = Math.max(0.01, view.dist - 5)
-        cam.far = view.dist + 5
-        cam.position.set(view.x, view.y, view.dist)
-        cam.up.set(0, 1, 0)
-        cam.lookAt(view.x, view.y, 0)
+
+        if (threeDMode) {
+          const r = view.dist
+          cam.near = Math.max(0.1, r * 0.05)
+          cam.far = r * 4
+          cam.position.set(
+            view.x + r * Math.cos(view.el) * Math.cos(view.az),
+            view.y + r * Math.cos(view.el) * Math.sin(view.az),
+            r * Math.sin(view.el)
+          )
+          cam.up.set(0, 0, 1)
+          cam.lookAt(view.x, view.y, 0)
+        } else {
+          // Các lớp PCB chỉ cách nhau 0.01–0.04 mm. Với camera ở xa (trick FOV nhỏ),
+          // near/far rộng sẽ làm depth buffer không phân giải nổi -> z-fighting,
+          // mask/silk bị copper đè. Siết near/far ôm sát bề dày bo (±5 mm là dư).
+          // near nhỏ hơn far hai bậc -> log depth buffer phân giải tốt, đủ tách các
+          // lớp cách nhau ~0.1 mm; near/far sát nhau sẽ làm depth mất tác dụng.
+          cam.near = view.dist / 50
+          cam.far = view.dist * 2
+          // Mặt dưới: đặt camera bên dưới bo nhìn ngược lên -> ảnh lật gương,
+          // đúng quy ước bản vẽ "bottom view" của nhà máy.
+          cam.position.set(view.x, view.y, fromBelow ? -view.dist : view.dist)
+          cam.up.set(0, 1, 0)
+          cam.lookAt(view.x, view.y, 0)
+        }
         cam.updateProjectionMatrix()
       }
       apply()
@@ -363,10 +495,20 @@ export const Viewer2DWebGL: React.FC = () => {
         }
         const onMove = (e: PointerEvent) => {
           if (!dragging) return
-          // đổi pixel -> đơn vị world theo chiều cao khung nhìn hiện tại
-          const worldPerPx = (2 * view.dist * Math.tan(fov / 2)) / (canvas.clientHeight || 1)
-          view.x -= (e.clientX - lastX) * worldPerPx
-          view.y += (e.clientY - lastY) * worldPerPx
+          if (threeDMode) {
+            // kéo ngang = xoay quanh trục z, kéo dọc = nâng/hạ góc nhìn
+            view.az -= (e.clientX - lastX) * 0.008
+            view.el += (e.clientY - lastY) * 0.008
+            // chặn sát 2 cực để camera không lật
+            view.el = Math.min(Math.max(view.el, -1.5), 1.5)
+          } else {
+            // đổi pixel -> đơn vị world theo chiều cao khung nhìn hiện tại
+            const worldPerPx = (2 * view.dist * Math.tan(fov / 2)) / (canvas.clientHeight || 1)
+            // Nhìn từ dưới lên thì trục X trên màn hình bị lật -> đảo dấu để kéo
+            // sang phải thì bo vẫn chạy sang phải.
+            view.x += (fromBelow ? 1 : -1) * (e.clientX - lastX) * worldPerPx
+            view.y += (e.clientY - lastY) * worldPerPx
+          }
           lastX = e.clientX
           lastY = e.clientY
           apply()
@@ -401,7 +543,9 @@ export const Viewer2DWebGL: React.FC = () => {
       try { render.Renderer?.dispose?.() } catch { /* ignore */ }
       while (el.firstChild) el.removeChild(el.firstChild)
     }
-  }, [board.isLoaded, board.rawFiles, camMode])
+    // threeDMode phải nằm trong deps: chuyển Real 2D → 3D View không đổi camMode
+    // (cả hai đều false) nên effect không chạy lại và cảnh vẫn là ảnh 2D phẳng.
+  }, [board.isLoaded, board.rawFiles, camMode, threeDMode, fromBelow])
 
   // Bật/tắt lớp theo checkbox ở sidebar — chỉ đổi .visible, không dựng lại scene.
   // Sidebar được dựng từ GerberParser (tracespace), mà tracespace parse fail nhiều lớp
@@ -435,16 +579,25 @@ export const Viewer2DWebGL: React.FC = () => {
   return (
     <div style={{ position: 'relative', width: '100%', height: '100%', backgroundColor: '#0b0d10' }}>
       <div ref={containerRef} style={{ width: '100%', height: '100%' }} />
-      <div style={badge}>
-        <div><b>WebGL (web-gerber)</b> · assemblyPCBToThreeJS</div>
-        <div>{status}</div>
-        {totalMs !== null && <div>Parse + Render: {totalMs} ms</div>}
-        {failed.length > 0 && (
-          <div style={{ color: '#fca5a5', marginTop: 4 }}>
-            Lỗi {failed.length} lớp: {failed.slice(0, 3).join(', ')}{failed.length > 3 && '…'}
-          </div>
-        )}
-      </div>
+      {hideBadge ? (
+        <div style={faceTag}>{fromBelow ? 'BOT — nhìn từ dưới' : 'TOP — nhìn từ trên'}</div>
+      ) : (
+        <div style={badge}>
+          <div><b>WebGL (web-gerber)</b> · assemblyPCBToThreeJS</div>
+          <div>{status}</div>
+          {totalMs !== null && <div>Parse + Render: {totalMs} ms</div>}
+          {threeDMode && (
+            <div style={{ color: '#93c5fd', marginTop: 4 }}>
+              Kéo chuột để xoay (kéo lên để lật xem mặt Bot) · lăn để zoom
+            </div>
+          )}
+          {failed.length > 0 && (
+            <div style={{ color: '#fca5a5', marginTop: 4 }}>
+              Lỗi {failed.length} lớp: {failed.slice(0, 3).join(', ')}{failed.length > 3 && '…'}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   )
 }
@@ -453,6 +606,12 @@ const emptyStyle: React.CSSProperties = {
   width: '100%', height: '100%',
   display: 'flex', alignItems: 'center', justifyContent: 'center',
   color: '#94a3b8', backgroundColor: '#0b0d10', textAlign: 'center',
+}
+const faceTag: React.CSSProperties = {
+  position: 'absolute', top: 8, left: 8,
+  background: 'rgba(15,23,42,0.85)', color: '#e2e8f0',
+  padding: '3px 8px', borderRadius: 4, fontSize: 11, fontWeight: 600,
+  letterSpacing: 0.4, border: '1px solid #334155', pointerEvents: 'none',
 }
 const badge: React.CSSProperties = {
   position: 'absolute', top: 8, left: 8,

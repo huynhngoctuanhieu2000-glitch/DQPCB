@@ -1,20 +1,19 @@
-import { createParser } from '@tracespace/parser'
 import identify from 'whats-that-gerber'
-import { plot } from '@tracespace/plotter'
-import { render } from '@tracespace/renderer'
-import { toHtml } from 'hast-util-to-html'
 import JSZip from 'jszip'
+// @ts-ignore - web-gerber không kèm type cho các named export
+import { createParser, plot } from 'web-gerber'
 
 export interface ParsedGerberLayer {
   id: string
   filename: string
+  /** Tên rút gọn (đã bỏ tiền tố chung của cả bộ file) dùng để phân biệt trên UI */
+  shortName: string
   displayName: string
   type: string
   side: string
   color: string
   order: number
   visible: boolean
-  svgContent: string
   size: [number, number, number, number] // [minX, minY, maxX, maxY] in mm
   units: 'mm' | 'in'
   outlineMaxStroke?: number
@@ -39,155 +38,244 @@ export interface BoardParsedData {
   layerCount: number
   drillCount: number
   rawFiles: RawGerberFile[]
+  /** File phụ trợ bị bỏ qua (report, aperture list, BOM…) */
+  ignoredFiles: string[]
+  /** File có vẻ là Gerber/Drill nhưng parser không đọc được */
+  failedFiles: { name: string; reason: string }[]
 }
 
 // 🎨 Comprehensive Layer Matcher for Altium, KiCad, Eagle, OrCAD, Sprint-Layout, Proteus, EasyEDA, CAM350
-export const matchLayer = (filename: string) => {
-  const lower = filename.toLowerCase()
-  const nameOnly = lower.replace(/\.[^/.]+$/, '')
+//
+// Thứ tự ưu tiên (dừng ở rule đầu tiên khớp):
+//   1. Đuôi file "chuẩn" của từng EDA  → độ tin cậy cao nhất
+//   2. Từ khoá trong tên file, so khớp theo *ranh giới từ* (\b) trên chuỗi đã
+//      chuẩn hoá — tránh bắt nhầm "Similar" ⇒ "mil", "depth" ⇒ "pth"
+//   3. whats-that-gerber (chỉ dùng khi 1 & 2 không có kết quả)
+//
+// Lưu ý về `type`:
+//   - 'documentation' = lớp tài liệu (drill drawing/guide, fab, assembly…) → ẩn mặc định
+//   - 'unknown'       = không nhận dạng được → VẪN HIỆN, để người dùng tự bật/tắt
 
-  // 1. Outline / Border / Edge Cuts / Mechanical (All EDA suites)
-  if (
-    /outline|border|contour|profile|edge[-_.]?cuts|board[-_.]?outline|dimension|dim|mil|mechanical\s*1/i.test(
-      lower
-    ) ||
-    /\.(gko|gm1|gm2|gm3|gml|dim|mil|fab|oln|bor|contour|profile)$/i.test(lower)
-  ) {
-    return { type: 'outline', side: 'all', displayName: 'Outline', color: '#F1C40F', order: 8 }
-  }
-
-  // 2. Top Silkscreen (Altium: .GTO, KiCad: F_SilkS, Eagle: .plc, OrCAD: .SST, Sprint: Silkscreen_top, Proteus: CADCAM Top Silk)
-  if (
-    /top[-_.\s]?silk|silk[-_.\s]?top|silkscreen[-_.\s]?top|top[-_.\s]?silkscreen|f[-_.]?silk|f[-_.]?silkscreen/i.test(
-      lower
-    ) ||
-    /\.(gto|plc|sst|sstop|tss|topsilk|ssrot)$/i.test(lower)
-  ) {
-    return { type: 'silkscreen', side: 'top', displayName: 'Top Silk', color: '#FFFFFF', order: 7 }
-  }
-
-  // 3. Bottom Silkscreen (Altium: .GBO, KiCad: B_SilkS, Eagle: .pls, OrCAD: .SSB, Sprint: Silkscreen_bottom, Proteus: CADCAM Bottom Silk)
-  if (
-    /bot[-_.\s]?silk|bottom[-_.\s]?silk|silk[-_.\s]?bot|silk[-_.\s]?bottom|silkscreen[-_.\s]?bot|b[-_.]?silk|b[-_.]?silkscreen/i.test(
-      lower
-    ) ||
-    /\.(gbo|pls|ssb|ssbot|bss|botsilk)$/i.test(lower)
-  ) {
-    return { type: 'silkscreen', side: 'bottom', displayName: 'Bot Silk', color: '#8EAEE0', order: 4 }
-  }
-
-  // 4. Top Soldermask (Altium: .GTS, KiCad: F_Mask, Eagle: .stc, OrCAD: .SMT, Sprint: Soldermask_top, Proteus: CADCAM Top Solder Resist)
-  if (
-    /top[-_.\s]?solder|solder[-_.\s]?top|top[-_.\s]?mask|mask[-_.\s]?top|top[-_.\s]?resist|resist[-_.\s]?top|f[-_.]?mask/i.test(
-      lower
-    ) ||
-    /\.(gts|stc|smt|smtop|tsm|topmask)$/i.test(lower)
-  ) {
-    return { type: 'soldermask', side: 'top', displayName: 'Top Solder', color: '#00B08B', order: 5 }
-  }
-
-  // 5. Bottom Soldermask (Altium: .GBS, KiCad: B_Mask, Eagle: .sts, OrCAD: .SMB, Sprint: Soldermask_bottom, Proteus: CADCAM Bottom Solder Resist)
-  if (
-    /bot[-_.\s]?solder|bottom[-_.\s]?solder|solder[-_.\s]?bot|bot[-_.\s]?mask|bottom[-_.\s]?mask|mask[-_.\s]?bot|mask[-_.\s]?bottom|bot[-_.\s]?resist|bottom[-_.\s]?resist|b[-_.]?mask/i.test(
-      lower
-    ) ||
-    /\.(gbs|sts|smb|smbot|bsm|botmask)$/i.test(lower)
-  ) {
-    return { type: 'soldermask', side: 'bottom', displayName: 'Bot Solder', color: '#16A085', order: 2 }
-  }
-
-  // 6. Top Copper (Altium: .GTL, KiCad: F_Cu, Eagle: .cmp, OrCAD: .TOP, Sprint: Copper_top, Proteus: CADCAM Top Copper)
-  if (
-    /top[-_.\s]?copper|copper[-_.\s]?top|top[-_.\s]?layer|layer[-_.\s]?1|f[-_.]?cu|front[-_.]?cu/i.test(
-      lower
-    ) ||
-    /^(top|cmp|l1|layer1|cu_top)$/i.test(nameOnly) ||
-    /\.(gtl|cmp|top|toplayer|l1|layer1)$/i.test(lower)
-  ) {
-    return { type: 'copper', side: 'top', displayName: 'Top Copper', color: '#E55039', order: 6 }
-  }
-
-  // 7. Bottom Copper (Altium: .GBL, KiCad: B_Cu, Eagle: .sol, OrCAD: .BOT, Sprint: Copper_bottom, Proteus: CADCAM Bottom Copper)
-  if (
-    /bot[-_.\s]?copper|bottom[-_.\s]?copper|copper[-_.\s]?bot|copper[-_.\s]?bottom|bot[-_.\s]?layer|bottom[-_.\s]?layer|layer[-_.\s]?2|b[-_.]?cu|back[-_.]?cu/i.test(
-      lower
-    ) ||
-    /^(bot|bottom|sol|l2|layer2|cu_bot|cu_bottom)$/i.test(nameOnly) ||
-    /\.(gbl|sol|bot|bottomlayer|l2|layer2)$/i.test(lower)
-  ) {
-    return { type: 'copper', side: 'bottom', displayName: 'Bot Copper', color: '#38BDF8', order: 3 }
-  }
-
-  // 8. Inner Copper
-  if (
-    /\.(g[1-9]|in[1-9]|layer[3-9])$/i.test(lower) ||
-    /in[1-9]?[-_.]?cu|inner[-_.\s]?[1-9]?/i.test(lower)
-  ) {
-    return { type: 'copper', side: 'inner', displayName: 'Inner Copper', color: '#E67E22', order: 3 }
-  }
-
-  // 9. Top Paste
-  if (
-    /top[-_.\s]?paste|paste[-_.\s]?top|f[-_.]?paste/i.test(lower) ||
-    /^(pastetop|toppaste|spt|sptop|tsp)$/i.test(nameOnly) ||
-    /\.(gtp|crc|spt|sptop|tsp|toppaste)$/i.test(lower)
-  ) {
-    return { type: 'solderpaste', side: 'top', displayName: 'Top Paste', color: '#B5A672', order: 1 }
-  }
-
-  // 10. Bottom Paste
-  if (
-    /bot[-_.\s]?paste|bottom[-_.\s]?paste|paste[-_.\s]?bot|paste[-_.\s]?bottom|b[-_.]?paste/i.test(
-      lower
-    ) ||
-    /^(pastebot|botpaste|spb|spbot|bsp)$/i.test(nameOnly) ||
-    /\.(gbp|crs|spb|spbot|bsp|botpaste)$/i.test(lower)
-  ) {
-    return { type: 'solderpaste', side: 'bottom', displayName: 'Bot Paste', color: '#A59662', order: 1 }
-  }
-
-  // 11. Drill / Excellon (Altium: .DRL/.TXT, KiCad: .drl, Eagle: .drd, OrCAD: .tap, Proteus: CADCAM Drill, Sprint: .drl)
-  if (
-    /drill|excellon|npth|pth|holes/i.test(lower) ||
-    /^(drill|holes|thruhole)$/i.test(nameOnly) ||
-    /\.(drl|tap|xln|exc|ncd)$/i.test(lower) ||
-    (/\.txt$/i.test(lower) && /drill/i.test(lower))
-  ) {
-    return { type: 'drill', side: 'all', displayName: 'Drl', color: '#000000', order: 9 }
-  }
-
-  // 12. Drill Drawing / Sheet notes (.DRD, .DTS)
-  if (/\.(drd|dts|art|rep|log)$/i.test(lower)) {
-    return { type: 'drawing', side: 'all', displayName: 'Drill Drawing', color: '#718096', order: 12 }
-  }
-
-  // Fallback to whats-that-gerber
-  const fallback = identify([filename])[filename]
-  if (fallback?.type) {
-    let side = fallback.side || 'all'
-    let displayName = fallback.type.charAt(0).toUpperCase() + fallback.type.slice(1)
-    if (fallback.type === 'copper') {
-      displayName = side === 'top' ? 'Top Copper' : side === 'bottom' ? 'Bot Copper' : 'Inner Copper'
-    } else if (fallback.type === 'silkscreen') {
-      displayName = side === 'top' ? 'Top Silk' : 'Bot Silk'
-    } else if (fallback.type === 'soldermask') {
-      displayName = side === 'top' ? 'Top Solder' : 'Bot Solder'
-    } else if (fallback.type === 'drill') {
-      displayName = 'Drl'
-    }
-
-    return {
-      type: fallback.type,
-      side,
-      displayName,
-      color: '#9B59B6',
-      order: 10,
-    }
-  }
-
-  return { type: 'other', side: 'all', displayName: nameOnly.toUpperCase(), color: '#9B59B6', order: 13 }
+export interface LayerMeta {
+  type: string
+  side: string
+  displayName: string
+  color: string
+  order: number
 }
 
+// File phụ trợ (report, aperture list, BOM, ảnh…) — không chứa dữ liệu đồ hoạ,
+// không bao giờ được đưa vào danh sách layer.
+const AUXILIARY_EXT =
+  /\.(apr|apr_lib|extrep|rul|rep|drr|ldp|ipc|cam|dri|gpi|lis|apt|gtd|gbrjob|rpt|log|max|csv|tsv|xls|xlsx|pdf|doc|docx|htm|html|md|ini|cfg|json|xml|bak|db|zip|rar|7z|jpe?g|png|gif|bmp|svg|step|stp|iges|igs|dwg|dxf)$/i
+
+const AUXILIARY_NAME = /\b(bom|pick[-_ ]?(and[-_ ]?)?place|pnp|readme|report|status|netlist|aperture)\b/i
+
+/**
+ * DipTrace đặt tên lớp bằng đuôi 3 ký tự (.top/.bot/.plc/.stp/.sbt…), trong đó .stp
+ * trùng với đuôi file STEP 3D. Chỉ có thể phân biệt bằng ngữ cảnh: nếu trong cùng bộ
+ * file có các đuôi đặc trưng của DipTrace thì .stp/.sbt là lớp kem hàn, không phải STEP.
+ */
+const looksLikeDipTrace = (allFilenames?: string[]) =>
+  !!allFilenames?.some((f) => /\.(top|bot|plc|pls|smt|smb)$/i.test(f))
+
+/** File không chứa dữ liệu Gerber/Excellon → bỏ hẳn, không parse, không hiển thị. */
+export const isAuxiliaryFile = (filename: string, allFilenames?: string[]): boolean => {
+  const base = filename.split(/[\\/]/).pop() || filename
+  if (/\.(stp|sbt)$/i.test(base) && looksLikeDipTrace(allFilenames)) return false
+  if (AUXILIARY_EXT.test(base)) return true
+  // .txt vừa có thể là NC-Drill (Altium) vừa là file ghi chú → chỉ loại khi tên rõ ràng là tài liệu
+  if (/\.txt$/i.test(base) && AUXILIARY_NAME.test(base)) return true
+  return false
+}
+
+// Chuẩn hoá tên (bỏ đuôi, thay mọi ký tự không phải chữ/số bằng khoảng trắng)
+// để dùng được \b mà không bị các dấu -, _, . làm nhiễu.
+const normalizeName = (filename: string) => {
+  const base = (filename.split(/[\\/]/).pop() || filename).toLowerCase()
+  return base
+    .replace(/\.[^.]+$/, '')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim()
+}
+
+const getExt = (filename: string) => {
+  const base = (filename.split(/[\\/]/).pop() || filename).toLowerCase()
+  const m = base.match(/\.([^.]+)$/)
+  return m ? m[1] : ''
+}
+
+const META: Record<string, LayerMeta> = {
+  copperTop: { type: 'copper', side: 'top', displayName: 'Top Copper', color: '#E55039', order: 6 },
+  copperBot: { type: 'copper', side: 'bottom', displayName: 'Bot Copper', color: '#38BDF8', order: 3 },
+  copperInner: { type: 'copper', side: 'inner', displayName: 'Inner Copper', color: '#E67E22', order: 4.5 },
+  silkTop: { type: 'silkscreen', side: 'top', displayName: 'Top Silk', color: '#FFFFFF', order: 7 },
+  silkBot: { type: 'silkscreen', side: 'bottom', displayName: 'Bot Silk', color: '#8EAEE0', order: 4 },
+  maskTop: { type: 'soldermask', side: 'top', displayName: 'Top Solder', color: '#00B08B', order: 5 },
+  maskBot: { type: 'soldermask', side: 'bottom', displayName: 'Bot Solder', color: '#16A085', order: 2 },
+  pasteTop: { type: 'solderpaste', side: 'top', displayName: 'Top Paste', color: '#B5A672', order: 1 },
+  pasteBot: { type: 'solderpaste', side: 'bottom', displayName: 'Bot Paste', color: '#A59662', order: 1 },
+  outline: { type: 'outline', side: 'all', displayName: 'Outline', color: '#F1C40F', order: 8 },
+  drill: { type: 'drill', side: 'all', displayName: 'Drl', color: '#000000', order: 9 },
+  doc: { type: 'documentation', side: 'all', displayName: 'Doc', color: '#718096', order: 12 },
+  unknown: { type: 'unknown', side: 'all', displayName: 'Unknown', color: '#9B59B6', order: 11 },
+}
+
+// Bảng tra theo đuôi file — kiểm tra trước mọi từ khoá.
+const EXT_MAP: Record<string, LayerMeta> = {
+  // copper
+  gtl: META.copperTop, cmp: META.copperTop, top: META.copperTop,
+  toplayer: META.copperTop, l1: META.copperTop, layer1: META.copperTop,
+  gbl: META.copperBot, sol: META.copperBot, bot: META.copperBot,
+  bottomlayer: META.copperBot, l2: META.copperBot, layer2: META.copperBot,
+  // silkscreen
+  gto: META.silkTop, plc: META.silkTop, sst: META.silkTop, sstop: META.silkTop, tss: META.silkTop,
+  gbo: META.silkBot, pls: META.silkBot, ssb: META.silkBot, ssbot: META.silkBot, bss: META.silkBot,
+  // soldermask
+  gts: META.maskTop, stc: META.maskTop, smt: META.maskTop, smtop: META.maskTop, tsm: META.maskTop,
+  gbs: META.maskBot, sts: META.maskBot, smb: META.maskBot, smbot: META.maskBot, bsm: META.maskBot,
+  // solderpaste
+  gtp: META.pasteTop, crc: META.pasteTop, spt: META.pasteTop, sptop: META.pasteTop, tsp: META.pasteTop,
+  gbp: META.pasteBot, crs: META.pasteBot, spb: META.pasteBot, spbot: META.pasteBot, bsp: META.pasteBot,
+  // DipTrace: kem hàn mặt trên/dưới (.stp trùng đuôi file STEP — xem looksLikeDipTrace)
+  stp: META.pasteTop, sbt: META.pasteBot,
+  // outline
+  gko: META.outline, gml: META.outline, oln: META.outline, bor: META.outline,
+  dim: META.outline, mil: META.outline, contour: META.outline, profile: META.outline,
+  // drill
+  drl: META.drill, tap: META.drill, xln: META.drill, exc: META.drill,
+  ncd: META.drill, nc: META.drill, drill: META.drill,
+  drd: META.drill, // Eagle: drill data, KHÔNG phải drill drawing
+  // documentation (không phải lớp gia công → ẩn mặc định)
+  gd1: META.doc, gg1: META.doc, gpt: META.doc, gpb: META.doc,
+  dts: META.doc, fab: META.doc,
+  // Lưu ý: KHÔNG đưa 'art' (OrCAD/Allegro) vào đây. Đuôi .art dùng chung cho mọi lớp,
+  // ý nghĩa nằm ở TÊN file (TOP.art, SOLDERMASK_TOP.art…) nên phải để rule từ khoá xử lý.
+}
+
+export const matchLayer = (filename: string, allFilenames?: string[]): LayerMeta => {
+  const ext = getExt(filename)
+  const norm = normalizeName(filename)
+
+  // ---- 1. Đuôi file chuẩn -------------------------------------------------
+  const byExt = EXT_MAP[ext]
+  if (byExt) return { ...byExt }
+
+  // OrCAD/Allegro dùng chung đuôi .art cho mọi lớp, ý nghĩa nằm ở tên file. Các rule
+  // từ khoá bên dưới lo được SOLDERMASK_TOP/SILKSCREEN_TOP/PASTEMASK_TOP; riêng
+  // TOP.art / BOTTOM.art chỉ có mỗi tên mặt bo nên ngầm hiểu là lớp đồng.
+  if (ext === 'art' && /^(top|bottom|bot)$/.test(norm)) {
+    return norm === 'top' ? { ...META.copperTop } : { ...META.copperBot }
+  }
+
+  // Inner copper: .G1–.G9 / .IN1 / .L3–.L9
+  const innerExt = ext.match(/^(?:g|in|l)(\d{1,2})$/)
+  if (innerExt) {
+    const idx = parseInt(innerExt[1], 10)
+    if (idx >= 1 && idx <= 32) {
+      return { ...META.copperInner, displayName: `Inner ${idx}` }
+    }
+  }
+  // Mechanical .GM1–.GM99: chỉ GM1 mặc định là outline, còn lại là tài liệu cơ khí
+  const mechExt = ext.match(/^gm(\d{1,2})$/)
+  if (mechExt) {
+    return parseInt(mechExt[1], 10) === 1
+      ? { ...META.outline }
+      : { ...META.doc, displayName: `Mech ${mechExt[1]}` }
+  }
+
+  // ---- 2. Từ khoá trong tên (khớp theo ranh giới từ) ----------------------
+  // Thứ tự: drill → paste → mask → silk → copper → outline → documentation
+  const has = (re: RegExp) => re.test(norm)
+
+  if (has(/\b(drill|drl|excellon|npth|pth|holes|thruhole)\b/) && !has(/\b(drawing|guide|map|report)\b/)) {
+    return { ...META.drill }
+  }
+  if (has(/\b(top|t|f|front)\s*(solder\s*)?paste\b|\bpaste\s*(mask\s*)?(top|t|f|front)\b/)) return { ...META.pasteTop }
+  if (has(/\b(bot|bottom|b|back)\s*(solder\s*)?paste\b|\bpaste\s*(mask\s*)?(bot|bottom|b|back)\b/)) return { ...META.pasteBot }
+
+  if (has(/\b(top|t|f|front)\s*(solder|mask|resist|soldermask)\b|\b(mask|resist|soldermask)\s*(top|t|f|front)\b/)) return { ...META.maskTop }
+  if (has(/\b(bot|bottom|b|back)\s*(solder|mask|resist|soldermask)\b|\b(mask|resist|soldermask)\s*(bot|bottom|b|back)\b/)) return { ...META.maskBot }
+
+  // "Overlay" là tên Altium cho silkscreen; "Legend" là tên của một số nhà máy
+  if (has(/\b(top|t|f|front)\s*(silk|silkscreen|overlay|legend)\b|\b(silk|silkscreen|overlay|legend)\s*(top|t|f|front)\b/)) return { ...META.silkTop }
+  if (has(/\b(bot|bottom|b|back)\s*(silk|silkscreen|overlay|legend)\b|\b(silk|silkscreen|overlay|legend)\s*(bot|bottom|b|back)\b/)) return { ...META.silkBot }
+
+  const innerName = norm.match(/\b(?:in|inner|internal)\s*(\d{1,2})\b/)
+  if (innerName) return { ...META.copperInner, displayName: `Inner ${parseInt(innerName[1], 10)}` }
+  if (has(/\b(top|t|f|front)\s*(copper|layer|cu)\b|\b(copper|cu)\s*(top|t|f|front)\b|\blayer\s*1\b/)) return { ...META.copperTop }
+  if (has(/\b(bot|bottom|b|back)\s*(copper|layer|cu)\b|\b(copper|cu)\s*(bot|bottom|b|back)\b|\blayer\s*2\b/)) return { ...META.copperBot }
+  if (has(/\b(inner|internal)\s*(copper|layer|cu)\b/)) return { ...META.copperInner }
+
+  if (has(/\b(outline|border|contour|profile|dimension|dim|mil|oln|edge\s*cuts?|board\s*outline|keep\s*out)\b|\bmechanical\s*1\b/)) {
+    return { ...META.outline }
+  }
+
+  if (
+    has(
+      /\b((drill|drl)\s*(drawing|guide|map)|fab|fabrication|assembly|assy|courtyard|adhesive|glue|comments?|notes?|user|pad\s*master|multi\s*layer|drawing)\b/
+    )
+  ) {
+    return { ...META.doc }
+  }
+
+  // ---- 3. whats-that-gerber ----------------------------------------------
+  // Truyền cả danh sách file để thư viện suy luận đúng "common CAD"
+  // (gọi từng file một sẽ làm mất khả năng phân biệt EDA của thư viện).
+  const base = filename.split(/[\\/]/).pop() || filename
+  const list = allFilenames && allFilenames.length > 1 ? allFilenames : [base]
+  const fallback = identify(list)[base] ?? identify([base])[base]
+
+  if (fallback?.type) {
+    const side = fallback.side || 'all'
+    switch (fallback.type) {
+      case 'copper':
+        return side === 'top' ? { ...META.copperTop } : side === 'bottom' ? { ...META.copperBot } : { ...META.copperInner }
+      case 'silkscreen':
+        return side === 'bottom' ? { ...META.silkBot } : { ...META.silkTop }
+      case 'soldermask':
+        return side === 'bottom' ? { ...META.maskBot } : { ...META.maskTop }
+      case 'solderpaste':
+        return side === 'bottom' ? { ...META.pasteBot } : { ...META.pasteTop }
+      case 'drill':
+        return { ...META.drill }
+      case 'outline':
+        return { ...META.outline }
+      // 'drawing' của whats-that-gerber chỉ có nghĩa "đuôi chung chung" (.gbr/.ger/
+      // .gbx/.pho) — KHÔNG phải lớp tài liệu, nên không được ẩn mặc định.
+      default:
+        break
+    }
+  }
+
+  return { ...META.unknown }
+}
+
+/** Bỏ tiền tố chung của cả bộ file để tên hiển thị không bị trùng nhau. */
+export const shortenNames = (filenames: string[]): Record<string, string> => {
+  const bases = filenames.map((f) => f.split(/[\\/]/).pop() || f)
+  const result: Record<string, string> = {}
+
+  let prefixLen = 0
+  if (bases.length > 1) {
+    const first = bases[0]
+    outer: for (let i = 0; i < first.length; i++) {
+      for (const b of bases) {
+        if (b.length <= i || b[i].toLowerCase() !== first[i].toLowerCase()) break outer
+      }
+      prefixLen = i + 1
+    }
+    // Chỉ cắt tại ranh giới từ để không tạo ra tên vô nghĩa
+    while (prefixLen > 0 && !/[-_. ]/.test(first[prefixLen - 1])) prefixLen--
+  }
+
+  for (let i = 0; i < filenames.length; i++) {
+    const base = bases[i]
+    const short = prefixLen > 0 && prefixLen < base.length ? base.slice(prefixLen) : base
+    result[filenames[i]] = short.replace(/^[-_. ]+/, '') || base
+  }
+  return result
+}
 
 
 function detectFileUnits(content: string): 'mm' | 'in' | null {
@@ -416,7 +504,7 @@ function convertExcellonToGerber(text: string, projectUnits: 'mm' | 'in'): strin
 
 export class GerberParser {
   static async parseInputFiles(files: File[]): Promise<BoardParsedData> {
-    const rawFiles: { name: string; content: string }[] = []
+    let rawFiles: { name: string; content: string }[] = []
     let projectName = 'PCB_Project'
     let orcadLisText = ''
     let orcadGtdText = ''
@@ -452,7 +540,7 @@ export class GerberParser {
           ) {
             continue
           }
-          const baseName = entryName.split('/').pop() || entryName
+          const baseName = entryName.split(/[\\/]/).pop() || entryName
           try {
             const content = await entry.async('text')
             if (content && content.trim().length > 0) {
@@ -506,7 +594,7 @@ export class GerberParser {
             ) {
               continue
             }
-            const baseName = entryName.split('/').pop() || entryName
+            const baseName = entryName.split(/[\\/]/).pop() || entryName
             if (f.extraction && f.extraction.length > 0) {
               const content = new TextDecoder('utf-8').decode(f.extraction)
               rawFiles.push({ name: baseName, content })
@@ -530,6 +618,19 @@ export class GerberParser {
         }
       }
     }
+
+    // Loại file phụ trợ (report / aperture list / BOM / ảnh…) trước khi phân loại
+    // layer — nếu không chúng sẽ nằm trong danh sách layer dưới dạng "Unknown"
+    // và luôn render rỗng.
+    const allInputNames = rawFiles.map((f) => f.name)
+    const ignoredFiles = rawFiles
+      .filter((f) => isAuxiliaryFile(f.name, allInputNames))
+      .map((f) => f.name)
+    rawFiles = rawFiles.filter((f) => !isAuxiliaryFile(f.name, allInputNames))
+
+    // Nhiều archive lồng thư mục → có thể trùng tên cơ sở. Giữ lại tất cả nhưng
+    // đảm bảo id là duy nhất (React key + visibleLayers Set dựa vào id này).
+    const failedFiles: { name: string; reason: string }[] = []
 
     if (rawFiles.length === 0) {
       throw new Error('No valid Gerber or Drill files found in selection.')
@@ -568,9 +669,16 @@ export class GerberParser {
     let globalMaxX = -Infinity
     let globalMaxY = -Infinity
 
-    for (const raw of rawFiles) {
+    // whats-that-gerber cần cả danh sách tên file mới suy luận đúng EDA đang dùng,
+    // nên tính sẵn ở đây thay vì gọi identify() từng file một.
+    const allNames = rawFiles.map((f) => f.name)
+    const shortNames = shortenNames(allNames)
+    const usedIds = new Set<string>()
+
+    for (let fileIndex = 0; fileIndex < rawFiles.length; fileIndex++) {
+      const raw = rawFiles[fileIndex]
       try {
-        const meta = matchLayer(raw.name)
+        const meta = matchLayer(raw.name, allNames)
         let fileContent = raw.content
 
         // Skip incremental logic completely for drill files
@@ -597,11 +705,16 @@ export class GerberParser {
           }
         }
 
+        // KHÔNG ghi fileContent ngược lại raw.content. Viewer parse lại từ rawFiles và
+        // web-gerber đọc Excellon gốc chuẩn hơn convertExcellonToGerber ở đây — ghi đè
+        // làm lỗ khoan KiCad văng ra ngoài bo.
+        // Dùng parser/plotter của web-gerber. @tracespace/plotter@5-alpha crash
+        // (`t.variableValues` undefined) ngay khi file có aperture macro %AM — mà
+        // KiCad dùng macro RoundRect/RotRect cho mọi pad, nên toàn bộ lớp
+        // copper/mask/silk của bo KiCad đều không đọc được.
         const parser = createParser()
         parser.feed(fileContent)
-        const tree = parser.results()
-
-        const imageTree = plot(tree as any)
+        const imageTree = plot(parser.result(), meta.type === 'outline')
 
         let size: [number, number, number, number] = [0, 0, 0, 0]
         if (imageTree.size && imageTree.size.length === 4) {
@@ -640,25 +753,36 @@ export class GerberParser {
           }
         }
 
-        const hast = render(imageTree) as any
-        const svgContent = toHtml(hast)
+        // id phải là duy nhất: archive nhiều thư mục con có thể chứa file trùng tên,
+        // nếu id trùng thì bật/tắt một lớp sẽ bật/tắt luôn lớp kia.
+        let id = raw.name
+        if (usedIds.has(id)) id = `${raw.name}#${fileIndex}`
+        usedIds.add(id)
+
+        const shortName = shortNames[raw.name] || raw.name
 
         parsedLayers.push({
-          id: raw.name,
+          id,
           filename: raw.name,
-          displayName: meta.displayName,
+          shortName,
+          displayName:
+            meta.type === 'unknown' ? shortName.replace(/\.[^.]+$/, '') || meta.displayName : meta.displayName,
           type: meta.type,
           side: meta.side,
           color: meta.color,
           order: meta.order,
-          visible: meta.type !== 'drawing', // Hide drawing/sheet notes by default
-          svgContent,
+          // Chỉ ẩn mặc định lớp tài liệu (drill drawing/guide, fab, assembly…).
+          // Lớp 'unknown' vẫn hiện — trước đây whats-that-gerber trả 'drawing' cho
+          // mọi đuôi chung chung (.gbr/.ger/.pho) khiến lớp thật bị ẩn im lặng.
+          visible: meta.type !== 'documentation',
           size,
           units: imageTree.units || 'mm',
           outlineMaxStroke
         })
-      } catch (err) {
+      } catch (err: any) {
+        // Không nuốt lỗi im lặng: người dùng cần biết lớp nào bị mất và vì sao.
         console.warn(`Skipping unparseable file: ${raw.name}`, err)
+        failedFiles.push({ name: raw.name, reason: err?.message || String(err) })
       }
     }
 
@@ -744,6 +868,8 @@ export class GerberParser {
       layerCount: Math.max(copperLayers.length, 2),
       drillCount: drillLayers.length,
       rawFiles,
+      ignoredFiles,
+      failedFiles,
     }
   }
 }
