@@ -50,6 +50,36 @@ const REAL = {
 // Màu dự phòng khi layer chưa có màu hợp lệ
 const CAM_FALLBACK = 0x9b59b6
 
+const hexToRgb = (hex: string) => {
+  const n = parseInt(String(hex).replace('#', ''), 16)
+  return Number.isFinite(n) ? [(n >> 16) & 255, (n >> 8) & 255, n & 255] : [28, 122, 60]
+}
+const rgbToHex = ([r, g, b]: number[]) => (r << 16) | (g << 8) | b
+const clamp = (v: number) => Math.max(0, Math.min(255, Math.round(v)))
+
+/**
+ * Bảng màu Real/3D suy ra từ màu soldermask người dùng chọn, thay vì cố định màu xanh.
+ *  - Đồng nằm DƯỚI mask nên mắt thấy màu mask đã bị đồng làm ngả đi: lệch một quãng
+ *    cố định so với nền. Mask sáng thì phải làm TỐI đi, mask tối thì làm SÁNG lên —
+ *    nếu không, bo trắng sẽ cho đồng trắng và mất hẳn đường mạch.
+ *  - In lụa cũng vậy: trên bo trắng/vàng phải in mực đen mới đọc được.
+ */
+const realPalette = (maskHex: string) => {
+  const rgb = hexToRgb(maskHex)
+  // độ sáng cảm nhận (ITU-R BT.601)
+  const lum = (0.299 * rgb[0] + 0.587 * rgb[1] + 0.114 * rgb[2]) / 255
+  const light = lum > 0.6
+  const shift = light ? -52 : 48
+  return {
+    Oil: rgbToHex(rgb.map(clamp)),
+    Copper: rgbToHex(rgb.map((c) => clamp(c + shift))),
+    Silkscreen: light ? 0x1a1a1a : 0xf2f2f2,
+    MaskOpening: REAL.MaskOpening,
+    BaseBoard: REAL.BaseBoard,
+    Drill: REAL.Drill,
+  }
+}
+
 // Stack-up phóng đại theo trục z. Giữ đúng tỉ lệ tương đối giữa các lớp, chỉ nhân lên
 // để depth buffer phân biệt được — nhìn thẳng từ trên xuống thì không thấy khác biệt.
 const LAMINAR = { Copper: 0.12, SolderMask: 0.14, Oil: 0.04, Silkscreen: 0.04, Total: 2.4 }
@@ -110,6 +140,7 @@ export const Viewer2DWebGL: React.FC<Viewer2DWebGLProps> = ({
 
     const t0 = performance.now()
     const bad: string[] = []
+    const palette = realPalette(board.maskColor)
 
     // --- Chọn file khoan ---
     // KiCad có thể xuất cả bản gộp (.drl, FileFunction MixedPlating) LẪN bộ tách
@@ -175,18 +206,31 @@ export const Viewer2DWebGL: React.FC<Viewer2DWebGLProps> = ({
         // Real/3D thì màu là mô phỏng vật liệu nên vẫn dùng bảng cố định.
         const color = camMode
           ? parseInt(String(raw.color).replace('#', ''), 16) || CAM_FALLBACK
-          : id.type === 'copper' ? REAL.Copper :
-            id.type === 'soldermask' ? REAL.MaskOpening :
-            id.type === 'silkscreen' ? REAL.Silkscreen :
-            id.type === 'drill' ? REAL.Drill :
-            REAL.BaseBoard
+          : id.type === 'copper' ? palette.Copper :
+            id.type === 'soldermask' ? palette.MaskOpening :
+            id.type === 'silkscreen' ? palette.Silkscreen :
+            id.type === 'drill' ? palette.Drill :
+            palette.BaseBoard
 
         // Tham số cuối của renderThree quyết định outline được TÔ ĐẶC hay vẽ VIỀN.
         // Real/3D cần tô đặc vì đó là lõi FR-4 của bo. CAM thì outline là đường bao gia
         // công, phải vẽ thành viền — tô đặc sẽ thành một mảng che hết, mà bật riêng lớp
         // Outline lại chỉ thấy một mảng tối.
         const fillOutline = isOutline && !camMode
-        const obj = renderThree(plotted, color, undefined, fillOutline)
+
+        // Panel có nhiều đường bao rời (9 bo + khung + rãnh v-cut). renderThree chỉ dựng
+        // được MỘT shape mỗi lần gọi, nên gọi riêng từng vòng rồi gộp các mảnh lại;
+        // gộp chung một lần gọi thì các bo bị nối liền thành khối tự cắt.
+        let obj: any
+        if (fillOutline && plotted.parts?.length > 1) {
+          const built = plotted.parts
+            .map((part: any) => renderThree(part, color, undefined, true))
+            .filter(Boolean)
+          obj = built.shift()
+          built.forEach((extra: any) => obj?.add(extra))
+        } else {
+          obj = renderThree(plotted, color, undefined, fillOutline)
+        }
         if (!obj) continue
 
         // Các lớp trong cùng một bộ có thể khác đơn vị — bo VOL LED có gerber theo mm
@@ -227,7 +271,7 @@ export const Viewer2DWebGL: React.FC<Viewer2DWebGLProps> = ({
       // phân giải -> lớp mặt dưới lọt lên trên nền FR-4, nhìn như xuyên thấu.
       // Nới khoảng cách z lên ~10 lần: nhìn từ trên xuống không khác gì, nhưng thứ tự
       // che khuất trở nên chính xác.
-      assemblyPCBToThreeJS(render.Scene, pcb, LAMINAR, REAL.Oil)
+      assemblyPCBToThreeJS(render.Scene, pcb, LAMINAR, palette.Oil)
     } catch (e) {
       console.error('[WebGL] assemblyPCBToThreeJS lỗi:', e)
       setStatus('Lỗi lắp PCB — xem console')
@@ -261,6 +305,17 @@ export const Viewer2DWebGL: React.FC<Viewer2DWebGLProps> = ({
     )
     const topOil = oils.find((o) => o.position.z > 0)
     const bottomOil = oils.find((o) => o.position.z < 0)
+
+    // assemblyPCBToThreeJS clone OutLine để làm lớp mask phủ bo, nhưng chỉ tô màu cho
+    // children[0]. Bo đơn có đúng một mảnh nên không lộ, còn panel thì OutLine gồm
+    // 13 mảnh (9 bo + khung + rãnh) — 12 mảnh còn lại giữ nguyên màu nền FR-4 và hiện
+    // ra thành các mảng vàng loang lổ. Tô lại toàn bộ cho chắc.
+    for (const oil of [topOil, bottomOil]) {
+      oil?.traverse((o: any) => {
+        const mats = Array.isArray(o.material) ? o.material : o.material ? [o.material] : []
+        mats.forEach((m: any) => m?.color?.set?.(palette.Oil))
+      })
+    }
 
     // Thứ tự đúng theo vật lý bo thật (kể từ nền FR-4 đi lên):
     //   đồng -> soldermask (phủ lên đồng, hơi trong) -> in lụa -> pad lộ ra ở lỗ mở mask
@@ -521,7 +576,7 @@ export const Viewer2DWebGL: React.FC<Viewer2DWebGLProps> = ({
     }
     // threeDMode phải nằm trong deps: chuyển Real 2D → 3D View không đổi camMode
     // (cả hai đều false) nên effect không chạy lại và cảnh vẫn là ảnh 2D phẳng.
-  }, [board.isLoaded, board.layers, camMode, threeDMode, fromBelow])
+  }, [board.isLoaded, board.layers, board.maskColor, camMode, threeDMode, fromBelow])
 
   // Bật/tắt lớp theo checkbox ở sidebar — chỉ đổi .visible, không dựng lại scene.
   // Sidebar được dựng từ GerberParser (tracespace), mà tracespace parse fail nhiều lớp

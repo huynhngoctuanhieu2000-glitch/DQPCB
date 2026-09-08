@@ -69,7 +69,7 @@ export interface LayerMeta {
 // File phụ trợ (report, aperture list, BOM, ảnh…) — không chứa dữ liệu đồ hoạ,
 // không bao giờ được đưa vào danh sách layer.
 const AUXILIARY_EXT =
-  /\.(apr|apr_lib|extrep|rul|rep|drr|ldp|ipc|cam|dri|gpi|lis|apt|gtd|gbrjob|rpt|log|max|csv|tsv|xls|xlsx|pdf|doc|docx|htm|html|md|ini|cfg|json|xml|bak|db|zip|rar|7z|jpe?g|png|gif|bmp|svg|step|stp|iges|igs|dwg|dxf)$/i
+  /\.(apr|apr_lib|extrep|rul|rep|drr|ldp|ipc|cam|dri|gpi|lis|apt|gtd|gbrjob|rpt|log|max|csv|tsv|xls|xlsx|pdf|doc|docx|htm|html|md|ini|cfg|json|xml|bak|db|zip|rar|7z|tgz|tar|gz|ddw|jpe?g|png|gif|bmp|svg|step|stp|iges|igs|dwg|dxf)$/i
 
 // "read[-_ ]?me" chứ không phải "readme": Proteus đặt tên READ-ME.TXT, mà .txt lại là
 // đuôi file khoan của Altium nên nếu lọt qua đây nó sẽ bị nhận thành lớp khoan.
@@ -133,16 +133,28 @@ const stitchOutline = (tree: any) => {
     chains.push(chain)
   }
 
-  // web-gerber dựng outline bằng cách duyệt từng child và nối vào một shape, nhưng
+  // web-gerber dựng outline bằng cách duyệt từng child và nối vào MỘT shape, nhưng
   // nó CHỈ chấp nhận child có đúng 1 segment:
   //     if (n.segments.length != 1) -> warn("Invalid outline segments length"), null
   // Gộp cả chuỗi vào một child sẽ bị từ chối và lõi bo không được dựng (nhìn xuyên
   // xuống mặt dưới). Nên trả về mỗi segment một child, chỉ khác là ĐÚNG THỨ TỰ.
+  //
+  // Vì nó chỉ dựng được một shape, panel có NHIỀU đường bao rời (9 bo + khung + rãnh
+  // v-cut = 13 vòng) sẽ bị nối liền thành một khối tự cắt. Nên tách mỗi vòng thành một
+  // cây riêng để bên ngoài dựng từng mảnh rồi gộp lại.
   const template = tree.children.find((c: any) => c?.segments?.length) ?? tree.children[0]
-  return {
+  const asTree = (segments: any[]) => ({
     ...tree,
-    children: chains.flat().map((seg) => ({ ...template, segments: [seg] })),
-  }
+    children: segments.map((seg) => ({ ...template, segments: [seg] })),
+  })
+
+  // Giữ mọi vòng đủ 3 đoạn — đủ để tạo thành một vùng, kể cả khi còn hở (khung panel
+  // hay bị hở vài chục mm chỗ nối rãnh, bỏ đi thì mất luôn cả khung). Vòng 1–2 đoạn
+  // chỉ là đường thẳng lẻ (vạch v-cut, khe tab), tô đặc không ra hình gì.
+  const usable = chains.filter((ch) => ch.length >= 3)
+
+  const main = asTree(usable.flat())
+  return { ...main, parts: usable.map(asTree) }
 }
 
 // Chuẩn hoá tên (bỏ đuôi, thay mọi ký tự không phải chữ/số bằng khoảng trắng)
@@ -209,13 +221,50 @@ const EXT_MAP: Record<string, LayerMeta> = {
   // ý nghĩa nằm ở TÊN file (TOP.art, SOLDERMASK_TOP.art…) nên phải để rule từ khoá xử lý.
 }
 
-export const matchLayer = (filename: string, allFilenames?: string[]): LayerMeta => {
+/**
+ * Bộ CAM của nhà máy (JLCCAM, Genesis…) xuất file KHÔNG có phần mở rộng, tên chỉ là mã
+ * hai chữ cái: tl/bl/to/bo/ts/bs/ko/drl. Bù lại, mỗi file tự khai báo mã lớp ngay trong
+ * header: "G04 -- layer:tl*". Header đó đáng tin hơn tên file nên được ưu tiên đọc.
+ */
+const CAM_LAYER_CODES: Record<string, LayerMeta | undefined> = {
+  tl: META.copperTop,
+  bl: META.copperBot,
+  to: META.silkTop,
+  bo: META.silkBot,
+  ts: META.maskTop,
+  bs: META.maskBot,
+  ko: META.outline,
+  drl: META.drill,
+  // vcut là đường rạch chữ V để tách bo khỏi panel — chỉ dẫn gia công, không phải lớp bo
+  vcut: { ...META.doc, displayName: 'V-Cut' },
+}
+
+const readCamLayerCode = (content?: string) => {
+  if (!content) return undefined
+  const m = content.slice(0, 2000).match(/^G04\s*--\s*layer\s*:\s*([A-Za-z0-9_]+)/im)
+  return m ? m[1].toLowerCase() : undefined
+}
+
+export const matchLayer = (
+  filename: string,
+  allFilenames?: string[],
+  content?: string
+): LayerMeta => {
   const ext = getExt(filename)
   const norm = normalizeName(filename)
+
+  // ---- 0. Mã lớp do chính file khai báo -----------------------------------
+  // Đáng tin nhất: file tự nói nó là lớp gì, không phụ thuộc người đặt tên.
+  const camCode = readCamLayerCode(content)
+  if (camCode && CAM_LAYER_CODES[camCode]) return { ...CAM_LAYER_CODES[camCode]! }
 
   // ---- 1. Đuôi file chuẩn -------------------------------------------------
   const byExt = EXT_MAP[ext]
   if (byExt) return { ...byExt }
+
+  // File không có phần mở rộng, tên chính là mã lớp CAM (tl, bl, ko…). Chỉ áp khi
+  // KHÔNG có đuôi, tránh đụng các bộ file thường dùng 2 chữ cái cho mục đích khác.
+  if (!ext && CAM_LAYER_CODES[norm]) return { ...CAM_LAYER_CODES[norm]! }
 
   // Tên file CHỈ có mỗi mặt bo, không kèm chữ "copper": TOP.art / BOTTOM.art của
   // OrCAD, TOP.gbr / BOT.gbr của các bộ xuất tối giản. Quy ước chung của ngành là
@@ -600,7 +649,7 @@ export class GerberParser {
     for (let fileIndex = 0; fileIndex < rawFiles.length; fileIndex++) {
       const raw = rawFiles[fileIndex]
       try {
-        const meta = matchLayer(raw.name, allNames)
+        const meta = matchLayer(raw.name, allNames, raw.content)
         let fileContent = raw.content
 
         // Skip incremental logic completely for drill files

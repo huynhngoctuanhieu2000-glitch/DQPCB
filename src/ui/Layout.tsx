@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { Viewer2DWebGL } from '../modules/viewer2d/Viewer2D.WebGL'
 import { BoardDataModel } from '../models/BoardDataModel'
+import type { BoardState } from '../models/BoardDataModel'
 import { GerberParser } from '../core/GerberParser'
 import JSZip from 'jszip'
 
@@ -315,6 +316,32 @@ export const Layout: React.FC = () => {
             }}
           >
             <span>📁 {boardState.projectName}</span>
+          </div>
+        )}
+
+        {/* Màu phủ bo — dùng chung cho Real 2D, 3D và 2 Mặt */}
+        {boardState.isLoaded && (
+          <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <span style={{ fontSize: '11px', color: '#94a3b8' }}>Màu bo</span>
+            {MASK_COLORS.map((c) => (
+              <button
+                key={c.hex}
+                title={c.label}
+                onClick={() => BoardDataModel.setMaskColor(c.hex)}
+                style={{
+                  width: '16px',
+                  height: '16px',
+                  borderRadius: '3px',
+                  backgroundColor: c.hex,
+                  cursor: 'pointer',
+                  padding: 0,
+                  border:
+                    boardState.maskColor === c.hex
+                      ? '2px solid #60a5fa'
+                      : '1px solid rgba(255,255,255,0.25)',
+                }}
+              />
+            ))}
           </div>
         )}
       </div>
@@ -721,12 +748,29 @@ export const Layout: React.FC = () => {
               ước bản vẽ lắp ráp của nhà máy. */}
           {boardState.isLoaded &&
             (boardState.activeView === 'Both' ? (
-              <div style={{ flex: 1, display: 'flex', minHeight: 0 }}>
-                <div style={{ flex: 1, minWidth: 0, borderRight: '1px solid #282b34' }}>
-                  <Viewer2DWebGL viewOverride="Real" faceSide="top" hideBadge />
+              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+                <div style={{ flex: 1, display: 'flex', minHeight: 0 }}>
+                  <div style={{ flex: 1, minWidth: 0, borderRight: '1px solid #282b34' }}>
+                    <Viewer2DWebGL viewOverride="Real" faceSide="top" hideBadge />
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <Viewer2DWebGL viewOverride="Real" faceSide="bottom" hideBadge />
+                  </div>
                 </div>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <Viewer2DWebGL viewOverride="Real" faceSide="bottom" hideBadge />
+
+                {/* Thanh dưới: chọn màu phủ bo + đường ghi kích thước */}
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '16px',
+                    padding: '8px 16px',
+                    borderTop: '1px solid #282b34',
+                    backgroundColor: '#16181e',
+                    flexShrink: 0,
+                  }}
+                >
+                  <DimensionBar bounds={boardState.bounds} />
                 </div>
               </div>
             ) : (
@@ -828,6 +872,39 @@ export const Layout: React.FC = () => {
           </div>
         </div>
       </div>
+    </div>
+  )
+}
+
+// Các màu phủ bo nhà máy thực sự có. Trắng/vàng để cuối vì chúng đổi luôn màu chữ in lụa.
+const MASK_COLORS = [
+  { hex: '#1c7a3c', label: 'Xanh lá' },
+  { hex: '#12395c', label: 'Xanh dương' },
+  { hex: '#7a1c24', label: 'Đỏ' },
+  { hex: '#1a1a1a', label: 'Đen' },
+  { hex: '#4a1c6b', label: 'Tím' },
+  { hex: '#c8b400', label: 'Vàng' },
+  { hex: '#e8e8e8', label: 'Trắng' },
+]
+
+/** Đường ghi kích thước bo, kiểu mũi tên hai đầu như bản vẽ kỹ thuật. */
+const DimensionBar: React.FC<{ bounds: BoardState['bounds'] }> = ({ bounds }) => {
+  if (!bounds) return null
+  const arrow: React.CSSProperties = {
+    width: 0,
+    height: 0,
+    borderTop: '4px solid transparent',
+    borderBottom: '4px solid transparent',
+  }
+  return (
+    <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
+      <div style={{ ...arrow, borderRight: '6px solid #64748b' }} />
+      <div style={{ flex: 1, height: '1px', backgroundColor: '#64748b' }} />
+      <span style={{ fontSize: '12px', color: '#e2e8f0', fontWeight: 600, whiteSpace: 'nowrap' }}>
+        {bounds.widthMM.toFixed(2)} × {bounds.heightMM.toFixed(2)} mm
+      </span>
+      <div style={{ flex: 1, height: '1px', backgroundColor: '#64748b' }} />
+      <div style={{ ...arrow, borderLeft: '6px solid #64748b' }} />
     </div>
   )
 }

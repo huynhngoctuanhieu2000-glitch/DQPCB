@@ -18,6 +18,8 @@ export interface BoardState {
   isLoaded: boolean
   activeView: 'CAM' | 'Real' | '3D' | 'Both'
   sideFilter: 'all' | 'top' | 'bottom'
+  /** Màu soldermask người dùng chọn — quyết định màu bo ở chế độ Real/3D/2 Mặt */
+  maskColor: string
   /** File phụ trợ bị bỏ qua khi đọc (report, aperture list, BOM…) */
   ignoredFiles: string[]
   /** File Gerber/Drill mà parser không đọc được */
@@ -35,6 +37,7 @@ let boardState: BoardState = {
   isLoaded: false,
   activeView: 'CAM',
   sideFilter: 'all',
+  maskColor: '#1c7a3c',
   ignoredFiles: [],
   failedFiles: [],
 }
@@ -119,6 +122,11 @@ export const BoardDataModel = {
     BoardDataModel.notify()
   },
 
+  setMaskColor: (color: string) => {
+    boardState = { ...boardState, maskColor: color }
+    BoardDataModel.notify()
+  },
+
   setActiveView: (view: 'CAM' | 'Real' | '3D' | 'Both') => {
     boardState = { ...boardState, activeView: view }
     BoardDataModel.notify()
@@ -141,6 +149,7 @@ export const BoardDataModel = {
       isLoaded: false,
       activeView: 'CAM',
       sideFilter: 'all',
+      maskColor: boardState.maskColor,
       ignoredFiles: [],
       failedFiles: [],
     }
