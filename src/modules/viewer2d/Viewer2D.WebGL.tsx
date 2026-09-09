@@ -223,6 +223,8 @@ export const Viewer2DWebGL: React.FC<Viewer2DWebGLProps> = ({
     // filename -> object, để checkbox layer ở sidebar bật/tắt được lớp tương ứng
     const byFile = new Map<string, any>()
     const maskFiles = { top: [] as string[], bottom: [] as string[] }
+    /** Lớp đồng giữa của bo nhiều lớp — assembly không nhận, phải tự xếp. */
+    const innerCopper: { obj: any; idx: number }[] = []
 
     let ok = 0
     let drillPlaced = 0
@@ -309,7 +311,15 @@ export const Viewer2DWebGL: React.FC<Viewer2DWebGLProps> = ({
         byFile.set(raw.filename, obj)
 
         const slot = id.side === 'bottom' ? pcb.Btm : pcb.Top
-        if (id.type === 'copper') slot.Copper = obj
+        if (id.type === 'copper' && id.side === 'inner') {
+          // pcb của assemblyPCBToThreeJS chỉ có hai ngăn đồng (Top/Btm) — không có chỗ
+          // cho lớp giữa của bo 4/6 lớp. Trước đây lớp giữa rơi vào ngăn Top rồi bị lớp
+          // đồng mặt trên ghi đè, nên đọc ra thì thấy trong danh sách mà bật lên không
+          // hiện gì. Giữ riêng ra đây rồi tự gắn vào cảnh sau khi assembly chạy xong.
+          const idx = parseInt(String(raw.displayName).match(/(\d+)/)?.[1] ?? '0', 10)
+          innerCopper.push({ obj, idx })
+        }
+        else if (id.type === 'copper') slot.Copper = obj
         else if (id.type === 'soldermask') {
           slot.SolderMask = obj
           maskFiles[id.side === 'bottom' ? 'bottom' : 'top'].push(raw.filename)
@@ -342,6 +352,25 @@ export const Viewer2DWebGL: React.FC<Viewer2DWebGLProps> = ({
     } catch (e) {
       console.error('[WebGL] assemblyPCBToThreeJS lỗi:', e)
       setStatus('Lỗi lắp PCB — xem console')
+    }
+
+    // --- Lớp đồng giữa (bo 4/6 lớp) ---
+    // assemblyPCBToThreeJS không có ngăn cho chúng, nên tự gắn vào cảnh: bề dày mượn
+    // của lớp đồng mặt trên, cao độ rải đều giữa hai lớp đồng ngoài theo đúng thứ tự
+    // Inner 1, Inner 2… Ở Real/3D chúng nằm trong lõi bo nên bị nền che, đúng như bo
+    // thật; ở CAM thì hiện ra để soi được.
+    if (innerCopper.length > 0) {
+      innerCopper.sort((a, b) => a.idx - b.idx)
+      const topZ = pcb.Top.Copper?.position?.z ?? 0
+      const botZ = pcb.Btm.Copper?.position?.z ?? 0
+      const thickness = pcb.Top.Copper?.scale?.z ?? 1
+      innerCopper.forEach(({ obj }, i) => {
+        // Inner 1 gần mặt trên nhất: chia đều khoảng giữa hai lớp đồng ngoài.
+        const t = (i + 1) / (innerCopper.length + 1)
+        obj.position.z = topZ + (botZ - topZ) * t
+        obj.scale.setZ(thickness)
+        render.Scene.add(obj)
+      })
     }
 
     // Trước đây tắt depth test và xếp lớp bằng renderOrder — KHÔNG ăn thua: three vẫn
@@ -433,6 +462,10 @@ export const Viewer2DWebGL: React.FC<Viewer2DWebGLProps> = ({
     paintOrder(farOil, 3)
     paintOrder(pcb.OutLine, 4)
     paintOrder(nearOil, 5)
+    // Lớp giữa nằm giữa hai lớp đồng ngoài, cả về cao độ lẫn thứ tự vẽ.
+    innerCopper.forEach(({ obj }, i) =>
+      paintOrder(obj, 2 + ((i + 1) / (innerCopper.length + 1)) * 4)
+    )
     paintOrder(near.Copper, 6)
     paintOrder(near.Silkscreen, 7)
     paintOrder(near.SolderMask, 8)
