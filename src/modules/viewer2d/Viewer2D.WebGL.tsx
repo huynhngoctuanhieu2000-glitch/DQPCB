@@ -35,7 +35,7 @@ import {
  */
 const REAL = {
   background: 0xeeeeee,
-  Oil: 0x1c7a3c,         // soldermask xanh phủ vùng không có đồng
+  Oil: 0x0f4f26,         // soldermask xanh phủ vùng không có đồng
   // Đồng nằm DƯỚI mask nên thấy màu đồng đã bị mask xanh lọc qua — sáng hơn nền mask
   // rõ rệt, đúng như bo thật soi thẳng. Trước đây để gần trùng màu Oil vì tưởng đó là
   // nguyên nhân "nhìn xuyên", nhưng thủ phạm thật là lõi FR-4 bị thủng (xem stitchOutline);
@@ -49,6 +49,42 @@ const REAL = {
 
 // Màu dự phòng khi layer chưa có màu hợp lệ
 const CAM_FALLBACK = 0x9b59b6
+
+/** Nền khung CAM — cũng là "màu nằm dưới" khi khoét đảo cực ở chế độ CAM. */
+const CAM_BACKGROUND = 0x14161b
+
+/**
+ * Tách cây ảnh thành các ĐOẠN liên tiếp cùng cực (`%LPD*%` / `%LPC*%`).
+ *
+ * web-gerber có đọc đảo cực và đóng dấu `polarity` lên từng hình, nhưng không
+ * renderer nào của nó đọc lại con dấu đó — hằng số "clear" chỉ được định nghĩa, gán,
+ * rồi export ra ngoài, không hề có chỗ nào so sánh. Kết quả: mọi hình đảo cực bị vẽ
+ * ĐẶC như hình thường, mảng phủ đồng nuốt sạch đường mạch và ruột chữ O/D/8 bị bít.
+ *
+ * THỨ TỰ LÀ THỨ QUYẾT ĐỊNH, không phải gom hai nhóm. Altium xuất lớp đồng theo kiểu:
+ *
+ *     dark(mảng phủ) → clear(khoét khe cách) → dark(đường mạch + pad)
+ *
+ * Gom hết clear lại rồi khoét sau cùng sẽ xoá luôn đám dark vẽ sau nó — đúng là
+ * đường mạch biến mất, chỉ còn lại vệt khe cách rỗng. Nên phải giữ nguyên trình tự
+ * và vẽ từng đoạn chồng lên nhau đúng thứ tự trong file.
+ *
+ * Trả về null nếu lớp không dùng đảo cực — tuyệt đại đa số file, khỏi tốn công.
+ */
+const splitPolarityRuns = (tree: any): { erase: boolean; tree: any }[] | null => {
+  const children = tree?.children
+  if (!Array.isArray(children)) return null
+  if (!children.some((c: any) => c?.polarity === 'clear')) return null
+
+  const runs: { erase: boolean; children: any[] }[] = []
+  for (const child of children) {
+    const erase = child?.polarity === 'clear'
+    const last = runs[runs.length - 1]
+    if (last && last.erase === erase) last.children.push(child)
+    else runs.push({ erase, children: [child] })
+  }
+  return runs.map((r) => ({ erase: r.erase, tree: { ...tree, children: r.children } }))
+}
 
 const hexToRgb = (hex: string) => {
   const n = parseInt(String(hex).replace('#', ''), 16)
@@ -69,7 +105,7 @@ const realPalette = (maskHex: string) => {
   // độ sáng cảm nhận (ITU-R BT.601)
   const lum = (0.299 * rgb[0] + 0.587 * rgb[1] + 0.114 * rgb[2]) / 255
   const light = lum > 0.6
-  const shift = light ? -52 : 48
+  const shift = light ? -52 : 28
   return {
     Oil: rgbToHex(rgb.map(clamp)),
     Copper: rgbToHex(rgb.map((c) => clamp(c + shift))),
@@ -95,14 +131,22 @@ export interface Viewer2DWebGLProps {
   faceSide?: 'top' | 'bottom'
   /** Ẩn badge thông tin (khung chia đôi chỉ cần một badge) */
   hideBadge?: boolean
+  /**
+   * Hệ số lề khi fit bo vào khung. 1.15 là vừa khít cho khung đơn; khung chia đôi cần
+   * lề rộng hơn, nếu không hai bo fit sát mép và dính vào nhau ở đường giữa.
+   */
+  fitPadding?: number
 }
 
 export const Viewer2DWebGL: React.FC<Viewer2DWebGLProps> = ({
   viewOverride,
   faceSide = 'top',
   hideBadge = false,
+  fitPadding = 1.15,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null)
+  // Hàm đưa khung nhìn về vừa khít, do effect dựng cảnh gán vào
+  const fitViewRef = useRef<(() => void) | null>(null)
   // Giữ tham chiếu object đã dựng để effect bật/tắt lớp chạy được mà không phải render lại
   const sceneRef = useRef<{
     byFile: Map<string, any>
@@ -136,7 +180,7 @@ export const Viewer2DWebGL: React.FC<Viewer2DWebGLProps> = ({
       AddOrbitControls: false,
       AddResizeListener: true,
     })
-    render.Scene.background?.set?.(camMode ? 0x14161b : REAL.background)
+    render.Scene.background?.set?.(camMode ? CAM_BACKGROUND : REAL.background)
 
     const t0 = performance.now()
     const bad: string[] = []
@@ -221,8 +265,31 @@ export const Viewer2DWebGL: React.FC<Viewer2DWebGLProps> = ({
         // Panel có nhiều đường bao rời (9 bo + khung + rãnh v-cut). renderThree chỉ dựng
         // được MỘT shape mỗi lần gọi, nên gọi riêng từng vòng rồi gộp các mảnh lại;
         // gộp chung một lần gọi thì các bo bị nối liền thành khối tự cắt.
+        // Lớp có đảo cực phải dựng theo TỪNG ĐOẠN và xếp chồng đúng thứ tự trong
+        // file (xem splitPolarityRuns), nếu không phần vẽ sau sẽ bị phần khoét
+        // trước đó xoá mất.
+        const runs = splitPolarityRuns(plotted)
+
         let obj: any
-        if (fillOutline && plotted.parts?.length > 1) {
+        if (runs) {
+          // Đoạn khoét tô bằng màu của thứ nằm dưới lớp này. Ở Real/3D thứ nằm dưới
+          // in lụa và dưới đồng đều là lớp phủ mask, nên ra đúng cảm giác bo thật.
+          const eraseColor = camMode ? CAM_BACKGROUND : palette.Oil
+          const built = runs
+            .map((run, i) => {
+              const g = renderThree(run.tree, run.erase ? eraseColor : color, undefined, fillOutline)
+              if (g) {
+                g.userData.polarityErase = run.erase
+                // Vị trí trong chuỗi, dùng để xếp thứ tự vẽ và nhấc cao độ.
+                g.userData.polarityIndex = i
+                g.userData.polarityCount = runs.length
+              }
+              return g
+            })
+            .filter(Boolean)
+          obj = built.shift()
+          built.forEach((extra: any) => obj?.add(extra))
+        } else if (fillOutline && plotted.parts?.length > 1) {
           const built = plotted.parts
             .map((part: any) => renderThree(part, color, undefined, true))
             .filter(Boolean)
@@ -280,15 +347,39 @@ export const Viewer2DWebGL: React.FC<Viewer2DWebGLProps> = ({
     // Trước đây tắt depth test và xếp lớp bằng renderOrder — KHÔNG ăn thua: three vẫn
     // vẽ theo độ sâu nên lớp mặt dưới lọt lên trên nền FR-4 (hiện tượng "nhìn xuyên").
     // Giờ để depth buffer làm việc của nó; renderOrder chỉ còn là tie-break.
+    const materialsOf = (o: any): any[] =>
+      Array.isArray(o.material) ? o.material : o.material ? [o.material] : []
+
     const paintOrder = (obj: any, order: number) => {
       if (!obj) return
       obj.renderOrder = order
       obj.traverse((o: any) => {
         o.renderOrder = order
-        const mats = Array.isArray(o.material) ? o.material : o.material ? [o.material] : []
-        mats.forEach((m: any) => {
+        materialsOf(o).forEach((m: any) => {
           m.depthTest = true
           m.depthWrite = true
+        })
+      })
+
+      // Các đoạn đảo cực của cùng một lớp vẽ theo ĐÚNG TRÌNH TỰ trong file, đoạn sau
+      // đè lên đoạn trước, rải trong khe (order, order+1) để không đụng thứ tự giữa
+      // các lớp. Đoạn khoét tô đè ĐỤC bằng màu của thứ nằm dưới lớp này.
+      //
+      // Đã thử hai cách "khoét thật" bằng depth buffer và đều hỏng:
+      //  - vẽ xuôi, đoạn khoét chỉ ghi độ sâu: không khoét được gì, vì ghi độ sâu chỉ
+      //    chặn hình vẽ SAU nó chứ không xoá được màu đã vẽ TRƯỚC.
+      //  - vẽ ngược + cao độ tăng dần để depth tự chọn đoạn sau: web-gerber hard-code
+      //    logarithmicDepthBuffer, chênh lệch z ở đây nhỏ hơn một phần nghìn nên depth
+      //    test không phân giải nổi — mảng phủ ra đặc, mất hết khe cách.
+      //
+      // Giá phải trả: ở CAM, vùng bị khoét của lớp trên tô màu nền nên che mất lớp
+      // nằm dưới nó. Đổi lại hình trong từng lớp là đúng — cái đó quan trọng hơn.
+      obj.children?.forEach((child: any) => {
+        const idx = child.userData?.polarityIndex
+        const count = child.userData?.polarityCount
+        if (idx === undefined || !count) return
+        child.traverse((o: any) => {
+          o.renderOrder = order + idx / count
         })
       })
     }
@@ -373,6 +464,25 @@ export const Viewer2DWebGL: React.FC<Viewer2DWebGLProps> = ({
     flushToCopper(pcb.Top, 1)
     flushToCopper(pcb.Btm, -1)
 
+    // Các đoạn đảo cực nằm trùng mặt phẳng với nhau, nên phải nhấc dần ra phía ngoài
+    // theo đúng trình tự thì depth test mới cho đoạn sau thắng đoạn trước. Nhấc ÍT
+    // thôi: khoảng hở giữa mặt in lụa và mặt mask chỉ có EPS/2, vượt qua đó là các
+    // đoạn này leo lên che cả pad.
+    const liftPolarityRuns = (slot: any, outward: 1 | -1) => {
+      for (const layer of [slot?.Copper, slot?.SolderMask, slot?.Silkscreen]) {
+        const scaleZ = layer?.scale?.z
+        if (!layer || !scaleZ) continue
+        layer.children.forEach((child: any) => {
+          const idx = child.userData?.polarityIndex
+          const count = child.userData?.polarityCount
+          if (idx === undefined || !count) return
+          child.position.z = (outward * (EPS / 4) * (idx / count)) / scaleZ
+        })
+      }
+    }
+    liftPolarityRuns(pcb.Top, 1)
+    liftPolarityRuns(pcb.Btm, -1)
+
     // 2) Trụ khoan phải cao ĐÚNG bằng bo (nhìn ngang mới không thấy nó thò ra), nhưng
     //    đỉnh trùng khít cao độ mặt mask thì z-fighting và lỗ biến mất. Nên tính theo
     //    bề mặt ngoài cùng thực tế rồi cộng thêm một lượng rất nhỏ.
@@ -440,7 +550,7 @@ export const Viewer2DWebGL: React.FC<Viewer2DWebGLProps> = ({
       const fov = (cam.fov * Math.PI) / 180
 
       const aspectNow = () => (el.clientWidth || 800) / (el.clientHeight || 600)
-      const fitDist = (Math.max(h, w / aspectNow()) / 2 / Math.tan(fov / 2)) * 1.15
+      const fitDist = (Math.max(h, w / aspectNow()) / 2 / Math.tan(fov / 2)) * fitPadding
 
       const cx = (minX + maxX) / 2
       const cy = (minY + maxY) / 2
@@ -480,6 +590,21 @@ export const Viewer2DWebGL: React.FC<Viewer2DWebGLProps> = ({
         cam.updateProjectionMatrix()
       }
       apply()
+
+      // Đưa khung nhìn về đúng lúc vừa dựng xong: vừa khít bo, đúng tâm, đúng góc.
+      // Mỗi khung (Top/Bot ở chế độ 2 Mặt) có camera riêng nên nút bấm cũng riêng.
+      const resetView = () => {
+        view.x = cx
+        view.y = cy
+        view.dist = fitDist
+        view.az = -Math.PI / 2
+        view.el = fromBelow ? -0.9 : 0.9
+        apply()
+      }
+      fitViewRef.current = resetView
+      cleanups.push(() => {
+        if (fitViewRef.current === resetView) fitViewRef.current = null
+      })
 
       // Container đổi kích thước (mở/đóng sidebar, resize cửa sổ) -> cập nhật lại
       // cả renderer lẫn aspect, vì listener của web-gerber chỉ làm nửa việc.
@@ -576,7 +701,7 @@ export const Viewer2DWebGL: React.FC<Viewer2DWebGLProps> = ({
     }
     // threeDMode phải nằm trong deps: chuyển Real 2D → 3D View không đổi camMode
     // (cả hai đều false) nên effect không chạy lại và cảnh vẫn là ảnh 2D phẳng.
-  }, [board.isLoaded, board.layers, board.maskColor, camMode, threeDMode, fromBelow])
+  }, [board.isLoaded, board.layers, board.maskColor, camMode, threeDMode, fromBelow, fitPadding])
 
   // Bật/tắt lớp theo checkbox ở sidebar — chỉ đổi .visible, không dựng lại scene.
   // Sidebar được dựng từ GerberParser (tracespace), mà tracespace parse fail nhiều lớp
@@ -610,6 +735,27 @@ export const Viewer2DWebGL: React.FC<Viewer2DWebGLProps> = ({
   return (
     <div style={{ position: 'relative', width: '100%', height: '100%', backgroundColor: '#0b0d10' }}>
       <div ref={containerRef} style={{ width: '100%', height: '100%' }} />
+
+      <button
+        onClick={() => fitViewRef.current?.()}
+        title="Đưa khung nhìn về vừa khít bo"
+        style={{
+          position: 'absolute',
+          right: 10,
+          bottom: 10,
+          zIndex: 5,
+          padding: '5px 12px',
+          fontSize: 12,
+          fontWeight: 600,
+          borderRadius: 6,
+          cursor: 'pointer',
+          color: '#e2e8f0',
+          backgroundColor: 'rgba(15,23,42,0.85)',
+          border: '1px solid #334155',
+        }}
+      >
+        ⤢ Fit
+      </button>
       {hideBadge ? (
         <div style={faceTag}>{fromBelow ? 'BOT — nhìn từ dưới' : 'TOP — nhìn từ trên'}</div>
       ) : (
