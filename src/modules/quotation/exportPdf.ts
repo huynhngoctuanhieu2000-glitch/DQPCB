@@ -89,3 +89,13 @@ export const exportQuotationToPdf = async (
   win.print()
   return { canceled: false }
 }
+
+/**
+ * Mở thư mục chứa file vừa lưu, bôi sẵn file đó. Chỉ chạy được trong Electron —
+ * trên trình duyệt không có đường dẫn nên nút gọi hàm này cũng không hiện.
+ */
+export const revealInFolder = async (filePath: string): Promise<void> => {
+  const ipc = window.ipcRenderer
+  if (!ipc?.invoke || !filePath) return
+  await ipc.invoke('shell:showInFolder', filePath)
+}

@@ -1,32 +1,32 @@
-import { BrowserWindow as e, Menu as t, app as n, dialog as r, ipcMain as i } from "electron";
-import a from "node:fs/promises";
-import o from "node:os";
-import s from "node:path";
-import { fileURLToPath as c } from "node:url";
+import { BrowserWindow as e, Menu as t, app as n, dialog as r, ipcMain as i, shell as a } from "electron";
+import o from "node:fs/promises";
+import s from "node:os";
+import c from "node:path";
+import { fileURLToPath as l } from "node:url";
 //#region electron/main.ts
-var l = s.dirname(c(import.meta.url));
-process.env.DIST = s.join(l, "../dist"), process.env.VITE_PUBLIC = n.isPackaged ? process.env.DIST : s.join(process.env.DIST || "", "../public");
-var u, d = process.env.VITE_DEV_SERVER_URL;
-function f() {
-	u = new e({
+var u = c.dirname(l(import.meta.url));
+process.env.DIST = c.join(u, "../dist"), process.env.VITE_PUBLIC = n.isPackaged ? process.env.DIST : c.join(process.env.DIST || "", "../public");
+var d, f = process.env.VITE_DEV_SERVER_URL;
+function p() {
+	d = new e({
 		width: 1280,
 		height: 850,
 		minWidth: 900,
 		minHeight: 600,
 		autoHideMenuBar: !0,
-		webPreferences: { preload: s.join(l, "preload.mjs") }
-	}), u.setMenu(null), u.webContents.on("did-finish-load", () => {
-		u?.webContents.send("main-process-message", (/* @__PURE__ */ new Date()).toLocaleString());
-	}), u.webContents.on("console-message", (e, t, n, r, i) => {
+		webPreferences: { preload: c.join(u, "preload.mjs") }
+	}), d.setMenu(null), d.webContents.on("did-finish-load", () => {
+		d?.webContents.send("main-process-message", (/* @__PURE__ */ new Date()).toLocaleString());
+	}), d.webContents.on("console-message", (e, t, n, r, i) => {
 		console.log(`[Renderer] ${n}`);
-	}), d ? u.loadURL(d) : u.loadFile(s.join(process.env.DIST || "", "index.html"));
+	}), f ? d.loadURL(f) : d.loadFile(c.join(process.env.DIST || "", "index.html"));
 }
 n.on("window-all-closed", () => {
-	process.platform !== "darwin" && (n.quit(), u = null);
+	process.platform !== "darwin" && (n.quit(), d = null);
 }), n.on("activate", () => {
-	e.getAllWindows().length === 0 && f();
+	e.getAllWindows().length === 0 && p();
 }), i.handle("quotation:save", async (e, t) => {
-	let n = u ? await r.showSaveDialog(u, {
+	let n = d ? await r.showSaveDialog(d, {
 		title: "Lưu báo giá",
 		defaultPath: t.fileName,
 		filters: [{
@@ -34,12 +34,12 @@ n.on("window-all-closed", () => {
 			extensions: ["xlsx"]
 		}]
 	}) : await r.showSaveDialog({ defaultPath: t.fileName });
-	return n.canceled || !n.filePath ? { canceled: !0 } : (await a.writeFile(n.filePath, Buffer.from(t.data)), {
+	return n.canceled || !n.filePath ? { canceled: !0 } : (await o.writeFile(n.filePath, Buffer.from(t.data)), {
 		canceled: !1,
 		filePath: n.filePath
 	});
 }), i.handle("quotation:pdf", async (t, n) => {
-	let i = n.defaultDir ? s.join(n.defaultDir, n.fileName) : n.fileName, c = u ? await r.showSaveDialog(u, {
+	let i = n.defaultDir ? c.join(n.defaultDir, n.fileName) : n.fileName, a = d ? await r.showSaveDialog(d, {
 		title: "Lưu báo giá PDF",
 		defaultPath: i,
 		filters: [{
@@ -47,10 +47,10 @@ n.on("window-all-closed", () => {
 			extensions: ["pdf"]
 		}]
 	}) : await r.showSaveDialog({ defaultPath: i });
-	if (c.canceled || !c.filePath) return { canceled: !0 };
-	let l = s.join(await a.mkdtemp(s.join(o.tmpdir(), "dqpcb-baogia-")), "bao-gia.html");
-	await a.writeFile(l, n.html, "utf-8");
-	let d = .3, f = new e({
+	if (a.canceled || !a.filePath) return { canceled: !0 };
+	let l = c.join(await o.mkdtemp(c.join(s.tmpdir(), "dqpcb-baogia-")), "bao-gia.html");
+	await o.writeFile(l, n.html, "utf-8");
+	let u = .3, f = new e({
 		show: !1,
 		width: 1065,
 		height: 736,
@@ -64,24 +64,24 @@ n.on("window-all-closed", () => {
 			printBackground: !0,
 			scale: t,
 			margins: {
-				top: d,
-				bottom: d,
-				left: d,
-				right: d
+				top: u,
+				bottom: u,
+				left: u,
+				right: u
 			}
 		});
-		return await a.writeFile(c.filePath, n), {
+		return await o.writeFile(a.filePath, n), {
 			canceled: !1,
-			filePath: c.filePath
+			filePath: a.filePath
 		};
 	} finally {
-		f.destroy(), await a.rm(s.dirname(l), {
+		f.destroy(), await o.rm(c.dirname(l), {
 			recursive: !0,
 			force: !0
 		}).catch(() => {});
 	}
-}), n.whenReady().then(() => {
-	t.setApplicationMenu(null), f();
+}), i.handle("shell:showInFolder", (e, t) => typeof t != "string" || t === "" ? !1 : (a.showItemInFolder(t), !0)), n.whenReady().then(() => {
+	t.setApplicationMenu(null), p();
 });
 //#endregion
 export {};

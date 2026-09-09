@@ -16,7 +16,7 @@ import {
   grandTotal,
 } from './QuotationModel'
 import type { Quotation, QuotationItem } from './QuotationModel'
-import { exportQuotationToPdf } from './exportPdf'
+import { exportQuotationToPdf, revealInFolder } from './exportPdf'
 import { QuotationPreview } from './QuotationPreview'
 
 const money = (n: number) => n.toLocaleString('vi-VN')
@@ -36,7 +36,12 @@ export const QuotationPanel: React.FC<{
 }> = ({ board, onClose }) => {
   const [q, setQ] = useState<Quotation>(() => createQuotation(false, board))
   const [tab, setTab] = useState<'form' | 'preview'>('form')
-  const [status, setStatus] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null)
+  const [status, setStatus] = useState<{
+    kind: 'ok' | 'err'
+    text: string
+    /** Có đường dẫn thật thì mới mở được thư mục (chỉ trong Electron). */
+    filePath?: string
+  } | null>(null)
   const [busy, setBusy] = useState(false)
 
   const patch = (change: Partial<Quotation>) => setQ((prev) => ({ ...prev, ...change }))
@@ -86,7 +91,11 @@ export const QuotationPanel: React.FC<{
       if (res.canceled) {
         setStatus(null)
       } else {
-        setStatus({ kind: 'ok', text: res.filePath ? `Đã lưu: ${res.filePath}` : 'Đã xuất xong.' })
+        setStatus({
+          kind: 'ok',
+          text: res.filePath ? `Đã lưu: ${res.filePath}` : 'Đã xuất xong.',
+          filePath: res.filePath,
+        })
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
@@ -401,16 +410,34 @@ export const QuotationPanel: React.FC<{
         {/* Chân form */}
         <div style={S.footer}>
           {status && (
-            <span
+            <div
               style={{
-                fontSize: '11px',
-                color: status.kind === 'ok' ? '#4ade80' : '#f87171',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
                 marginRight: 'auto',
-                wordBreak: 'break-all',
+                minWidth: 0,
               }}
             >
-              {status.text}
-            </span>
+              <span
+                style={{
+                  fontSize: '11px',
+                  color: status.kind === 'ok' ? '#4ade80' : '#f87171',
+                  wordBreak: 'break-all',
+                }}
+              >
+                {status.text}
+              </span>
+              {status.filePath && (
+                <button
+                  onClick={() => revealInFolder(status.filePath!)}
+                  style={{ ...S.smallBtn, flexShrink: 0 }}
+                  title="Mở thư mục chứa file vừa lưu"
+                >
+                  📂 Mở thư mục
+                </button>
+              )}
+            </div>
           )}
           <button onClick={onClose} style={S.secondaryBtn}>
             Đóng

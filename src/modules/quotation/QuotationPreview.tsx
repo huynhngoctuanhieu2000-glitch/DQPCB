@@ -236,10 +236,24 @@ export const QuotationPreview: React.FC<{ q: Quotation }> = ({ q }) => {
             <td style={plain}>
               <div style={{ display: 'flex', gap: '26px', alignItems: 'flex-start' }}>
                 {q.bank.lines.map((line, i) => (
-                  <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                  <div
+                    key={i}
+                    style={{
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '4px',
+                      // Không có dòng này thì flex kéo giãn ảnh ra bằng bề ngang cột,
+                      // mà chiều cao lại cố định -> mã QR bị bẹp.
+                      alignItems: 'flex-start',
+                    }}
+                  >
                     <span style={{ fontSize: '14px', whiteSpace: 'nowrap' }}>{line}</span>
                     {branding.qr[i] && (
-                      <img src={branding.qr[i].dataUrl} alt="" style={{ height: '118px' }} />
+                      <img
+                        src={branding.qr[i].dataUrl}
+                        alt=""
+                        style={{ height: '112px', width: 'auto' }}
+                      />
                     )}
                   </div>
                 ))}
@@ -248,7 +262,9 @@ export const QuotationPreview: React.FC<{ q: Quotation }> = ({ q }) => {
             <td style={plain} colSpan={7} />
           </tr>
 
-          <tr style={{ height: '54px' }}>
+          {/* Chừa chỗ ký. Bên dưới đã có khối mã QR khá cao rồi thì chừa ít thôi,
+              không thì hai chữ ký bị đẩy xuống tận đáy trang. */}
+          <tr style={{ height: branding.qr.length > 0 ? '14px' : '54px' }}>
             <td colSpan={9} />
           </tr>
           <tr>

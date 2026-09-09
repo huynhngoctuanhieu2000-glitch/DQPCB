@@ -1,4 +1,4 @@
-import { app, BrowserWindow, Menu, dialog, ipcMain } from 'electron'
+import { app, BrowserWindow, Menu, dialog, ipcMain, shell } from 'electron'
 import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
@@ -143,6 +143,14 @@ ipcMain.handle(
     }
   }
 )
+
+// Mở thư mục chứa file vừa lưu và bôi sẵn file đó — dùng cho nút "Mở thư mục"
+// sau khi xuất báo giá.
+ipcMain.handle('shell:showInFolder', (_event, filePath: string) => {
+  if (typeof filePath !== 'string' || filePath === '') return false
+  shell.showItemInFolder(filePath)
+  return true
+})
 
 app.whenReady().then(() => {
   Menu.setApplicationMenu(null)
