@@ -62,13 +62,17 @@ const escapeHtml = (s: string) =>
  * Chạy trong Electron thì main dựng trang rồi in ra PDF và mở hộp thoại lưu.
  * Chạy trên trình duyệt thì mở một cửa sổ in — người dùng chọn "Save as PDF".
  */
-export const exportQuotationToPdf = async (q: Quotation): Promise<PdfSaveResult> => {
+export const exportQuotationToPdf = async (
+  q: Quotation,
+  /** Thư mục gợi ý sẵn ở hộp thoại lưu — thường là chỗ chứa file gerber. */
+  defaultDir = ''
+): Promise<PdfSaveResult> => {
   const html = quotationToHtml(q)
   const fileName = suggestedFileName(q).replace(/\.xlsx$/, '.pdf')
 
   const ipc = window.ipcRenderer
   if (ipc?.invoke) {
-    return (await ipc.invoke('quotation:pdf', { fileName, html })) as PdfSaveResult
+    return (await ipc.invoke('quotation:pdf', { fileName, html, defaultDir })) as PdfSaveResult
   }
 
   // Trình duyệt: không ghi thẳng ra file được, nhờ hộp thoại in của trình duyệt.

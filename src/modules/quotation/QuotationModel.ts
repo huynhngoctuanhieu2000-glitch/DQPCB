@@ -99,6 +99,26 @@ export const itemFromBoard = (board: Board): QuotationItem => ({
   maskColor: maskColorLabel(board.maskColor),
 })
 
+/**
+ * Đoán tên khách từ đường dẫn thư mục chứa gerber.
+ *
+ * Cách sắp thư mục việc là  …\<TÊN KHÁCH>\<năm>\<ngày>\  — ví dụ
+ * `D:\JobDatMach\Vu Nguyen Hoang Phuc\2026\08-09` thì khách là
+ * "Vu Nguyen Hoang Phuc". Nên tìm đoạn trông như năm rồi lấy đoạn đứng ngay trước nó.
+ *
+ * Không thấy đoạn năm nào thì trả về rỗng chứ không đoán bừa — thà để người lập gõ
+ * còn hơn điền sai tên khách lên báo giá.
+ */
+export const customerNameFromPath = (dir: string): string => {
+  if (!dir) return ''
+  const parts = dir.split(/[\\/]+/).filter(Boolean)
+  // Quét từ cuối lên: thư mục ngày nằm sâu nhất, năm nằm ngay trên nó.
+  for (let i = parts.length - 1; i > 0; i--) {
+    if (/^(19|20)\d{2}$/.test(parts[i])) return parts[i - 1]
+  }
+  return ''
+}
+
 const bankFor = (hasVat: boolean): BankAccount => {
   const b = hasVat ? defaults.banks.company : defaults.banks.personal
   return { holder: b.holder, lines: [...b.lines] }
@@ -107,7 +127,13 @@ const bankFor = (hasVat: boolean): BankAccount => {
 /** Báo giá trống, đã nạp sẵn mọi hằng số công ty theo cờ VAT. */
 export const createQuotation = (hasVat: boolean, board?: BoardState): Quotation => ({
   date: formatDate(new Date()),
-  customer: { name: '', phone: '', taxCode: '', email: '', address: '' },
+  customer: {
+    name: customerNameFromPath(board?.sourceDir ?? ''),
+    phone: '',
+    taxCode: '',
+    email: '',
+    address: '',
+  },
   items: [board?.isLoaded ? itemFromBoard(board) : emptyItem()],
   hasVat,
   vatRate: defaults.vatRate,

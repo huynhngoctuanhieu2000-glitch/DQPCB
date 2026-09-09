@@ -228,24 +228,26 @@ export const QuotationPreview: React.FC<{ q: Quotation }> = ({ q }) => {
               Người lập
             </td>
           </tr>
-          {q.bank.lines.map((line, i) => (
-            <tr key={`bank-${i}`}>
-              <td style={plain} />
-              <td style={{ ...plain, fontSize: '14px' }}>{line}</td>
-              <td style={plain} colSpan={7} />
-            </tr>
-          ))}
-          {branding.qr.length > 0 && (
-            <tr>
-              <td style={plain} />
-              <td style={{ ...plain, display: 'flex', gap: '14px', alignItems: 'flex-start' }}>
-                {branding.qr.map((img, i) => (
-                  <img key={i} src={img.dataUrl} alt="" style={{ height: '120px' }} />
+          {/* Mỗi số tài khoản kèm mã QR của chính nó ngay bên dưới, xếp cạnh nhau —
+              để một dòng dài rồi thả hai mã QR bên dưới thì không biết mã nào của
+              ngân hàng nào, mà dòng đó cũng bị ngắt lung tung. */}
+          <tr>
+            <td style={plain} />
+            <td style={plain}>
+              <div style={{ display: 'flex', gap: '26px', alignItems: 'flex-start' }}>
+                {q.bank.lines.map((line, i) => (
+                  <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                    <span style={{ fontSize: '14px', whiteSpace: 'nowrap' }}>{line}</span>
+                    {branding.qr[i] && (
+                      <img src={branding.qr[i].dataUrl} alt="" style={{ height: '118px' }} />
+                    )}
+                  </div>
                 ))}
-              </td>
-              <td style={plain} colSpan={7} />
-            </tr>
-          )}
+              </div>
+            </td>
+            <td style={plain} colSpan={7} />
+          </tr>
+
           <tr style={{ height: '54px' }}>
             <td colSpan={9} />
           </tr>

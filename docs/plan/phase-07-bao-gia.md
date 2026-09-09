@@ -1,4 +1,4 @@
-# PHA 7 — XUẤT BÁO GIÁ EXCEL
+# PHA 7 — XUẤT BÁO GIÁ
 
 ## Mục tiêu
 Từ bo đang mở trong app, xuất ra file báo giá Excel theo đúng mẫu Thiên Lam PCB đang dùng.
@@ -7,10 +7,22 @@ Hai form mẫu ở [templates/bao-gia/](../../templates/bao-gia/):
 - `Bao gia Thanh Huy 07_09_26.xlsm` — khách lẻ, **không VAT**
 - `Bao gia Dang Loc VAT 13_08_26.xlsm` — khách công ty, **có VAT 8%**
 
-## Vì sao chọn Excel (không phải PDF)
-PDF (jsPDF/pdfmake) không có sẵn glyph tiếng Việt, phải nhúng font Roboto/Noto và xử lý encoding. Excel dùng UTF-8, chạy ngay. Quan trọng hơn: báo giá cần **sửa được** — khách và người lập đều chỉnh giá, thêm dòng, tính lại.
+## Định dạng: PDF (đã đổi so với dự kiến ban đầu)
 
-Tách phần **dữ liệu báo giá** khỏi phần **xuất file**, sau này thêm PDF chỉ viết thêm một bộ xuất.
+Kế hoạch ban đầu chọn Excel và gạt PDF đi, vì jsPDF/pdfmake không có sẵn glyph tiếng
+Việt — phải nhúng cả bộ Roboto/Noto rồi tự tính ngắt dòng, ngắt trang.
+
+Thực tế dùng thì bản gửi khách phải là PDF. Và cái khó về font hoá ra vòng qua được:
+**in chính bản Xem trước** bằng `printToPDF` của Electron. Chữ tiếng Việt dùng font hệ
+thống nên hiện đúng, bố cục thì đã có sẵn ở component xem trước, không phải viết lại
+lần thứ hai.
+
+Bộ xuất Excel từng làm xong và chạy được, nhưng đã bỏ khi chốt chỉ dùng PDF — bỏ luôn
+cả `exceljs`, nhẹ bớt ~936 kB bundle. Cần lấy lại thì nó nằm ở commit
+`feat: Export Excel quotations, and open several boards at once`.
+
+Phần **dữ liệu báo giá** vẫn tách khỏi phần **xuất file**, nên thêm định dạng khác chỉ
+là viết thêm một bộ xuất.
 
 ---
 
@@ -95,6 +107,18 @@ suất, người lập, gợi ý ghi chú) nằm ở [`src/config/quotation-defa
 — sửa thẳng ở đó, không cần đụng code. Panel vẫn cho chỉnh từng lần xuất.
 
 ### Làm thêm sau khi chạy thử
+
+- [x] **Logo và mã QR.** Cả bốn ảnh lấy ra từ chính hai file `.xlsm` mẫu (`xl/media/`).
+  Khách lẻ dùng logo Thiên Lam PCB kèm hai mã VietQR; khách công ty dùng logo Bạch Vân,
+  form mẫu không kèm QR. Nội dung hai mã đã giải ra để gán nhãn cho chắc: BIN 970436 →
+  Vietcombank 0331000508424, BIN 970407 → Techcombank 19035914489015. Mỗi mã xếp ngay
+  dưới đúng dòng tài khoản của nó.
+- [x] **Tên khách đoán từ thư mục.** Thư mục việc xếp kiểu
+  `…\<TÊN KHÁCH>\<năm>\<ngày>\`, nên lấy đoạn đứng ngay trước đoạn trông như năm.
+  Không thấy đoạn năm thì để trống cho người lập gõ, chứ không đoán bừa.
+- [x] **Lưu PDF về đúng thư mục chứa gerber.** Từ Electron 32 `File.path` bị bỏ, phải
+  hỏi qua `webUtils.getPathForFile` trong preload.
+
 
 - [x] **Mở nhiều bo cùng lúc.** Trước đây `parseInputFiles` dồn mọi file thả vào
   chung một `rawFiles`, nên thả hai ZIP ra một bo lẫn lộn và `projectName` bị

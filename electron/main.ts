@@ -80,14 +80,18 @@ ipcMain.handle(
 // phải nhúng font tiếng Việt — cửa sổ Chromium dùng font hệ thống là ra đúng chữ.
 ipcMain.handle(
   'quotation:pdf',
-  async (_event, payload: { fileName: string; html: string }) => {
+  async (_event, payload: { fileName: string; html: string; defaultDir?: string }) => {
+    // Mặc định lưu ngay cạnh file gerber vừa nạp — thư mục việc của khách đó.
+    const defaultPath = payload.defaultDir
+      ? path.join(payload.defaultDir, payload.fileName)
+      : payload.fileName
     const target = win
       ? await dialog.showSaveDialog(win, {
           title: 'Lưu báo giá PDF',
-          defaultPath: payload.fileName,
+          defaultPath,
           filters: [{ name: 'PDF', extensions: ['pdf'] }],
         })
-      : await dialog.showSaveDialog({ defaultPath: payload.fileName })
+      : await dialog.showSaveDialog({ defaultPath })
 
     if (target.canceled || !target.filePath) return { canceled: true }
 

@@ -16,7 +16,7 @@
   "banks": {
     "personal": {
       "holder": "PHẠM ĐÔNG GIANG",
-      "lines": ["Vietcombank 0331000508424          Techcombank 19035914489015"]
+      "lines": ["Vietcombank 0331000508424", "Techcombank 19035914489015"]
     },
     "company": {
       "holder": "CÔNG TY TNHH ĐIỆN TỬ BẠCH VÂN",

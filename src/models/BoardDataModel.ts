@@ -24,6 +24,11 @@ export interface Board {
   ignoredFiles: string[]
   /** File Gerber/Drill mà parser không đọc được */
   failedFiles: { name: string; reason: string }[]
+  /**
+   * Thư mục chứa file gerber trên đĩa. Chỉ có khi chạy trong Electron.
+   * Dùng để đoán tên khách và để mặc định chỗ lưu báo giá về đúng thư mục đó.
+   */
+  sourceDir: string
 }
 
 /**
@@ -56,6 +61,7 @@ const emptyBoard = (): Board => ({
   maskColor: DEFAULT_MASK_COLOR,
   ignoredFiles: [],
   failedFiles: [],
+  sourceDir: '',
 })
 
 let boards: Board[] = []
@@ -95,7 +101,7 @@ const updateActive = (fn: (board: Board) => Board) => {
   commit()
 }
 
-const toBoard = (data: BoardParsedData): Board => ({
+const toBoard = (data: BoardParsedData, sourceDir = ''): Board => ({
   id: nextBoardId(),
   projectName: data.projectName,
   layers: data.layers,
@@ -108,15 +114,19 @@ const toBoard = (data: BoardParsedData): Board => ({
   maskColor: lastMaskColor,
   ignoredFiles: data.ignoredFiles ?? [],
   failedFiles: data.failedFiles ?? [],
+  sourceDir,
 })
 
 export const BoardDataModel = {
   getState: () => snapshot,
 
-  /** Mở thêm bo (không đóng bo cũ) và chuyển sang bo cuối cùng vừa mở. */
-  addBoards: (list: BoardParsedData[]) => {
+  /**
+   * Mở thêm bo (không đóng bo cũ) và chuyển sang bo cuối cùng vừa mở.
+   * `sourceDirs` xếp cùng thứ tự với `list`, rỗng nếu không biết đường dẫn.
+   */
+  addBoards: (list: BoardParsedData[], sourceDirs: string[] = []) => {
     if (list.length === 0) return
-    const added = list.map(toBoard)
+    const added = list.map((data, i) => toBoard(data, sourceDirs[i] ?? ''))
     boards = [...boards, ...added]
     activeBoardId = added[added.length - 1].id
     commit()

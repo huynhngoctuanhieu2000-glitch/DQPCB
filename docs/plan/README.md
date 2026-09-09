@@ -13,7 +13,7 @@ Các pha được sắp xếp theo thứ tự triển khai đề xuất (pha sau
 | 4 | DFM Rule Check tự động | [phase-04-dfm-rulecheck.md](phase-04-dfm-rulecheck.md) | 📋 Kế hoạch |
 | 5 | Ghép Panel (Panelization) | [phase-05-panelization.md](phase-05-panelization.md) | 📋 Kế hoạch |
 | 6 | Xuất file (Gerber panel mới, PDF, PNG, báo cáo DFM) | [phase-06-export.md](phase-06-export.md) | 📋 Kế hoạch |
-| 7 | Xuất báo giá Excel theo mẫu Thiên Lam PCB | [phase-07-bao-gia-excel.md](phase-07-bao-gia-excel.md) | ✅ Xong |
+| 7 | Xuất báo giá PDF theo mẫu Thiên Lam PCB | [phase-07-bao-gia.md](phase-07-bao-gia.md) | ✅ Xong |
 
 ## Nguyên tắc chung
 

@@ -29,6 +29,8 @@ export interface ParsedGerberLayer {
 
 export interface BoardParsedData {
   projectName: string
+  /** Tên file archive nguồn; rỗng nếu là các file gerber rời. */
+  sourceFile?: string
   layers: ParsedGerberLayer[]
   bounds: {
     minX: number
@@ -479,6 +481,8 @@ function convertIncrementalToAbsolute(content: string): string {
  */
 interface InputBundle {
   projectName: string
+  /** Tên file archive đã sinh ra gói này — để ghép lại đường dẫn thật ở tầng UI. */
+  sourceFile: string
   rawFiles: { name: string; content: string }[]
   orcadLisText: string
   orcadGtdText: string
@@ -505,6 +509,7 @@ export class GerberParser {
     // File Gerber rời thả cùng lượt thì thuộc về cùng một bo.
     const loose: InputBundle = {
       projectName: 'PCB_Project',
+      sourceFile: '',
       rawFiles: [],
       orcadLisText: '',
       orcadGtdText: '',
@@ -556,7 +561,7 @@ export class GerberParser {
             console.warn('Could not read zip entry:', entryName, e)
           }
         }
-        bundles.push({ projectName, rawFiles, orcadLisText, orcadGtdText })
+        bundles.push({ projectName, sourceFile: file.name, rawFiles, orcadLisText, orcadGtdText })
       } else if (lowerName.endsWith('.rar')) {
         projectName = file.name.replace(/\.[^/.]+$/, '')
         const arrayBuffer = await file.arrayBuffer()
@@ -607,7 +612,7 @@ export class GerberParser {
               rawFiles.push({ name: baseName, content })
             }
           }
-          bundles.push({ projectName, rawFiles, orcadLisText, orcadGtdText })
+          bundles.push({ projectName, sourceFile: file.name, rawFiles, orcadLisText, orcadGtdText })
         } catch (e) {
           console.error('Failed to parse RAR:', e)
           throw new Error('Không thể đọc file RAR. Vui lòng đảm bảo thư viện node-unrar-js được cài đặt đúng cách.')
@@ -636,7 +641,7 @@ export class GerberParser {
 
   /** Dựng một bo hoàn chỉnh từ một gói file đã giải nén. */
   private static async buildBoard(bundle: InputBundle): Promise<BoardParsedData> {
-    const { projectName, orcadLisText, orcadGtdText } = bundle
+    const { projectName, sourceFile, orcadLisText, orcadGtdText } = bundle
     let rawFiles = bundle.rawFiles
 
     // Loại file phụ trợ (report / aperture list / BOM / ảnh…) trước khi phân loại
@@ -909,6 +914,7 @@ export class GerberParser {
 
     return {
       projectName,
+      sourceFile,
       layers: parsedLayers,
       bounds: {
         minX: globalMinX,

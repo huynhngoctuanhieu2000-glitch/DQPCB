@@ -44,7 +44,20 @@ export const Layout: React.FC = () => {
 
     try {
       const parsedBoards = await GerberParser.parseInputFiles(files)
-      BoardDataModel.addBoards(parsedBoards)
+      // Ghép lại thư mục thật của từng bo: parser báo bo đến từ archive nào, còn
+      // đường dẫn thì chỉ Electron mới cho biết (từ bản 32 `File.path` đã bị bỏ).
+      const dirByFile = new Map<string, string>()
+      for (const file of files) {
+        const full = window.electronFiles?.getPathForFile(file) ?? ''
+        if (full) dirByFile.set(file.name, full.replace(/[\\/][^\\/]*$/, ''))
+      }
+      // Gói file gerber rời không có archive nguồn (sourceFile rỗng) nên tra không ra;
+      // mà thả cùng lượt thì chúng ở chung một thư mục, lấy tạm cái đầu tiên.
+      const fallbackDir = [...dirByFile.values()][0] ?? ''
+      const sourceDirs = parsedBoards.map(
+        (b) => dirByFile.get(b.sourceFile ?? '') ?? fallbackDir
+      )
+      BoardDataModel.addBoards(parsedBoards, sourceDirs)
     } catch (err: any) {
       console.error('Failed to parse Gerber files:', err)
       setErrorMessage(err?.message || 'Failed to read files. Please ensure it is a valid Gerber ZIP.')

@@ -12,15 +12,12 @@ import {
   itemFromBoard,
   QUOTATION_DEFAULTS,
   subtotal,
-  suggestedFileName,
   vatAmount,
   grandTotal,
 } from './QuotationModel'
 import type { Quotation, QuotationItem } from './QuotationModel'
-import { exportQuotationToXlsx } from './exportExcel'
 import { exportQuotationToPdf } from './exportPdf'
 import { QuotationPreview } from './QuotationPreview'
-import { saveXlsx } from './saveFile'
 
 const money = (n: number) => n.toLocaleString('vi-VN')
 
@@ -80,18 +77,12 @@ export const QuotationPanel: React.FC<{
     [q]
   )
 
-  /**
-   * PDF là bản gửi khách. Excel giữ lại vì báo giá còn phải sửa giá, thêm bớt dòng —
-   * thư mục việc thật của anh Hiếu có cả hai file cho mỗi đơn.
-   */
-  const runExport = async (kind: 'pdf' | 'xlsx') => {
+  const handleExport = async () => {
     setBusy(true)
     setStatus(null)
     try {
-      const res =
-        kind === 'pdf'
-          ? await exportQuotationToPdf(q)
-          : await saveXlsx(await exportQuotationToXlsx(q), suggestedFileName(q))
+      // Lưu mặc định ngay cạnh file gerber vừa nạp.
+      const res = await exportQuotationToPdf(q, board.sourceDir)
       if (res.canceled) {
         setStatus(null)
       } else {
@@ -144,7 +135,7 @@ export const QuotationPanel: React.FC<{
             </button>
           ))}
           <span style={S.tabHint}>
-            Xem trước dựng đúng bố cục sẽ ghi ra file Excel.
+            Xem trước dựng đúng bố cục sẽ in ra PDF.
           </span>
         </div>
 
@@ -425,18 +416,10 @@ export const QuotationPanel: React.FC<{
             Đóng
           </button>
           <button
-            onClick={() => runExport('xlsx')}
-            disabled={busy}
-            style={{ ...S.secondaryBtn, ...(busy ? S.disabled : null) }}
-            title="Bản sửa được — đổi giá, thêm bớt dòng"
-          >
-            Xuất Excel
-          </button>
-          <button
-            onClick={() => runExport('pdf')}
+            onClick={handleExport}
             disabled={busy}
             style={{ ...S.primaryBtn, ...(busy ? S.disabled : null) }}
-            title="Bản gửi khách"
+            title={board.sourceDir ? `Lưu vào ${board.sourceDir}` : 'Chọn chỗ lưu ở hộp thoại'}
           >
             {busy ? 'Đang xuất…' : '⬇ Xuất PDF'}
           </button>
