@@ -3,6 +3,8 @@ import { Viewer2DWebGL } from '../modules/viewer2d/Viewer2D.WebGL'
 import { BoardDataModel } from '../models/BoardDataModel'
 import type { BoardState } from '../models/BoardDataModel'
 import { GerberParser } from '../core/GerberParser'
+import { MASK_COLORS } from '../models/MaskColors'
+import { QuotationPanel } from '../modules/quotation/QuotationPanel'
 import JSZip from 'jszip'
 
 export const Layout: React.FC = () => {
@@ -10,7 +12,11 @@ export const Layout: React.FC = () => {
   const [isDraggingOver, setIsDraggingOver] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
+  const [showQuotation, setShowQuotation] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  // Kích thước khung chia đôi — nhãn kích thước cần biết để bám sát mép bo
+  const splitRef = useRef<HTMLDivElement>(null)
+  const [splitSize, setSplitSize] = useState<{ w: number; h: number } | null>(null)
 
   useEffect(() => {
     return BoardDataModel.subscribe((state) => {
@@ -18,14 +24,27 @@ export const Layout: React.FC = () => {
     })
   }, [])
 
+  useEffect(() => {
+    const el = splitRef.current
+    if (!el) return
+    const ro = new ResizeObserver(() =>
+      setSplitSize({ w: el.clientWidth, h: el.clientHeight })
+    )
+    ro.observe(el)
+    setSplitSize({ w: el.clientWidth, h: el.clientHeight })
+    return () => ro.disconnect()
+    // isLoaded phải có trong deps: khi đổi sang "2 Mặt" lúc chưa nạp bo thì khung
+    // chia đôi chưa tồn tại, ref còn null nên observer không gắn được.
+  }, [boardState.activeView, boardState.isLoaded])
+
   const processFiles = async (files: File[]) => {
     if (!files || files.length === 0) return
     setIsLoading(true)
     setErrorMessage(null)
 
     try {
-      const parsedData = await GerberParser.parseInputFiles(files)
-      BoardDataModel.loadBoardData(parsedData)
+      const parsedBoards = await GerberParser.parseInputFiles(files)
+      BoardDataModel.addBoards(parsedBoards)
     } catch (err: any) {
       console.error('Failed to parse Gerber files:', err)
       setErrorMessage(err?.message || 'Failed to read files. Please ensure it is a valid Gerber ZIP.')
@@ -72,8 +91,8 @@ export const Layout: React.FC = () => {
         text: async () => '',
       } as any
 
-      const parsedData = await GerberParser.parseInputFiles([mockFile])
-      BoardDataModel.loadBoardData(parsedData)
+      const parsedBoards = await GerberParser.parseInputFiles([mockFile])
+      BoardDataModel.addBoards(parsedBoards)
     } catch (err: any) {
       setErrorMessage(err?.message || 'Failed to load demo board')
     } finally {
@@ -197,6 +216,22 @@ export const Layout: React.FC = () => {
             {boardState.activeView === '3D' ? '🕶️ 2D View' : '🧊 3D View'}
           </button>
           <button
+            onClick={() => setShowQuotation(true)}
+            title="Lập báo giá Excel từ bo đang mở"
+            style={{
+              backgroundColor: '#0ea5e9',
+              color: '#ffffff',
+              border: 'none',
+              borderRadius: '4px',
+              padding: '3px 12px',
+              fontSize: '12px',
+              cursor: 'pointer',
+              fontWeight: 600,
+            }}
+          >
+            📄 Báo giá
+          </button>
+          <button
             onClick={() => fileInputRef.current?.click()}
             style={{
               backgroundColor: '#10b981',
@@ -299,23 +334,54 @@ export const Layout: React.FC = () => {
           </button>
         </div>
 
-        {/* Project Tab indicator */}
-        {boardState.projectName && (
-          <div
-            style={{
-              marginLeft: '12px',
-              display: 'flex',
-              alignItems: 'center',
-              backgroundColor: '#1e293b',
-              padding: '3px 10px',
-              borderRadius: '4px',
-              fontSize: '12px',
-              color: '#38bdf8',
-              border: '1px solid #334155',
-              gap: '8px',
-            }}
-          >
-            <span>📁 {boardState.projectName}</span>
+        {/* Tab các bo đang mở — thả nhiều ZIP thì mỗi ZIP một bo */}
+        {boardState.boards.length > 0 && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '4px', overflowX: 'auto' }}>
+            {boardState.boards.map((b) => {
+              const isActive = b.id === boardState.activeBoardId
+              return (
+                <div
+                  key={b.id}
+                  onClick={() => BoardDataModel.setActiveBoard(b.id)}
+                  title={b.projectName}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    padding: '3px 6px 3px 10px',
+                    borderRadius: '4px',
+                    fontSize: '12px',
+                    cursor: 'pointer',
+                    whiteSpace: 'nowrap',
+                    backgroundColor: isActive ? '#1e293b' : 'transparent',
+                    color: isActive ? '#38bdf8' : '#94a3b8',
+                    border: `1px solid ${isActive ? '#334155' : 'transparent'}`,
+                  }}
+                >
+                  <span style={{ maxWidth: '180px', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    📁 {b.projectName}
+                  </span>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      BoardDataModel.closeBoard(b.id)
+                    }}
+                    title="Đóng bo này"
+                    style={{
+                      background: 'transparent',
+                      border: 'none',
+                      color: '#64748b',
+                      cursor: 'pointer',
+                      fontSize: '11px',
+                      padding: '0 2px',
+                      lineHeight: 1,
+                    }}
+                  >
+                    ✕
+                  </button>
+                </div>
+              )
+            })}
           </div>
         )}
 
@@ -748,30 +814,34 @@ export const Layout: React.FC = () => {
               ước bản vẽ lắp ráp của nhà máy. */}
           {boardState.isLoaded &&
             (boardState.activeView === 'Both' ? (
-              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
-                <div style={{ flex: 1, display: 'flex', minHeight: 0 }}>
-                  <div style={{ flex: 1, minWidth: 0, borderRight: '1px solid #282b34' }}>
-                    <Viewer2DWebGL viewOverride="Real" faceSide="top" hideBadge />
-                  </div>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <Viewer2DWebGL viewOverride="Real" faceSide="bottom" hideBadge />
-                  </div>
+              <div
+                ref={splitRef}
+                style={{
+                  flex: 1,
+                  display: 'flex',
+                  minHeight: 0,
+                  position: 'relative',
+                  // Khoảng trắng giữa hai khung: bỏ đường kẻ ngăn rồi thì lúc zoom vào,
+                  // hai nền bo chạm nhau và đọc thành một khối liền. Dải nền cùng màu
+                  // với nền canvas nên tách được mà không phải vẽ lại vạch ngăn.
+                  gap: '28px',
+                  backgroundColor: '#eeeeee',
+                }}
+              >
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <Viewer2DWebGL viewOverride="Real" faceSide="top" hideBadge fitPadding={SPLIT_FIT_PADDING} />
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <Viewer2DWebGL viewOverride="Real" faceSide="bottom" hideBadge fitPadding={SPLIT_FIT_PADDING} />
                 </div>
 
-                {/* Thanh dưới: chọn màu phủ bo + đường ghi kích thước */}
-                <div
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '16px',
-                    padding: '8px 16px',
-                    borderTop: '1px solid #282b34',
-                    backgroundColor: '#16181e',
-                    flexShrink: 0,
-                  }}
-                >
-                  <DimensionBar bounds={boardState.bounds} />
-                </div>
+                {/* Nhãn kích thước nổi giữa hai khung, sát bo — thanh chạy hết chiều
+                    ngang ở đáy trông rời rạc khi chụp màn hình. */}
+                <BoardBadge
+                  bounds={boardState.bounds}
+                  layerCount={boardState.layerCount}
+                  panel={splitSize}
+                />
               </div>
             ) : (
               <Viewer2DWebGL />
@@ -872,39 +942,69 @@ export const Layout: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {showQuotation && (
+        <QuotationPanel board={boardState} onClose={() => setShowQuotation(false)} />
+      )}
     </div>
   )
 }
 
-// Các màu phủ bo nhà máy thực sự có. Trắng/vàng để cuối vì chúng đổi luôn màu chữ in lụa.
-const MASK_COLORS = [
-  { hex: '#1c7a3c', label: 'Xanh lá' },
-  { hex: '#12395c', label: 'Xanh dương' },
-  { hex: '#7a1c24', label: 'Đỏ' },
-  { hex: '#1a1a1a', label: 'Đen' },
-  { hex: '#4a1c6b', label: 'Tím' },
-  { hex: '#c8b400', label: 'Vàng' },
-  { hex: '#e8e8e8', label: 'Trắng' },
-]
+// Lề khi fit bo trong khung chia đôi — dùng chung cho viewer và nhãn kích thước
+// để hai bên tính ra cùng một vị trí mép bo.
+const SPLIT_FIT_PADDING = 1.4
 
-/** Đường ghi kích thước bo, kiểu mũi tên hai đầu như bản vẽ kỹ thuật. */
-const DimensionBar: React.FC<{ bounds: BoardState['bounds'] }> = ({ bounds }) => {
+
+/**
+ * Nhãn kích thước + số lớp, bám ngay dưới mép bo.
+ * Bo được fit vào khung theo cùng công thức của viewer: chiều cao thế giới nhìn thấy
+ * là max(cao, rộng/tỉ-lệ-khung) × hệ số lề. Bo bè ngang sẽ fit theo chiều rộng nên chỉ
+ * chiếm một dải mỏng giữa khung — neo nhãn vào đáy khung thì nó rơi rất xa bo.
+ */
+const BoardBadge: React.FC<{
+  bounds: BoardState['bounds']
+  layerCount: number
+  panel: { w: number; h: number } | null
+}> = ({ bounds, layerCount, panel }) => {
   if (!bounds) return null
-  const arrow: React.CSSProperties = {
-    width: 0,
-    height: 0,
-    borderTop: '4px solid transparent',
-    borderBottom: '4px solid transparent',
+
+  let top = '88%'
+  if (panel && panel.w > 0 && panel.h > 0) {
+    const aspect = panel.w / 2 / panel.h // mỗi mặt chiếm nửa chiều ngang
+    // Phải TRÙNG fitPadding truyền cho hai khung, nếu lệch thì nhãn rơi sai chỗ.
+    const span = Math.max(bounds.heightMM, bounds.widthMM / aspect) * SPLIT_FIT_PADDING
+    const frac = 0.5 + bounds.heightMM / 2 / span
+    top = `calc(${Math.min(frac, 0.95) * 100}% + 20px)`
   }
+
   return (
-    <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
-      <div style={{ ...arrow, borderRight: '6px solid #64748b' }} />
-      <div style={{ flex: 1, height: '1px', backgroundColor: '#64748b' }} />
-      <span style={{ fontSize: '12px', color: '#e2e8f0', fontWeight: 600, whiteSpace: 'nowrap' }}>
+    <div
+      style={{
+        position: 'absolute',
+        left: '50%',
+        top,
+        transform: 'translateX(-50%)',
+        display: 'flex',
+        alignItems: 'center',
+        gap: '10px',
+        padding: '6px 14px',
+        borderRadius: 999,
+        backgroundColor: 'rgba(15,23,42,0.9)',
+        border: '1px solid #334155',
+        boxShadow: '0 2px 10px rgba(0,0,0,0.35)',
+        fontSize: '12px',
+        fontWeight: 600,
+        color: '#e2e8f0',
+        whiteSpace: 'nowrap',
+        pointerEvents: 'none',
+        zIndex: 6,
+      }}
+    >
+      <span>{layerCount} lớp</span>
+      <span style={{ color: '#475569' }}>|</span>
+      <span>
         {bounds.widthMM.toFixed(2)} × {bounds.heightMM.toFixed(2)} mm
       </span>
-      <div style={{ flex: 1, height: '1px', backgroundColor: '#64748b' }} />
-      <div style={{ ...arrow, borderLeft: '6px solid #64748b' }} />
     </div>
   )
 }

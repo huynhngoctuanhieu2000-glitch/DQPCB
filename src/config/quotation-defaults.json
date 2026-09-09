@@ -1,0 +1,64 @@
+{
+  "note": "Nội dung cố định của báo giá — sửa trực tiếp ở đây, không cần sửa code. Người lập vẫn chỉnh được từng lần xuất trong panel Báo giá.",
+
+  "company": {
+    "name": "GIA CÔNG MẠCH IN NHANH RẺ CHẤT LƯỢNG - THIÊN LAM PCB",
+    "address": "Địa chỉ: 43K/24 Đường 160, Phường Tăng Nhơn Phú A, Tp. Hồ Chí Minh.",
+    "contact": "Hotline: 0964510253 ---Email: thienlampcb@gmail.com --Website: www.thienlampcb.com"
+  },
+
+  "title": "BẢNG BÁO GIÁ GIA CÔNG MẠCH IN PCB",
+  "intro": "Lời đầu tiên, xin trân trọng cảm ơn quý khách hàng đã quan tâm đến sản phẩm mạch in pcb chúng tôi. Thiên Lam PCB xin gửi đến quý khách hàng bảng báo giá với chi tiết như sau:",
+
+  "preparedBy": "Huỳnh Ngọc Tuấn Hiếu",
+  "vatRate": 0.08,
+
+  "banks": {
+    "personal": {
+      "holder": "PHẠM ĐÔNG GIANG",
+      "lines": ["Vietcombank 0331000508424          Techcombank 19035914489015"]
+    },
+    "company": {
+      "holder": "CÔNG TY TNHH ĐIỆN TỬ BẠCH VÂN",
+      "lines": ["STK: 50704047 Tại Ngân hàng ACB - Chi Nhánh Lê Văn Việt Thủ Đức"]
+    }
+  },
+
+  "notesNoVat": [
+    "-  Giá trên đã bao gồm phí ship đến tận nhà tại TPHCM",
+    "   (Quý khách không cần phải trả thêm bất cứ chi phí phát sinh nào)",
+    "-  Giá trên chưa bao gồm VAT 8%",
+    "- Thời gian nhận mạch hỏa tốc ở TPHCM là 5-6 ngày kể từ ngày thanh toán",
+    "- Thời gian nhận mạch chất lượng cao ở TPHCM là từ 8-10 ngày kể từ ngày thanh toán",
+    "- Quý khách vui lòng xác nhận đơn hàng trước 17h hàng ngày.",
+    "- Báo giá có hiệu lực 7 ngày kể từ ngày báo giá."
+  ],
+
+  "notesVat": [
+    "-  Giá trên đã bao gồm phí ship đến tận nhà tại TPHCM",
+    "   (Quý khách không cần phải trả thêm bất cứ chi phí phát sinh nào)",
+    "- Thời gian nhận mạch hỏa tốc ở TPHCM là 4-5 ngày kể từ ngày thanh toán",
+    "- Thời gian nhận mạch chất lượng cao ở TPHCM là từ 8-10 ngày kể từ ngày thanh toán",
+    "- Quý khách vui lòng xác nhận đơn hàng trước 17h hàng ngày.",
+    "- Báo giá có hiệu lực 7 ngày kể từ ngày báo giá."
+  ],
+
+  "noteSuggestions": [
+    "Stencil Khung Top",
+    "Stencil Khung Bot",
+    "Hỗ trợ phí ship đến tận nhà",
+    "Hàng gấp - hoả tốc",
+    "Phủ 2 mặt",
+    "Không phủ sơn xanh",
+    "Bo theo file khách gửi",
+    "Đã bao gồm phí bo góc / phay CNC"
+  ],
+
+  "defaultSpecs": [
+    "1. Chất liệu phíp - Base Material: FR4 - Phíp sợi thủy tinh",
+    "2. Độ dày phíp - PCB Thickness: 1.6 (mm)",
+    "3. Độ dày đồng - Outer Copper Weight: 1 (Oz)",
+    "4. Màu phủ chữ - Silkscreen: Trắng - White.",
+    "5. Kiểu mạ - Surface Finish: Mạ thiếc - HASL"
+  ]
+}

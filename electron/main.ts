@@ -1,4 +1,5 @@
-import { app, BrowserWindow, Menu } from 'electron'
+import { app, BrowserWindow, Menu, dialog, ipcMain } from 'electron'
+import fs from 'node:fs/promises'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -54,6 +55,24 @@ app.on('activate', () => {
     createWindow()
   }
 })
+
+// Lưu file báo giá: renderer dựng xong bytes rồi nhờ main mở hộp thoại "Save as".
+ipcMain.handle(
+  'quotation:save',
+  async (_event, payload: { fileName: string; data: Uint8Array }) => {
+    const target = win
+      ? await dialog.showSaveDialog(win, {
+          title: 'Lưu báo giá',
+          defaultPath: payload.fileName,
+          filters: [{ name: 'Excel Workbook', extensions: ['xlsx'] }],
+        })
+      : await dialog.showSaveDialog({ defaultPath: payload.fileName })
+
+    if (target.canceled || !target.filePath) return { canceled: true }
+    await fs.writeFile(target.filePath, Buffer.from(payload.data))
+    return { canceled: false, filePath: target.filePath }
+  }
+)
 
 app.whenReady().then(() => {
   Menu.setApplicationMenu(null)

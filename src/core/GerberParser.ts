@@ -473,14 +473,49 @@ function convertIncrementalToAbsolute(content: string): string {
   return outLines.join('\n')
 }
 
+/**
+ * Một gói file đã giải nén, tương ứng ĐÚNG MỘT bo.
+ * Mỗi archive thả vào là một gói; các file Gerber rời thả cùng lượt gộp thành một gói.
+ */
+interface InputBundle {
+  projectName: string
+  rawFiles: { name: string; content: string }[]
+  orcadLisText: string
+  orcadGtdText: string
+}
+
 export class GerberParser {
-  static async parseInputFiles(files: File[]): Promise<BoardParsedData> {
-    let rawFiles: { name: string; content: string }[] = []
-    let projectName = 'PCB_Project'
-    let orcadLisText = ''
-    let orcadGtdText = ''
+  /**
+   * Đọc các file người dùng thả vào, trả về MỘT BO CHO MỖI ARCHIVE.
+   *
+   * Trước đây mọi file được dồn chung vào một `rawFiles` nên thả hai ZIP ra một bo
+   * lẫn lộn, và `projectName` bị archive sau ghi đè. Giờ mỗi ZIP/RAR đứng riêng.
+   */
+  static async parseInputFiles(files: File[]): Promise<BoardParsedData[]> {
+    const bundles = await GerberParser.extractBundles(files)
+    const boards: BoardParsedData[] = []
+    for (const bundle of bundles) {
+      boards.push(await GerberParser.buildBoard(bundle))
+    }
+    return boards
+  }
+
+  private static async extractBundles(files: File[]): Promise<InputBundle[]> {
+    const bundles: InputBundle[] = []
+    // File Gerber rời thả cùng lượt thì thuộc về cùng một bo.
+    const loose: InputBundle = {
+      projectName: 'PCB_Project',
+      rawFiles: [],
+      orcadLisText: '',
+      orcadGtdText: '',
+    }
 
     for (const file of files) {
+      let rawFiles: { name: string; content: string }[] = []
+      let projectName = 'PCB_Project'
+      let orcadLisText = ''
+      let orcadGtdText = ''
+
       const lowerName = file.name.toLowerCase()
       if (lowerName.endsWith('.zip')) {
         projectName = file.name.replace(/\.[^/.]+$/, '')
@@ -521,6 +556,7 @@ export class GerberParser {
             console.warn('Could not read zip entry:', entryName, e)
           }
         }
+        bundles.push({ projectName, rawFiles, orcadLisText, orcadGtdText })
       } else if (lowerName.endsWith('.rar')) {
         projectName = file.name.replace(/\.[^/.]+$/, '')
         const arrayBuffer = await file.arrayBuffer()
@@ -571,24 +607,37 @@ export class GerberParser {
               rawFiles.push({ name: baseName, content })
             }
           }
+          bundles.push({ projectName, rawFiles, orcadLisText, orcadGtdText })
         } catch (e) {
           console.error('Failed to parse RAR:', e)
           throw new Error('Không thể đọc file RAR. Vui lòng đảm bảo thư viện node-unrar-js được cài đặt đúng cách.')
         }
       } else {
         if (files.length === 1) {
-          projectName = file.name.replace(/\.[^/.]+$/, '')
+          loose.projectName = file.name.replace(/\.[^/.]+$/, '')
         }
         try {
           const content = await file.text()
           if (content && content.trim().length > 0) {
-            rawFiles.push({ name: file.name, content })
+            loose.rawFiles.push({ name: file.name, content })
           }
         } catch (e) {
           console.warn('Could not read file:', file.name, e)
         }
       }
     }
+
+    if (loose.rawFiles.length > 0) bundles.push(loose)
+    if (bundles.length === 0) {
+      throw new Error('No valid Gerber or Drill files found in selection.')
+    }
+    return bundles
+  }
+
+  /** Dựng một bo hoàn chỉnh từ một gói file đã giải nén. */
+  private static async buildBoard(bundle: InputBundle): Promise<BoardParsedData> {
+    const { projectName, orcadLisText, orcadGtdText } = bundle
+    let rawFiles = bundle.rawFiles
 
     // Loại file phụ trợ (report / aperture list / BOM / ảnh…) trước khi phân loại
     // layer — nếu không chúng sẽ nằm trong danh sách layer dưới dạng "Unknown"
