@@ -18,6 +18,7 @@ import {
 } from './QuotationModel'
 import type { Quotation, QuotationItem } from './QuotationModel'
 import { exportQuotationToXlsx } from './exportExcel'
+import { exportQuotationToPdf } from './exportPdf'
 import { QuotationPreview } from './QuotationPreview'
 import { saveXlsx } from './saveFile'
 
@@ -79,16 +80,22 @@ export const QuotationPanel: React.FC<{
     [q]
   )
 
-  const handleExport = async () => {
+  /**
+   * PDF là bản gửi khách. Excel giữ lại vì báo giá còn phải sửa giá, thêm bớt dòng —
+   * thư mục việc thật của anh Hiếu có cả hai file cho mỗi đơn.
+   */
+  const runExport = async (kind: 'pdf' | 'xlsx') => {
     setBusy(true)
     setStatus(null)
     try {
-      const bytes = await exportQuotationToXlsx(q)
-      const res = await saveXlsx(bytes, suggestedFileName(q))
+      const res =
+        kind === 'pdf'
+          ? await exportQuotationToPdf(q)
+          : await saveXlsx(await exportQuotationToXlsx(q), suggestedFileName(q))
       if (res.canceled) {
         setStatus(null)
       } else {
-        setStatus({ kind: 'ok', text: res.filePath ? `Đã lưu: ${res.filePath}` : 'Đã tải file về.' })
+        setStatus({ kind: 'ok', text: res.filePath ? `Đã lưu: ${res.filePath}` : 'Đã xuất xong.' })
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
@@ -103,7 +110,7 @@ export const QuotationPanel: React.FC<{
       <div style={S.modal} onClick={(e) => e.stopPropagation()}>
         {/* Thanh tiêu đề */}
         <div style={S.header}>
-          <span style={{ fontWeight: 600, fontSize: '14px' }}>Xuất báo giá Excel</span>
+          <span style={{ fontWeight: 600, fontSize: '14px' }}>Xuất báo giá</span>
           <div style={{ marginLeft: 'auto', display: 'flex', gap: '4px' }}>
             {[
               { label: 'Khách lẻ (không VAT)', vat: false },
@@ -417,8 +424,21 @@ export const QuotationPanel: React.FC<{
           <button onClick={onClose} style={S.secondaryBtn}>
             Đóng
           </button>
-          <button onClick={handleExport} disabled={busy} style={{ ...S.primaryBtn, ...(busy ? S.disabled : null) }}>
-            {busy ? 'Đang xuất…' : '⬇ Xuất Excel'}
+          <button
+            onClick={() => runExport('xlsx')}
+            disabled={busy}
+            style={{ ...S.secondaryBtn, ...(busy ? S.disabled : null) }}
+            title="Bản sửa được — đổi giá, thêm bớt dòng"
+          >
+            Xuất Excel
+          </button>
+          <button
+            onClick={() => runExport('pdf')}
+            disabled={busy}
+            style={{ ...S.primaryBtn, ...(busy ? S.disabled : null) }}
+            title="Bản gửi khách"
+          >
+            {busy ? 'Đang xuất…' : '⬇ Xuất PDF'}
           </button>
         </div>
       </div>

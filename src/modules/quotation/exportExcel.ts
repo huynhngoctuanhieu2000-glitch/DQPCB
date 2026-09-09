@@ -8,6 +8,7 @@
  */
 import ExcelJS from 'exceljs'
 import type { Quotation } from './QuotationModel'
+import { brandingFor, splitDataUrl } from './branding'
 
 const FONT = 'Times New Roman'
 
@@ -79,11 +80,23 @@ export const buildQuotationWorkbook = (q: Quotation): ExcelJS.Workbook => {
   const widths = [7.9, 80, 10.7, 18.4, 14, 7.4, 16.7, 16.7, 88.7]
   widths.forEach((w, i) => (ws.getColumn(i + 1).width = w))
 
-  // ---- 1. Đầu trang: ô logo (để trống) + tên & liên hệ công ty ----
+  const branding = brandingFor(q.hasVat)
+
+  // ---- 1. Đầu trang: logo + tên & liên hệ công ty ----
   ws.getRow(1).height = 90.75
   ws.getRow(2).height = 24.75
   ws.mergeCells('A1:C2')
   ws.mergeCells('D1:I2')
+
+  // Hai dòng đầu cao 115.5pt ~ 154px. Chừa lề rồi co logo theo chiều cao, bề ngang
+  // tính lại theo tỉ lệ gốc để không bị méo.
+  const logoH = 132
+  const logoW = Math.round(logoH * (branding.logo.width / branding.logo.height))
+  const logo = splitDataUrl(branding.logo.dataUrl)
+  ws.addImage(wb.addImage({ base64: logo.base64, extension: logo.extension }), {
+    tl: { col: 0.15, row: 0.1 },
+    ext: { width: logoW, height: logoH },
+  })
   style(ws.getCell('D1'), {
     text: [q.company.name, q.company.address, q.company.contact].join('\r\n'),
     size: 13,
@@ -335,8 +348,25 @@ export const buildQuotationWorkbook = (q: Quotation): ExcelJS.Workbook => {
     style(ws.getCell(r, 2), { text: line, size: 14, align: 'left', wrap: true })
   })
 
+  // Mã QR chuyển khoản, xếp cạnh nhau ngay dưới số tài khoản (form VAT không có).
+  const qrTop = sigHead + q.bank.lines.length + 1
+  let qrLeft = 1.1
+  branding.qr.forEach((img) => {
+    const h = 120
+    const w = Math.round(h * (img.width / img.height))
+    const { base64, extension } = splitDataUrl(img.dataUrl)
+    ws.addImage(wb.addImage({ base64, extension }), {
+      tl: { col: qrLeft, row: qrTop - 1 },
+      ext: { width: w, height: h },
+    })
+    // Cột B rất rộng (80 ký tự ~ 560px) nên hai mã nằm vừa cạnh nhau trong đó.
+    qrLeft += (w + 24) / 7
+  })
+
   // Chừa chỗ ký — dòng ký tên phải nằm dưới cả khối tài khoản.
-  const sigFoot = sigHead + Math.max(q.bank.lines.length, 2) + 3
+  // Có mã QR thì khối tài khoản cao thêm, dòng ký tên phải đẩy xuống theo.
+  const qrRows = branding.qr.length > 0 ? 7 : 0
+  const sigFoot = sigHead + Math.max(q.bank.lines.length, 2) + 3 + qrRows
   for (let r = sigHead + 1; r < sigFoot; r++) ws.getRow(r).height = 18
   ws.getRow(sigFoot).height = 20
   style(ws.getCell(sigFoot, 7), { text: '(Kí và ghi rõ họ tên)', size: 13 })

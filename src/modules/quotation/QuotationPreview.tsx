@@ -8,6 +8,7 @@
 import React from 'react'
 import type { Quotation } from './QuotationModel'
 import { grandTotal, subtotal, vatAmount } from './QuotationModel'
+import { brandingFor } from './branding'
 
 /** Bề rộng cột trong exportExcel.ts, quy ra phần trăm. */
 const COL_WIDTHS = [7.9, 80, 10.7, 18.4, 14, 7.4, 16.7, 16.7, 88.7]
@@ -34,6 +35,7 @@ const plain: React.CSSProperties = { padding: '2px 5px', fontSize: '11px', verti
 
 export const QuotationPreview: React.FC<{ q: Quotation }> = ({ q }) => {
   const totals = { sub: subtotal(q), vat: vatAmount(q), total: grandTotal(q) }
+  const branding = brandingFor(q.hasVat)
   const spare = Array.from({ length: SPARE_ROWS })
   const noteRows = Math.max(q.notes.length, q.defaultSpecs.length)
 
@@ -48,7 +50,13 @@ export const QuotationPreview: React.FC<{ q: Quotation }> = ({ q }) => {
         <tbody>
           {/* Đầu trang */}
           <tr style={{ height: '90px' }}>
-            <td style={cell} colSpan={3} />
+            <td style={cell} colSpan={3}>
+              <img
+                src={branding.logo.dataUrl}
+                alt=""
+                style={{ maxHeight: '84px', maxWidth: '96%', objectFit: 'contain' }}
+              />
+            </td>
             <td style={{ ...cell, fontSize: '13px', fontWeight: 700, whiteSpace: 'pre-line' }} colSpan={6}>
               {[q.company.name, q.company.address, q.company.contact].join('\n')}
             </td>
@@ -227,6 +235,17 @@ export const QuotationPreview: React.FC<{ q: Quotation }> = ({ q }) => {
               <td style={plain} colSpan={7} />
             </tr>
           ))}
+          {branding.qr.length > 0 && (
+            <tr>
+              <td style={plain} />
+              <td style={{ ...plain, display: 'flex', gap: '14px', alignItems: 'flex-start' }}>
+                {branding.qr.map((img, i) => (
+                  <img key={i} src={img.dataUrl} alt="" style={{ height: '120px' }} />
+                ))}
+              </td>
+              <td style={plain} colSpan={7} />
+            </tr>
+          )}
           <tr style={{ height: '54px' }}>
             <td colSpan={9} />
           </tr>
