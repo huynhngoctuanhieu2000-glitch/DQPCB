@@ -97,6 +97,83 @@ export const isAuxiliaryFile = (filename: string, allFilenames?: string[]): bool
 }
 
 /**
+ * Sai số lớn nhất cho phép giữa cung thật và chuỗi đoạn thẳng thay thế nó (mm).
+ * 0.02mm nhỏ hơn nét in mảnh nhất nên mắt không thấy được chỗ gãy.
+ */
+const ARC_TOLERANCE_MM = 0.02
+
+/** Bẻ một cung thành chuỗi đoạn thẳng đủ mịn. `tol` tính theo đơn vị của file. */
+const arcToLines = (seg: any, tol: number): any[] => {
+  const r = seg?.radius
+  const cx = seg?.center?.[0]
+  const cy = seg?.center?.[1]
+  const a0 = seg?.start?.[2]
+  const a1 = seg?.end?.[2]
+  if (!Number.isFinite(r) || r <= 0 || !Number.isFinite(cx) || !Number.isFinite(a0) || !Number.isFinite(a1)) {
+    return [seg]
+  }
+
+  // Cung khép kín (Gerber đa cung tư: điểm đầu trùng điểm cuối) có góc quét bằng 0.
+  // Giữ nguyên thì nó thành một điểm, mất hẳn — hiểu là cả vòng tròn.
+  let sweep = a1 - a0
+  if (Math.abs(sweep) < 1e-9) sweep = Math.PI * 2
+
+  // Bước góc lớn nhất giữ sai số cung-dây dưới tol: r(1 - cos(θ/2)) <= tol
+  const maxStep = r > tol ? 2 * Math.acos(1 - tol / r) : Math.PI
+  const n = Math.max(1, Math.min(64, Math.ceil(Math.abs(sweep) / maxStep)))
+  if (n < 2) return [seg]
+
+  const at = (i: number) => {
+    if (i === 0) return [seg.start[0], seg.start[1]]
+    if (i === n) return [seg.end[0], seg.end[1]]
+    const a = a0 + (sweep * i) / n
+    return [cx + r * Math.cos(a), cy + r * Math.sin(a)]
+  }
+  const out: any[] = []
+  for (let i = 0; i < n; i++) out.push({ type: 'line', start: at(i), end: at(i + 1) })
+  return out
+}
+
+/**
+ * Bẻ mọi cung trong các nét vẽ (imagePath) thành đoạn thẳng.
+ *
+ * web-gerber dựng nét vẽ bằng ExtrudeGeometry với `extrudePath` và `steps: 1`. Một
+ * bước dọc theo đường dẫn nghĩa là nó chỉ lấy điểm đầu và điểm cuối, nên xương sống
+ * cong bị bóp thẳng: cung bo góc 90° ra thành vát 45°, còn lỗ tròn ghép từ bốn cung
+ * ra thành hình thoi. Vùng tô (imageRegion) thì nó dựng bằng `absarc` nên đúng sẵn,
+ * không đụng tới.
+ *
+ * Mỗi đoạn tách thành một child riêng vì bộ dựng outline của thư viện từ chối child
+ * có nhiều hơn một segment ("Invalid outline segments length") — nhét cả chuỗi vào
+ * một child là mất luôn lõi bo.
+ */
+const flattenArcs = (tree: any): any => {
+  const children = tree?.children
+  if (!Array.isArray(children)) return tree
+  const tol = ARC_TOLERANCE_MM / (tree.units === 'in' ? 25.4 : 1)
+
+  let touched = false
+  const out: any[] = []
+  for (const child of children) {
+    const segs = child?.segments
+    if (child?.type !== 'imagePath' || !Array.isArray(segs) || !segs.some((s: any) => s?.type === 'arc')) {
+      out.push(child)
+      continue
+    }
+    touched = true
+    for (const seg of segs) {
+      const pieces = seg?.type === 'arc' ? arcToLines(seg, tol) : [seg]
+      for (const piece of pieces) out.push({ ...child, segments: [piece] })
+    }
+  }
+  if (!touched) return tree
+
+  const flat: any = { ...tree, children: out }
+  if (Array.isArray(tree.parts)) flat.parts = tree.parts.map(flattenArcs)
+  return flat
+}
+
+/**
  * KiCad xuất Edge_Cuts thành nhiều đoạn/cung RỜI RẠC và không theo thứ tự liền mạch
  * (các lệnh D02 nhảy vị trí). plot(tree, true) trả về mỗi đoạn là một imagePath riêng,
  * nên khi tô đặc nền bo sẽ sinh cạnh giả -> thủng mảng lớn hình "ngọn lửa".
@@ -770,7 +847,7 @@ export class GerberParser {
         const parser = createParser()
         parser.feed(fileContent)
         const plotted = plot(parser.result(), isOutline)
-        const imageTree = isOutline ? stitchOutline(plotted) : plotted
+        const imageTree = flattenArcs(isOutline ? stitchOutline(plotted) : plotted)
 
         let size: [number, number, number, number] = [0, 0, 0, 0]
         if (imageTree.size && imageTree.size.length === 4) {

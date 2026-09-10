@@ -86,6 +86,51 @@ const splitPolarityRuns = (tree: any): { erase: boolean; tree: any }[] | null =>
   return runs.map((r) => ({ erase: r.erase, tree: { ...tree, children: r.children } }))
 }
 
+/** Diện tích hình chữ nhật bao của một vòng outline, theo đơn vị của file. */
+const loopArea = (part: any): number => {
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
+  for (const child of part?.children ?? []) {
+    for (const seg of child?.segments ?? []) {
+      for (const pt of [seg.start, seg.end]) {
+        if (!pt) continue
+        minX = Math.min(minX, pt[0]); maxX = Math.max(maxX, pt[0])
+        minY = Math.min(minY, pt[1]); maxY = Math.max(maxY, pt[1])
+      }
+    }
+  }
+  if (!Number.isFinite(minX)) return 0
+  return (maxX - minX) * (maxY - minY)
+}
+
+/**
+ * Chia các vòng của lớp outline thành phần THÂN BO và phần LỖ KHOÉT.
+ *
+ * Lớp outline có thể chứa nhiều vòng kín vì hai lý do khác hẳn nhau:
+ *  - bo có lỗ phay bên trong (lỗ bắt ốc không nằm trong file khoan vì quá to so với
+ *    mũi khoan) — phải thủng;
+ *  - tấm panel gồm nhiều bo con cộng khung ngoài — mỗi vòng là một miếng vật liệu
+ *    thật, phải đặc.
+ *
+ * Phân biệt bằng độ lớn tương đối: lỗ phay thường bé xíu so với bo (lỗ 3.2mm trên bo
+ * 121×86mm chỉ chiếm 0.08%), còn một bo con trong panel 9 bo chiếm cỡ 11%. Ngưỡng 5%
+ * nằm giữa hai con số đó, cách xa cả hai bên.
+ */
+const OUTLINE_CUTOUT_MAX_RATIO = 0.05
+
+const splitOutlineLoops = (parts: any[]): { body: any[]; cutouts: any[] } => {
+  if (!Array.isArray(parts) || parts.length < 2) return { body: parts ?? [], cutouts: [] }
+  const areas = parts.map(loopArea)
+  const biggest = Math.max(...areas)
+  if (!(biggest > 0)) return { body: parts, cutouts: [] }
+  const body: any[] = []
+  const cutouts: any[] = []
+  parts.forEach((part, i) => {
+    if (areas[i] / biggest < OUTLINE_CUTOUT_MAX_RATIO) cutouts.push(part)
+    else body.push(part)
+  })
+  return body.length > 0 ? { body, cutouts } : { body: parts, cutouts: [] }
+}
+
 const hexToRgb = (hex: string) => {
   const n = parseInt(String(hex).replace('#', ''), 16)
   return Number.isFinite(n) ? [(n >> 16) & 255, (n >> 8) & 255, n & 255] : [28, 122, 60]
@@ -225,6 +270,8 @@ export const Viewer2DWebGL: React.FC<Viewer2DWebGLProps> = ({
     const maskFiles = { top: [] as string[], bottom: [] as string[] }
     /** Lớp đồng giữa của bo nhiều lớp — assembly không nhận, phải tự xếp. */
     const innerCopper: { obj: any; idx: number }[] = []
+    /** Lỗ phay lấy từ lớp outline — gắn vào cụm khoan để xuyên suốt bề dày bo. */
+    const outlineCutouts: any[] = []
 
     let ok = 0
     let drillPlaced = 0
@@ -292,11 +339,18 @@ export const Viewer2DWebGL: React.FC<Viewer2DWebGLProps> = ({
           obj = built.shift()
           built.forEach((extra: any) => obj?.add(extra))
         } else if (fillOutline && plotted.parts?.length > 1) {
-          const built = plotted.parts
+          // Lỗ phay bên trong bo tách riêng, dựng cùng chỗ với lỗ khoan để nó xuyên
+          // suốt bề dày bo — tô đặc như thân bo thì lỗ biến mất.
+          const { body, cutouts } = splitOutlineLoops(plotted.parts)
+          const built = body
             .map((part: any) => renderThree(part, color, undefined, true))
             .filter(Boolean)
           obj = built.shift()
           built.forEach((extra: any) => obj?.add(extra))
+          for (const part of cutouts) {
+            const hole = renderThree(part, palette.Drill, undefined, true)
+            if (hole) outlineCutouts.push(hole)
+          }
         } else {
           obj = renderThree(plotted, color, undefined, fillOutline)
         }
@@ -342,6 +396,9 @@ export const Viewer2DWebGL: React.FC<Viewer2DWebGLProps> = ({
         bad.push(raw.filename)
       }
     }
+
+    // Lỗ phay của outline đi chung với lỗ khoan: cùng được kéo dài hết bề dày bo.
+    outlineCutouts.forEach((hole) => pcb.Drill?.add(hole))
 
     try {
       // Bề dày thật của các lớp (đồng 0.035mm, mask 0.04mm…) quá mỏng để depth buffer
