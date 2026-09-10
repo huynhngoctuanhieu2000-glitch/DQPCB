@@ -42,12 +42,12 @@ const REAL = {
   // sửa xong lõi rồi thì mạch nổi lên vẫn không hề bị xuyên xuống mặt dưới.
   Copper: 0x49b06a,
   // Lỗ mở mask = pad. Nhà máy mạ thiếc chì HASL (đúng thông số mặc định ghi trong
-  // báo giá), nên pad ra màu bạc hơi ngả xanh chứ không phải vàng ENIG.
+  // báo giá) nên pad ra màu xám thiếc, không phải vàng ENIG.
   //
-  // Hai sắc độ vì cùng lý do đã áp cho đồng và in lụa: trên bo tối thì thiếc phải
-  // sáng mới nổi, còn trên bo trắng/vàng thì chính nó lẫn vào nền — phải tối đi.
-  MaskOpening: 0xd0d8e2,
-  MaskOpeningOnLight: 0xa3adba,
+  // Xám trung tính ở quãng giữa nên dùng chung được cho mọi màu bo — thử trên bo đen
+  // và bo trắng đều nổi. (Bản trước để bạc sáng 0xd0d8e2 thì phải chia hai sắc độ,
+  // vì trên bo trắng nó lẫn hẳn vào nền.)
+  MaskOpening: 0x9aa1a8,
   Silkscreen: 0xf2f2f2,
   BaseBoard: 0xbfaf42,
   Drill: 0x2b2b2b,
@@ -161,7 +161,7 @@ const realPalette = (maskHex: string) => {
     Oil: rgbToHex(rgb.map(clamp)),
     Copper: rgbToHex(rgb.map((c) => clamp(c + shift))),
     Silkscreen: light ? 0x1a1a1a : 0xf2f2f2,
-    MaskOpening: light ? REAL.MaskOpeningOnLight : REAL.MaskOpening,
+    MaskOpening: REAL.MaskOpening,
     BaseBoard: REAL.BaseBoard,
     Drill: REAL.Drill,
   }
