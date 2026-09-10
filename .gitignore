@@ -23,3 +23,7 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Mẫu báo giá lấy từ job thật — có tên, email, điện thoại và đơn giá của khách.
+# Repo này public nên giữ chúng ở máy, không đẩy lên.
+templates/
