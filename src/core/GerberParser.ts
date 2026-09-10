@@ -263,7 +263,7 @@ const META: Record<string, LayerMeta> = {
   pasteTop: { type: 'solderpaste', side: 'top', displayName: 'Top Paste', color: '#B5A672', order: 1 },
   pasteBot: { type: 'solderpaste', side: 'bottom', displayName: 'Bot Paste', color: '#A59662', order: 1 },
   outline: { type: 'outline', side: 'all', displayName: 'Outline', color: '#F1C40F', order: 8 },
-  drill: { type: 'drill', side: 'all', displayName: 'Drl', color: '#000000', order: 9 },
+  drill: { type: 'drill', side: 'all', displayName: 'Drl', color: '#FFFFFF', order: 9 },
   doc: { type: 'documentation', side: 'all', displayName: 'Doc', color: '#718096', order: 12 },
   unknown: { type: 'unknown', side: 'all', displayName: 'Unknown', color: '#9B59B6', order: 11 },
 }

@@ -33,6 +33,13 @@ import {
  * Chế độ CAM: xem file gia công, mỗi lớp một màu phẳng tương phản trên nền tối,
  * không có mask/nền FR-4.
  */
+/**
+ * Lỗ khoan, lỗ phay và các vòng tròn khoét trên lớp outline đều tô TRẮNG.
+ * Lỗ là chỗ thủng: mắt phải thấy nền sáng lọt qua thì mới ra cảm giác xuyên bo.
+ * Trước đây tô xám gần đen nên trông như nút bịt đặc chứ không phải lỗ.
+ */
+const HOLE = 0xffffff
+
 const REAL = {
   background: 0xeeeeee,
   Oil: 0x0f4f26,         // soldermask xanh phủ vùng không có đồng
@@ -50,7 +57,7 @@ const REAL = {
   MaskOpening: 0x9aa1a8,
   Silkscreen: 0xf2f2f2,
   BaseBoard: 0xbfaf42,
-  Drill: 0x2b2b2b,
+  Drill: HOLE,
 }
 
 // Màu dự phòng khi layer chưa có màu hợp lệ
@@ -303,8 +310,11 @@ export const Viewer2DWebGL: React.FC<Viewer2DWebGLProps> = ({
 
         // CAM lấy màu từ chính layer, tức ô màu người dùng bấm đổi được ở sidebar.
         // Real/3D thì màu là mô phỏng vật liệu nên vẫn dùng bảng cố định.
+        // `|| CAM_FALLBACK` cũ coi màu đen (parseInt = 0) là không hợp lệ, nên lớp nào
+        // để đen cũng bị đổi sang tím dự phòng. Chỉ thật sự hỏng khi parse ra NaN.
+        const swatch = parseInt(String(raw.color).replace('#', ''), 16)
         const color = camMode
-          ? parseInt(String(raw.color).replace('#', ''), 16) || CAM_FALLBACK
+          ? (Number.isNaN(swatch) ? CAM_FALLBACK : swatch)
           : id.type === 'copper' ? palette.Copper :
             id.type === 'soldermask' ? palette.MaskOpening :
             id.type === 'silkscreen' ? palette.Silkscreen :
@@ -344,18 +354,26 @@ export const Viewer2DWebGL: React.FC<Viewer2DWebGLProps> = ({
             .filter(Boolean)
           obj = built.shift()
           built.forEach((extra: any) => obj?.add(extra))
-        } else if (fillOutline && plotted.parts?.length > 1) {
-          // Lỗ phay bên trong bo tách riêng, dựng cùng chỗ với lỗ khoan để nó xuyên
-          // suốt bề dày bo — tô đặc như thân bo thì lỗ biến mất.
+        } else if (isOutline && plotted.parts?.length > 1) {
+          // Lỗ phay bên trong bo tách riêng khỏi đường bao, vì hai lý do:
+          //  - Real/3D: dựng cùng chỗ với lỗ khoan để nó xuyên suốt bề dày bo — tô đặc
+          //    như thân bo thì lỗ biến mất.
+          //  - CAM: tô trắng như lỗ khoan để phân biệt với đường bao gia công; ăn theo
+          //    màu outline thì lỗ bắt vít lẫn hẳn vào viền bo.
           const { body, cutouts } = splitOutlineLoops(plotted.parts)
           const built = body
-            .map((part: any) => renderThree(part, color, undefined, true))
+            .map((part: any) => renderThree(part, color, undefined, fillOutline))
             .filter(Boolean)
           obj = built.shift()
           built.forEach((extra: any) => obj?.add(extra))
           for (const part of cutouts) {
-            const hole = renderThree(part, palette.Drill, undefined, true)
-            if (hole) outlineCutouts.push(hole)
+            const hole = renderThree(part, HOLE, undefined, fillOutline)
+            if (!hole) continue
+            // Ở CAM lỗ phay là hình vẽ của chính lớp Outline nên phải tắt/bật theo nó.
+            // Real/3D thì nó là chỗ thủng vật liệu, đi chung cụm khoan để kéo dài hết
+            // bề dày bo.
+            if (camMode) obj?.add(hole)
+            else outlineCutouts.push(hole)
           }
         } else {
           obj = renderThree(plotted, color, undefined, fillOutline)
