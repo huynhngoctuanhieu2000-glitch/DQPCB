@@ -932,6 +932,18 @@ export const Layout: React.FC = () => {
                 <AnalysisRow label="Số lớp đồng" value={boardState.isLoaded ? `${boardState.layerCount}` : '--'} />
                 <AnalysisRow label="File khoan" value={boardState.isLoaded ? `${boardState.drillCount}` : '--'} />
                 <AnalysisRow label="Tổng lớp đọc được" value={boardState.isLoaded ? `${boardState.layers.length}` : '--'} />
+                {/* Thư mục là nguồn để đoán tên khách và chọn chỗ lưu báo giá. Chỉ có
+                    khi chạy trong Electron, nên hiện luôn ra đây để biết ngay là app
+                    có đọc được đường dẫn hay không. */}
+                <AnalysisRow
+                  label="Thư mục"
+                  value={
+                    !boardState.isLoaded
+                      ? '--'
+                      : boardState.sourceDir ||
+                        (window.electronFiles ? 'không đọc được đường dẫn' : 'chạy trên trình duyệt')
+                  }
+                />
               </tbody>
             </table>
 
