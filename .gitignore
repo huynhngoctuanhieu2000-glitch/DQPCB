@@ -27,3 +27,6 @@ dist-ssr
 # Mẫu báo giá lấy từ job thật — có tên, email, điện thoại và đơn giá của khách.
 # Repo này public nên giữ chúng ở máy, không đẩy lên.
 templates/
+
+# Báo cáo phân tích bảng giá nội bộ (giá vốn, hệ số lãi) — cũng giữ ở máy.
+Tinh gia/

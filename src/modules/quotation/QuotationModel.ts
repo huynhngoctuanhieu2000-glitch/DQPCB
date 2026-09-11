@@ -6,6 +6,7 @@
 import defaults from '../../config/quotation-defaults.json'
 import { maskColorLabel } from '../../models/MaskColors'
 import type { Board, BoardState } from '../../models/BoardDataModel'
+import type { PriceBasis } from '../pricing/PricingModel'
 
 /** Một dòng hàng trong bảng báo giá. */
 export interface QuotationItem {
@@ -27,6 +28,11 @@ export interface QuotationItem {
   amount: number | null
   /** GHI CHÚ */
   note: string
+  /**
+   * Cơ sở tính giá của bo (kích thước, phương án, panel…) — chỉ có ở dòng lấy từ bo
+   * đã tính giá. Đổi SL trên form thì thành tiền tra lại từ đây. Không xuất ra file.
+   */
+  priceBasis?: PriceBasis
 }
 
 export interface QuotationCustomer {

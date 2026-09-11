@@ -1,10 +1,13 @@
-import React, { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { Viewer2DWebGL } from '../modules/viewer2d/Viewer2D.WebGL'
 import { BoardDataModel } from '../models/BoardDataModel'
 import type { BoardState } from '../models/BoardDataModel'
 import { GerberParser } from '../core/GerberParser'
 import { MASK_COLORS } from '../models/MaskColors'
 import { QuotationPanel } from '../modules/quotation/QuotationPanel'
+import type { QuotationSeed } from '../modules/quotation/QuotationPanel'
+import { PricingCard } from '../modules/pricing/PricingCard'
+import { SettingsPanel } from '../modules/settings/SettingsPanel'
 import JSZip from 'jszip'
 
 export const Layout: React.FC = () => {
@@ -13,6 +16,25 @@ export const Layout: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [showQuotation, setShowQuotation] = useState(false)
+  const [showSettings, setShowSettings] = useState(false)
+  /**
+   * Giá đã tính cho từng bo, theo id. Đặt ở đây chứ không ở trong QuotationPanel vì
+   * panel chỉ tồn tại khi đang mở — giá phải sống trước nó, để nút "Lấy từ bo đang
+   * mở" kéo được đúng số của từng bo, kể cả bo không còn là bo đang mở.
+   */
+  const [prices, setPrices] = useState<Record<string, QuotationSeed>>({})
+  const handlePriceChange = useCallback((boardId: string, price: QuotationSeed | null) => {
+    setPrices((prev) => {
+      // Giá không đổi thì trả lại đúng object cũ để React bỏ qua lượt render — chốt
+      // chặn thứ hai chống vòng lặp nếu phía thẻ lỡ báo trùng.
+      if (price && JSON.stringify(prev[boardId]) === JSON.stringify(price)) return prev
+      if (price) return { ...prev, [boardId]: price }
+      if (!(boardId in prev)) return prev
+      const next = { ...prev }
+      delete next[boardId]
+      return next
+    })
+  }, [])
   const fileInputRef = useRef<HTMLInputElement>(null)
   // Kích thước khung chia đôi — nhãn kích thước cần biết để bám sát mép bo
   const splitRef = useRef<HTMLDivElement>(null)
@@ -227,6 +249,22 @@ export const Layout: React.FC = () => {
             }}
           >
             {boardState.activeView === '3D' ? '🕶️ 2D View' : '🧊 3D View'}
+          </button>
+          <button
+            onClick={() => setShowSettings(true)}
+            title="Cài đặt — công thức tính tiền"
+            style={{
+              backgroundColor: '#334155',
+              color: '#ffffff',
+              border: 'none',
+              borderRadius: '4px',
+              padding: '3px 10px',
+              fontSize: '12px',
+              cursor: 'pointer',
+              fontWeight: 500,
+            }}
+          >
+            ⚙ Cài đặt
           </button>
           <button
             onClick={() => setShowQuotation(true)}
@@ -947,9 +985,16 @@ export const Layout: React.FC = () => {
               </tbody>
             </table>
 
+            <PricingCard
+              board={boardState}
+              onOpenSettings={() => setShowSettings(true)}
+              onPriceChange={handlePriceChange}
+              onSendToQuotation={() => setShowQuotation(true)}
+            />
+
             <div
               style={{
-                marginTop: '16px',
+                marginTop: '14px',
                 padding: '10px',
                 borderRadius: '6px',
                 border: '1px dashed #334155',
@@ -969,8 +1014,14 @@ export const Layout: React.FC = () => {
       </div>
 
       {showQuotation && (
-        <QuotationPanel board={boardState} onClose={() => setShowQuotation(false)} />
+        <QuotationPanel
+          board={boardState}
+          prices={prices}
+          onClose={() => setShowQuotation(false)}
+        />
       )}
+
+      {showSettings && <SettingsPanel onClose={() => setShowSettings(false)} />}
     </div>
   )
 }

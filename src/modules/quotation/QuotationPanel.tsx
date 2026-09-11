@@ -17,6 +17,8 @@ import {
 } from './QuotationModel'
 import type { Quotation, QuotationItem } from './QuotationModel'
 import { exportQuotationToPdf, revealInFolder } from './exportPdf'
+import { computePrice, type PriceBasis } from '../pricing/PricingModel'
+import { PricingStore } from '../pricing/PricingStore'
 import { QuotationPreview } from './QuotationPreview'
 
 const money = (n: number) => n.toLocaleString('vi-VN')
@@ -30,11 +32,72 @@ const parseDigits = (raw: string): number | null => {
   return digits === '' ? null : Number(digits)
 }
 
+/**
+ * Giá đã tính bên thẻ tính giá cho một bo. Gắn với id bo: kéo nhiều bo vào báo giá
+ * thì bo nào đã tính được điền tiền của đúng bo đó, bo chưa tính để trống cho người
+ * lập nhập tay — điền bừa giá bo này cho bo kia là sai tiền.
+ */
+export interface QuotationSeed {
+  boardId: string
+  quantity: number
+  amount: number
+  /** Cơ sở đã dùng để ra con số trên — để form tính lại khi đổi SL. */
+  basis: PriceBasis
+  /**
+   * Kích thước đã tính giá, chỉ có khi người lập gõ tay đè lên số đọc từ Gerber.
+   * Phải ghi đè cột KÍCH THƯỚC, nếu không báo giá gửi khách sẽ ghi một kích thước
+   * mà giá lại tính theo kích thước khác.
+   */
+  size?: string
+}
+
 export const QuotationPanel: React.FC<{
   board: BoardState
   onClose: () => void
-}> = ({ board, onClose }) => {
-  const [q, setQ] = useState<Quotation>(() => createQuotation(false, board))
+  /** Giá đã tính bên thẻ, theo id bo — điền vào dòng của bo tương ứng khi lấy từ bo. */
+  prices?: Record<string, QuotationSeed>
+}> = ({ board, onClose, prices = {} }) => {
+  // Dòng lấy từ bo: bốn cột từ Gerber, cộng thêm số lượng + thành tiền nếu bo đó
+  // đã được tính giá bên thẻ.
+  const itemWithPrice = (b: Board): QuotationItem => {
+    const it = itemFromBoard(b)
+    const price = prices[b.id]
+    if (!price) return it
+    return {
+      ...it,
+      quantity: price.quantity,
+      amount: price.amount,
+      priceBasis: price.basis,
+      ...(price.size ? { size: price.size } : null),
+    }
+  }
+
+  /**
+   * Đổi SL của dòng lấy từ bo thì thành tiền phải đổi theo, không thì dòng ghi
+   * "10 pcs" mà tiền vẫn của mốc 5 — đúng cái lỗi dễ lọt lên báo giá gửi khách nhất.
+   * Ngoài mốc nhà máy thì xoá tiền để người lập buộc phải nhập tay, thay vì để lại
+   * con số cũ trông như đúng.
+   */
+  const changeQuantity = (it: QuotationItem, quantity: number | null) => {
+    if (!it.priceBasis || !quantity) {
+      patchItem(it.id, { quantity })
+      return
+    }
+    try {
+      const r = computePrice({ ...it.priceBasis, qty: quantity }, PricingStore.getConfig())
+      patchItem(it.id, { quantity, amount: r.kind === 'off-table' ? null : r.priceVnd })
+    } catch {
+      // Cấu hình giá đổi sau khi dòng được tạo (vd xoá phương án) — giữ SL, để tiền cho nhập tay.
+      patchItem(it.id, { quantity, amount: null })
+    }
+  }
+
+  const [q, setQ] = useState<Quotation>(() => {
+    const base = createQuotation(false, board)
+    if (!board.isLoaded) return base
+    // Dòng đầu là bo đang mở — chính là bo vừa tính giá, nên điền thẳng vào đó.
+    return { ...base, items: [itemWithPrice(board), ...base.items.slice(1)] }
+  })
   const [tab, setTab] = useState<'form' | 'preview'>('form')
   const [status, setStatus] = useState<{
     kind: 'ok' | 'err'
@@ -68,7 +131,7 @@ export const QuotationPanel: React.FC<{
 
   const addBoards = (list: Board[]) => {
     if (list.length === 0) return
-    setQ((prev) => ({ ...prev, items: [...prev.items, ...list.map(itemFromBoard)] }))
+    setQ((prev) => ({ ...prev, items: [...prev.items, ...list.map(itemWithPrice)] }))
     setBoardMenu(false)
   }
 
@@ -217,7 +280,9 @@ export const QuotationPanel: React.FC<{
                 title={
                   board.boards.length === 0
                     ? 'Chưa mở bo nào'
-                    : 'Thêm dòng điền sẵn tên, số lớp, kích thước, màu phủ lấy từ bo đã mở'
+                    : board.boards.some((b) => prices[b.id])
+                      ? 'Thêm dòng điền sẵn tên, số lớp, kích thước, màu phủ — kèm số lượng và thành tiền đã tính bên thẻ'
+                      : 'Thêm dòng điền sẵn tên, số lớp, kích thước, màu phủ lấy từ bo đã mở'
                 }
               >
                 ⤓ Lấy từ bo đang mở
@@ -234,6 +299,11 @@ export const QuotationPanel: React.FC<{
                         {b.bounds
                           ? ` · ${Math.round(b.bounds.widthMM)}*${Math.round(b.bounds.heightMM)}mm`
                           : ''}
+                        {prices[b.id] && (
+                          <span style={{ color: '#5eead4' }}>
+                            {` · ${prices[b.id].quantity} pcs · ${money(prices[b.id].amount)} đ`}
+                          </span>
+                        )}
                       </span>
                     </button>
                   ))}
@@ -304,7 +374,7 @@ export const QuotationPanel: React.FC<{
                         style={{ ...S.cellInput, width: '60px', textAlign: 'right' }}
                         inputMode="numeric"
                         value={it.quantity ?? ''}
-                        onChange={(e) => patchItem(it.id, { quantity: parseDigits(e.target.value) })}
+                        onChange={(e) => changeQuantity(it, parseDigits(e.target.value))}
                       />
                     </td>
                     <td style={S.td}>

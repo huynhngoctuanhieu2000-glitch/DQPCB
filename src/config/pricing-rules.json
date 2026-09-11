@@ -1,22 +1,58 @@
 {
-  "note": "File cấu hình bảng giá - chỉnh sửa trực tiếp ở đây, không cần sửa code.",
-  "materialPricePerCm2": 0,
-  "layerSurcharge": {
-    "1": 0,
-    "2": 0,
-    "4": 0,
-    "6": 0
+  "note": "Cấu hình giá — sửa trực tiếp ở đây hoặc trong Cài đặt → Công thức tính tiền. Không cần sửa code.",
+  "source": "TÍNH GIÁ KHÁCH → Bản giá mới 7_26 (A1:AC45). Xem 'Tinh gia/bao-cao-cong-thuc-gia.html'.",
+
+  "table": {
+    "note": "Bảng giá cố định nhà máy, dòng 15-18 của sheet: bo dưới 10x10cm KHÔNG ghép panel. Giá là THÀNH TIỀN cả đơn, không phải đơn giá. coversOption = phương án mà bảng này áp — chọn phương án khác thì phải tính bằng công thức, vì bảng không phân biệt loại bo.",
+    "coversOption": "L2",
+    "maxWidthMm": 100,
+    "maxHeightMm": 100,
+    "tiers": [
+      { "qty": 5,   "priceVnd": 180000 },
+      { "qty": 10,  "priceVnd": 210000 },
+      { "qty": 15,  "priceVnd": 348000 },
+      { "qty": 20,  "priceVnd": 395000 },
+      { "qty": 25,  "priceVnd": 472000 },
+      { "qty": 30,  "priceVnd": 531000 },
+      { "qty": 40,  "priceVnd": 683000 },
+      { "qty": 50,  "priceVnd": 832000 },
+      { "qty": 100, "priceVnd": 1443000 },
+      { "qty": 150, "priceVnd": 2083000 },
+      { "qty": 200, "priceVnd": 2483000 }
+    ]
   },
-  "surfaceFinishSurcharge": {
-    "HASL": 0,
-    "ENIG": 0,
-    "OSP": 0
+
+  "formula": {
+    "note": "Công thức theo kích thước, mục 06 của báo cáo. Hai tỉ giá giữ nguyên như sheet (F-01): flat dùng 4000, tiered dùng 3800.",
+    "vndPerCny": 4000,
+    "flatMarkup": 1.8,
+    "marginMultiplier": 1,
+    "qtyBreak": 50,
+    "vatRate": 0.05,
+    "unitRoundVnd": 100,
+    "defaultMode": "flat",
+    "weight": { "kgPerCm2": 0.00038, "packingKg": 0.26, "roundToKg": 1 },
+    "bigBoard": { "thresholdCm2": 650, "stepCm2": 50, "cnyPerStep": 20, "areaDivisor": 1000 },
+    "tiered": {
+      "vndPerCny": 3800,
+      "domesticShip": { "baseCny": 13, "firstKg": 1, "stepKg": 0.5, "cnyPerStep": 1 },
+      "freightVndPerKg": 100000,
+      "fixedFeeVnd": 25000,
+      "finalFactor": 1.13,
+      "tiers": [
+        { "maxVnd": 520000,   "factor": 1.3888888888888888 },
+        { "maxVnd": 1600000,  "factor": 1.25 },
+        { "maxVnd": null,     "factor": 1.1428571428571428 }
+      ]
+    }
   },
-  "drillPricePerHole": 0,
-  "setupFee": 0,
-  "quantityTierDiscount": [
-    { "minQty": 1, "discountPercent": 0 },
-    { "minQty": 100, "discountPercent": 0 },
-    { "minQty": 500, "discountPercent": 0 }
+
+  "options": [
+    { "key": "L1",    "label": "1 lớp",         "small": { "base": 20,  "area": 0.045 }, "large": { "base": 50,  "board": 0.12, "area": 0.034 } },
+    { "key": "L2",    "label": "2 lớp",         "small": { "base": 20,  "area": 0.054 }, "large": { "base": 50,  "board": 0.18, "area": 0.042 } },
+    { "key": "L4",    "label": "4 lớp",         "small": { "base": 150, "area": 0.065 }, "large": { "base": 150, "board": 0.24, "area": 0.046 } },
+    { "key": "ENIG2", "label": "Mạ vàng 2 lớp", "small": { "base": 120, "area": 0.063 }, "large": { "base": 150, "board": 0.18, "area": 0.046 } },
+    { "key": "OZ2",   "label": "2oz 2 lớp",     "small": { "base": 120, "area": 0.064 }, "large": { "base": 150, "board": 0.18, "area": 0.047 } },
+    { "key": "FLEX",  "label": "Mạch dẻo",      "small": { "base": 150, "area": 0.080 }, "large": { "base": 300, "board": 0.18, "area": 0.065 } }
   ]
 }
