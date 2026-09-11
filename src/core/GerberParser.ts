@@ -25,6 +25,8 @@ export interface ParsedGerberLayer {
   imageTree: any
   /** Số lỗ khoan (chỉ có ý nghĩa với layer type 'drill') */
   holeCount: number
+  /** File khoan chỉ chứa lỗ mạ / lỗ không mạ / cả hai — xem drillPlatingOf. */
+  drillPlating?: 'PTH' | 'NPTH' | 'mixed'
 }
 
 export interface BoardParsedData {
@@ -86,10 +88,19 @@ const AUXILIARY_NAME =
 const looksLikeDipTrace = (allFilenames?: string[]) =>
   !!allFilenames?.some((f) => /\.(top|bot|plc|pls|smt|smb)$/i.test(f))
 
+/**
+ * File dự án KiCad hay bị nén kèm khi khách gửi nguyên thư mục. `fp-info-cache` không có
+ * đuôi nên lọt qua mọi luật đuôi file, rơi xuống parser Gerber — 4 MB văn bản thường
+ * đem parse như Gerber làm treo cả app (gặp ở nhiều bộ KiCad khách nén nguyên thư mục).
+ */
+const KICAD_PROJECT_FILE =
+  /^(fp-info-cache|fp-lib-table|sym-lib-table)$|\.(kicad_(pcb|sch|pro|prl|mod|sym|dru|wks)|kicad_pcb-bak|lck)$/i
+
 /** File không chứa dữ liệu Gerber/Excellon → bỏ hẳn, không parse, không hiển thị. */
 export const isAuxiliaryFile = (filename: string, allFilenames?: string[]): boolean => {
   const base = filename.split(/[\\/]/).pop() || filename
   if (/\.(stp|sbt)$/i.test(base) && looksLikeDipTrace(allFilenames)) return false
+  if (KICAD_PROJECT_FILE.test(base)) return true
   if (AUXILIARY_EXT.test(base)) return true
   // .txt vừa có thể là NC-Drill (Altium) vừa là file ghi chú → chỉ loại khi tên rõ ràng là tài liệu
   if (/\.txt$/i.test(base) && AUXILIARY_NAME.test(base)) return true
@@ -324,6 +335,151 @@ const readCamLayerCode = (content?: string) => {
   return m ? m[1].toLowerCase() : undefined
 }
 
+/**
+ * Gerber X2: file tự khai báo chức năng bằng thuộc tính chuẩn `%TF.FileFunction,…*%`
+ * ngay trong header. KiCad, Altium, Proteus, EasyEDA bản mới đều ghi. Excellon của
+ * KiCad cũng ghi dưới dạng chú thích `; #@! TF.FileFunction,…`.
+ *
+ * Đây là nguồn đáng tin nhất sau mã lớp CAM, vì tên file thì ai muốn đặt sao cũng
+ * được. Bộ xuất Proteus (CADCAM) là ví dụ: tên "Mechanical 1.GBR" nghe như viền bo
+ * nhưng X2 nói nó là NonPlated (NPTH, ở đây còn rỗng); "Drill TOP-BOT Plated.GBR"
+ * nghe như bản vẽ khoan nhưng X2 nói nó là DỮ LIỆU khoan PTH, và bộ đó không có
+ * file Excellon nào khác. Đoán theo tên thì sai cả hai: mất viền bo, mất hết lỗ khoan.
+ *
+ * Chỉ quyết định với những chức năng không thể hiểu sai. `Other`, `AssemblyDrawing`,
+ * `Component`… trả undefined để rơi xuống luật tên/đuôi file — Altium ghi lớp cơ khí
+ * là `Other,…` trong khi .GM1 của nó chính là viền bo, gán cứng thành tài liệu thì
+ * ẩn mất viền bo của cả loạt bo Altium.
+ */
+const X2_FILE_FUNCTION = /(?:%TF\.FileFunction|#@!\s*TF\.FileFunction),([^*%\r\n]+)/i
+
+const readX2FileFunction = (content?: string): LayerMeta | undefined => {
+  if (!content) return undefined
+  const m = content.slice(0, 4000).match(X2_FILE_FUNCTION)
+  if (!m) return undefined
+  const [fn, ...args] = m[1].split(',').map((s) => s.trim())
+  const side = (args.find((a) => /^(top|bot|inr)$/i.test(a)) ?? '').toLowerCase()
+
+  switch (fn.toLowerCase()) {
+    case 'copper': {
+      if (side === 'top') return { ...META.copperTop }
+      if (side === 'bot') return { ...META.copperBot }
+      if (side !== 'inr') return undefined // X2 thiếu mặt ("Copper,Signal") — không đoán
+      // L2 là lớp giữa đầu tiên — đánh số trừ 1 cho khớp quy ước .G1 = Inner 1.
+      const n = parseInt(args[0]?.replace(/^L/i, '') ?? '', 10)
+      return Number.isFinite(n) && n > 1
+        ? { ...META.copperInner, displayName: `Inner ${n - 1}` }
+        : { ...META.copperInner }
+    }
+    case 'soldermask':
+      return side === 'bot' ? { ...META.maskBot } : { ...META.maskTop }
+    case 'legend':
+      return side === 'bot' ? { ...META.silkBot } : { ...META.silkTop }
+    case 'paste':
+      return side === 'bot' ? { ...META.pasteBot } : { ...META.pasteTop }
+    case 'profile':
+      return { ...META.outline }
+    // Dữ liệu khoan — kể cả khi mang đuôi .GBR như bộ Proteus.
+    case 'plated':
+    case 'nonplated':
+    case 'mixedplating':
+      // Proteus xuất "… Slot.GBR" khai là NonPlated nhưng bên trong là chính đường
+      // viền bo (mọi aperture đều là Profile, nội dung trùng khít Mechanical 1) — đường
+      // phay cắt bo, không phải lỗ. Coi là khoan thì cả viền bị vẽ thành lỗ trắng.
+      if (isProfileOnly(content)) return { ...META.outline }
+      return { ...META.drill }
+    case 'drillmap':
+      return { ...META.doc, displayName: 'Drill Drawing' }
+    case 'vcut':
+    case 'vcutmap':
+      return { ...META.doc, displayName: 'V-Cut' }
+    case 'other':
+      // `Other,…` tự nó không nói lên gì, nhưng nếu mọi nét vẽ đều khai là Profile thì
+      // đó là viền bo: Pulsonix/DesignSpark xuất "(Board).gbr" = `Other,Board` toàn
+      // Profile. Không nhận ra thì kích thước phải đoán từ lớp đồng — một bo Pulsonix ra 74×23
+      // trong khi viền thật là 80×29.
+      //
+      // CHỈ áp cho Other. Bản vẽ lắp ráp của mặt không có linh kiện cũng chỉ còn mỗi
+      // đường viền (toàn Profile), nhưng nó vẫn là tài liệu — gán thành viền thì danh
+      // sách lớp hiện ba "Outline" chồng lên nhau.
+      return isProfileOnly(content) ? { ...META.outline } : undefined
+    default:
+      return undefined
+  }
+}
+
+/**
+ * File chỉ vẽ hình dạng bo — X2 `%TA.AperFunction` toàn là Profile (viền ngoài) và
+ * CutOut (khoét bên trong bo), có ít nhất một Profile. Proteus xuất loại này dưới tên
+ * "Slot.GBR" hoặc "Profile.GBR" nhưng khai FileFunction là NonPlated.
+ */
+const isProfileOnly = (content: string) => {
+  // Pulsonix/DesignSpark ghi thuộc tính dạng chú thích: "G04 #@! TA.AperFunction,Profile*".
+  const fns = [...content.matchAll(/(?:%|#@!\s*)TA\.AperFunction,([A-Za-z]+)/g)].map((m) => m[1].toLowerCase())
+  return fns.includes('profile') && fns.every((f) => f === 'profile' || f === 'cutout')
+}
+
+/**
+ * File khoan này là phần nào: chỉ lỗ mạ, chỉ lỗ không mạ, hay đã gộp cả hai. Viewer cần
+ * biết để quyết định vẽ một file gộp hay vẽ TẤT CẢ file tách — trước chỉ đoán theo
+ * đuôi "-PTH.drl"/"-NPTH.drl" của KiCad nên bộ Proteus ("Drill TOP-BOT Plated.GBR" +
+ * "… NonPlated.GBR") bị coi là hai file gộp và chỉ vẽ file nhiều lỗ hơn, mất lỗ NPTH.
+ */
+export const drillPlatingOf = (
+  filename: string,
+  content?: string
+): 'PTH' | 'NPTH' | 'mixed' | undefined => {
+  const fn = content?.slice(0, 4000).match(X2_FILE_FUNCTION)?.[1].split(',')[0].trim().toLowerCase()
+  if (fn === 'plated') return 'PTH'
+  if (fn === 'nonplated') return 'NPTH'
+  if (fn === 'mixedplating') return 'mixed'
+  const m = filename.match(/-(N?PTH)\.\w+$/i)
+  return m ? (m[1].toUpperCase() as 'PTH' | 'NPTH') : undefined
+}
+
+/**
+ * Nội dung có dáng Gerber hoặc Excellon không. Chỉ dùng cho file KHÔNG nhận ra được lớp:
+ * trượt cả bài này nghĩa là file rác (cache, ghi chú, bản sao lưu…), đem parse chỉ tốn
+ * thời gian — có khi treo hẳn — mà không vẽ ra gì. Để lỏng tay: OrCAD bỏ trống header
+ * nhưng vẫn có lệnh D01/D02/D03; Excellon không có M48 vẫn có dòng T01/X…Y….
+ */
+const looksLikeCamData = (content: string) => {
+  const head = content.slice(0, 20000)
+  return (
+    /%FS|%MO|%AD|^G0?4|D0?[123]\*/m.test(head) || // Gerber
+    /^M48|^T\d+(C[\d.]+)?\s*$|^[XY][-+]?\d/m.test(head) // Excellon
+  )
+}
+
+/** File khoan dạng Gerber (X2 Plated/NonPlated) chứ không phải Excellon. */
+const isGerberContent = (content: string) => /%FS[LT]?[AI]?X\d/i.test(content.slice(0, 4000))
+
+/**
+ * Đếm lỗ khoan. Excellon: mỗi dòng bắt đầu bằng X là một lỗ. Gerber (bộ Proteus):
+ * mỗi lệnh flash D03 là một lỗ, cộng các lỗ oval/rãnh phay vẽ bằng D02 → D01.
+ */
+const countHoles = (content: string): number => {
+  if (!isGerberContent(content)) return (content.match(/^X/gm) || []).length
+  let holes = 0
+  let inSlot = false
+  // Tách theo dấu kết thúc lệnh '*'. Bỏ qua khối %…% (header, aperture) vì D10+ ở đó
+  // là định nghĩa aperture chứ không phải lệnh vẽ.
+  for (const cmd of content.replace(/%[^%]*%/g, '').split('*')) {
+    const op = cmd.match(/D0?([123])\s*$/)?.[1]
+    if (op === '3') {
+      holes++
+      inSlot = false
+    } else if (op === '2') {
+      inSlot = false
+    } else if (op === '1' && !inSlot) {
+      // Một chuỗi D01 liền nhau sau một D02 là MỘT rãnh, không phải nhiều lỗ.
+      holes++
+      inSlot = true
+    }
+  }
+  return holes
+}
+
 export const matchLayer = (
   filename: string,
   allFilenames?: string[],
@@ -336,6 +492,10 @@ export const matchLayer = (
   // Đáng tin nhất: file tự nói nó là lớp gì, không phụ thuộc người đặt tên.
   const camCode = readCamLayerCode(content)
   if (camCode && CAM_LAYER_CODES[camCode]) return { ...CAM_LAYER_CODES[camCode]! }
+
+  // Thuộc tính chuẩn Gerber X2 — cũng do chính file khai báo.
+  const x2 = readX2FileFunction(content)
+  if (x2) return x2
 
   // ---- 1. Đuôi file chuẩn -------------------------------------------------
   const byExt = EXT_MAP[ext]
@@ -442,6 +602,121 @@ export const matchLayer = (
   }
 
   return { ...META.unknown }
+}
+
+/** Tên file giả của lớp viền tự dựng — UI dùng để nhận ra đây không phải file thật. */
+export const ESTIMATED_OUTLINE_FILE = '(viền bo ước lượng)'
+
+/**
+ * Giữ lại đúng những nét vẽ bằng aperture khai `AperFunction,Profile` (viền bo), bỏ
+ * mọi nét khác. Trả null nếu file không có aperture Profile nào.
+ *
+ * Pulsonix/DesignSpark không có lớp viền riêng khi không xuất "(Board).gbr" — viền nằm
+ * lẫn trong "(Documentation).gbr" cùng chữ ghi chú. Lấy nguyên lớp đó thì dính cả chữ;
+ * lấy khung lớp đồng thì sai hẳn vì đồng có thứ nằm ngoài bo (một bo Pulsonix ra 319×162
+ * trong khi viền thật 143×103).
+ *
+ * Nét bị bỏ không xoá đi mà đổi thành lệnh di chuyển D02: toạ độ Gerber là modal
+ * ("Y115591D01*" dùng lại X của lệnh trước), xoá đi thì các nét Profile phía sau lệch chỗ.
+ */
+export const extractProfileGerber = (content: string): string | null => {
+  const profileApertures = new Set<string>()
+  let attr = ''
+  // Lượt 1: aperture nào mang chức năng Profile. Thuộc tính TA đứng trước %ADD và còn
+  // hiệu lực tới khi gặp TD — cả dạng %…% lẫn dạng chú thích "G04 #@! …".
+  for (const m of content.matchAll(/(?:%|#@!\s*)TA\.AperFunction,([A-Za-z]+)|(?:%|#@!\s*)TD(?:\.AperFunction)?\s*\*|%ADD(\d+)/g)) {
+    if (m[1]) attr = m[1].toLowerCase()
+    else if (m[2]) {
+      if (attr === 'profile') profileApertures.add(String(parseInt(m[2], 10)))
+    } else attr = ''
+  }
+  if (profileApertures.size === 0) return null
+
+  // Lượt 2: duyệt từng câu lệnh, câu nào vẽ bằng aperture khác thì đổi thành D02.
+  let current = ''
+  let inRegion = false
+  const out: string[] = []
+  for (const stmt of content.match(/%[^%]*%|[^%*]+\*/g) ?? []) {
+    const s = stmt.trim()
+    if (s.startsWith('%') || /^G0?4/.test(s)) { out.push(s); continue } // header, chú thích
+    if (/^G36\*$/.test(s)) { inRegion = true; continue } // vùng tô đặc không phải viền
+    if (/^G37\*$/.test(s)) { inRegion = false; continue }
+    const sel = s.match(/^(?:G54)?D(\d{2,})\*$/)
+    if (sel) { current = String(parseInt(sel[1], 10)); out.push(s); continue }
+    const keep = !inRegion && profileApertures.has(current)
+    if (keep || !/[XYIJ]/.test(s)) { out.push(s); continue }
+    // Có toạ độ: giữ vị trí, bỏ nét.
+    out.push(/D0?[123]\*$/.test(s) ? s.replace(/D0?[123]\*$/, 'D02*') : s.replace(/\*$/, 'D02*'))
+  }
+  return out.join('\n')
+}
+
+/** Parse → plot → nối nét như một lớp viền thật, để viewer xử lý y hệt. */
+const plotOutline = (text: string) => {
+  const parser = createParser()
+  parser.feed(text.replace(/(%ADD\d+[A-Za-z]*),[ \t]+/g, '$1,'))
+  const imageTree = flattenArcs(stitchOutline(plot(parser.result(), true)))
+  const s = imageTree.size
+  const size: [number, number, number, number] =
+    s && s.length === 4 ? [s[0], s[1], s[2], s[3]] : [0, 0, 0, 0]
+  let outlineMaxStroke = 0
+  for (const child of imageTree.children ?? []) {
+    if (child.type === 'imagePath' && typeof child.width === 'number') {
+      outlineMaxStroke = Math.max(outlineMaxStroke, child.width)
+    }
+  }
+  return { imageTree, size, units: (imageTree.units || 'mm') as 'mm' | 'in', outlineMaxStroke }
+}
+
+/**
+ * Dựng lớp viền hình chữ nhật từ khung bo (mm), đi đúng đường parse → plot → nối nét
+ * như một lớp viền thật để viewer xử lý y hệt.
+ */
+const buildEstimatedOutline = (
+  minX: number,
+  minY: number,
+  maxX: number,
+  maxY: number,
+  usedIds: Set<string>
+): ParsedGerberLayer => {
+  // Định dạng 4.6 mm: toạ độ là số nguyên micromet-phần-nghìn, đủ mịn và không cần dấu chấm.
+  const c = (v: number) => String(Math.round(v * 1e6))
+  const pt = (x: number, y: number, d: string) => `X${c(x)}Y${c(y)}${d}*`
+  const STROKE = 0.1
+  const text = [
+    '%FSLAX46Y46*%',
+    '%MOMM*%',
+    `%ADD10C,${STROKE}*%`,
+    'D10*',
+    pt(minX, minY, 'D02'),
+    pt(maxX, minY, 'D01'),
+    pt(maxX, maxY, 'D01'),
+    pt(minX, maxY, 'D01'),
+    pt(minX, minY, 'D01'),
+    'M02*',
+  ].join('\n')
+
+  const parser = createParser()
+  parser.feed(text)
+  const imageTree = flattenArcs(stitchOutline(plot(parser.result(), true)))
+
+  let id = ESTIMATED_OUTLINE_FILE
+  while (usedIds.has(id)) id += '#'
+  usedIds.add(id)
+
+  return {
+    id,
+    filename: ESTIMATED_OUTLINE_FILE,
+    shortName: ESTIMATED_OUTLINE_FILE,
+    ...META.outline,
+    displayName: 'Outline (ước lượng)',
+    visible: true,
+    size: [minX - STROKE / 2, minY - STROKE / 2, maxX + STROKE / 2, maxY + STROKE / 2],
+    units: 'mm',
+    outlineMaxStroke: STROKE,
+    imageTree,
+    holeCount: 0,
+  }
 }
 
 /** Bỏ tiền tố chung của cả bộ file để tên hiển thị không bị trùng nhau. */
@@ -725,10 +1000,13 @@ export class GerberParser {
     // layer — nếu không chúng sẽ nằm trong danh sách layer dưới dạng "Unknown"
     // và luôn render rỗng.
     const allInputNames = rawFiles.map((f) => f.name)
-    const ignoredFiles = rawFiles
-      .filter((f) => isAuxiliaryFile(f.name, allInputNames))
-      .map((f) => f.name)
-    rawFiles = rawFiles.filter((f) => !isAuxiliaryFile(f.name, allInputNames))
+    // Ngoài luật tên/đuôi, bỏ luôn file không nhận ra lớp mà nội dung cũng chẳng giống
+    // Gerber/Excellon. Vẫn liệt kê trong ignoredFiles để người dùng thấy, không giấu.
+    const isJunk = (f: { name: string; content: string }) =>
+      isAuxiliaryFile(f.name, allInputNames) ||
+      (matchLayer(f.name, allInputNames, f.content).type === 'unknown' && !looksLikeCamData(f.content))
+    const ignoredFiles = rawFiles.filter(isJunk).map((f) => f.name)
+    rawFiles = rawFiles.filter((f) => !isJunk(f))
 
     // Nhiều archive lồng thư mục → có thể trùng tên cơ sở. Giữ lại tất cả nhưng
     // đảm bảo id là duy nhất (React key + visibleLayers Set dựa vào id này).
@@ -776,6 +1054,8 @@ export class GerberParser {
     const allNames = rawFiles.map((f) => f.name)
     const shortNames = shortenNames(allNames)
     const usedIds = new Set<string>()
+    /** Lớp khoan mà dữ liệu là Gerber chứ không phải Excellon. */
+    const gerberDrillIds = new Set<string>()
 
     for (let fileIndex = 0; fileIndex < rawFiles.length; fileIndex++) {
       const raw = rawFiles[fileIndex]
@@ -912,8 +1192,10 @@ export class GerberParser {
           units: imageTree.units || 'mm',
           outlineMaxStroke,
           imageTree,
-          holeCount: isDrillFile ? (fileContent.match(/^X/gm) || []).length : 0,
+          holeCount: isDrillFile ? countHoles(fileContent) : 0,
+          ...(isDrillFile ? { drillPlating: drillPlatingOf(raw.name, raw.content) } : null),
         })
+        if (isDrillFile && isGerberContent(raw.content)) gerberDrillIds.add(id)
       } catch (err: any) {
         // Không nuốt lỗi im lặng: người dùng cần biết lớp nào bị mất và vì sao.
         console.warn(`Skipping unparseable file: ${raw.name}`, err)
@@ -923,6 +1205,64 @@ export class GerberParser {
 
     if (parsedLayers.length === 0) {
       throw new Error('Could not parse any valid Gerber layers from the provided files.')
+    }
+
+    // KiCad và Altium xuất khoan HAI lần: Excellon (.drl/.txt) và một bản Gerber X2 cùng
+    // nội dung (-PTH-drl.gbr, _PTH_Drill.gbr). Có Excellon thì bản Gerber là trùng lặp —
+    // giữ cả hai thì đếm đôi số lỗ, và viewer coi bản Gerber là file gộp rồi bỏ mất lỗ
+    // NPTH. Chỉ khi cả bộ KHÔNG có Excellon (Proteus CADCAM) thì bản Gerber mới là dữ
+    // liệu khoan duy nhất.
+    const hasExcellon = parsedLayers.some(
+      (l) => l.type === 'drill' && l.holeCount > 0 && !gerberDrillIds.has(l.id)
+    )
+    if (hasExcellon) {
+      for (const l of parsedLayers) {
+        if (!gerberDrillIds.has(l.id)) continue
+        Object.assign(l, { ...META.doc, displayName: 'Drill (Gerber)', visible: false })
+        l.holeCount = 0
+        delete l.drillPlating
+      }
+    }
+
+    // Không có lớp viền nào vẽ được gì → tìm nét khai AperFunction,Profile nằm lẫn trong
+    // lớp khác (Pulsonix: "(Documentation).gbr"). Có thì đó là viền thật, dùng nó thay
+    // cho viền ước lượng từ lớp đồng ở dưới.
+    const hasOutlineGeometry = () =>
+      parsedLayers.some((l) => l.type === 'outline' && l.size[2] > l.size[0] && l.size[3] > l.size[1])
+    if (!hasOutlineGeometry()) {
+      let best: ParsedGerberLayer | null = null
+      for (const raw of rawFiles) {
+        const profile = extractProfileGerber(raw.content)
+        if (!profile) continue
+        try {
+          const plotted = plotOutline(profile)
+          const area = (plotted.size[2] - plotted.size[0]) * (plotted.size[3] - plotted.size[1])
+          if (!(area > 0)) continue
+          const bestArea = best ? (best.size[2] - best.size[0]) * (best.size[3] - best.size[1]) : 0
+          if (best && area * (plotted.units === 'in' ? 645.16 : 1) <= bestArea * (best.units === 'in' ? 645.16 : 1)) continue
+          // Tên đầy đủ chứ không dùng tên rút gọn: rút gọn cắt ở ranh giới từ nên ra
+          // những mẩu vô nghĩa kiểu "5(Documentation).gbr".
+          const src = raw.name.split(/[\\/]/).pop() || raw.name
+          let id = `(viền bo từ ${src})`
+          while (usedIds.has(id)) id += '#'
+          best = {
+            id,
+            filename: id,
+            shortName: id,
+            ...META.outline,
+            displayName: 'Outline (Profile)',
+            visible: true,
+            holeCount: 0,
+            ...plotted,
+          }
+        } catch (err) {
+          console.warn('Không tách được viền Profile từ', raw.name, err)
+        }
+      }
+      if (best) {
+        usedIds.add(best.id)
+        parsedLayers.push(best)
+      }
     }
 
     // Sort layers by CAD stackup order
@@ -986,8 +1326,29 @@ export class GerberParser {
       heightMM = 100
     }
 
+    // --- Bo không có viền ---
+    // Bộ xuất Proteus CADCAM (và vài bộ tối giản khác) không kèm lớp viền bo. Thiếu viền
+    // thì viewer sập hẳn: assemblyPCBToThreeJS của web-gerber luôn gán
+    // `OutLine.children[0].material`, mà viền rỗng thì không có children[0]. Nên dựng
+    // một viền chữ nhật từ khung vừa tính (hợp của các lớp đồng) và gọi tên rõ là
+    // "ước lượng" — người lập thấy ngay kích thước này là suy ra, không phải viền thật.
+    const hasRealOutline = parsedLayers.some(
+      (l) => l.type === 'outline' && l.size[2] > l.size[0] && l.size[3] > l.size[1]
+    )
+    if (!hasRealOutline && widthMM > 0.1 && heightMM > 0.1) {
+      try {
+        parsedLayers.push(
+          buildEstimatedOutline(globalMinX, globalMinY, globalMaxX, globalMaxY, usedIds)
+        )
+      } catch (err: any) {
+        console.warn('Không dựng được viền ước lượng', err)
+      }
+    }
+
     const copperLayers = parsedLayers.filter((l) => l.type === 'copper')
-    const drillLayers = parsedLayers.filter((l) => l.type === 'drill')
+    // File khoan rỗng (Proteus luôn xuất file NPTH kể cả khi bo không có lỗ không mạ)
+    // không tính — "File khoan: 2" trong khi chỉ một file có lỗ là đếm sai.
+    const drillLayers = parsedLayers.filter((l) => l.type === 'drill' && l.holeCount > 0)
 
     return {
       projectName,

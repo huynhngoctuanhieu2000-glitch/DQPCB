@@ -253,7 +253,13 @@ export const Viewer2DWebGL: React.FC<Viewer2DWebGLProps> = ({
       .map((l) => ({
         name: l.filename,
         holes: l.holeCount,
-        split: /-(N?PTH)\.\w+$/i.test(l.filename),
+        // Tách = chỉ chứa một phần (PTH hoặc NPTH), phải vẽ kèm các file tách còn lại.
+        // Proteus đặt tên "Drill TOP-BOT Plated.GBR" / "… NonPlated.GBR" nên chỉ đoán
+        // theo đuôi -PTH/-NPTH của KiCad thì bỏ sót — GerberParser đọc X2 cho chắc.
+        split:
+          l.drillPlating === 'PTH' ||
+          l.drillPlating === 'NPTH' ||
+          /-(N?PTH)\.\w+$/i.test(l.filename),
       }))
 
     const merged = drills.filter((d) => !d.split).sort((a, b) => b.holes - a.holes)
@@ -403,7 +409,13 @@ export const Viewer2DWebGL: React.FC<Viewer2DWebGLProps> = ({
           maskFiles[id.side === 'bottom' ? 'bottom' : 'top'].push(raw.filename)
         }
         else if (id.type === 'silkscreen') slot.Silkscreen = obj
-        else if (isOutline) pcb.OutLine = obj
+        else if (isOutline) {
+          // Viền rỗng (file viền không có nét nào) mà lọt vào đây thì assembly sập ở
+          // `OutLine.children[0].material`. Bỏ qua, để viền khác — hoặc viền ước lượng
+          // GerberParser dựng sẵn — giữ chỗ này.
+          if (!obj.children?.length) continue
+          pcb.OutLine = obj
+        }
         else if (id.type === 'drill') {
           if (!drillUse.has(raw.filename)) continue
           // Object rỗng khởi tạo ban đầu không có mesh -> file khoan đầu tiên thay thế nó,
