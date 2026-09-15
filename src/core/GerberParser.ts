@@ -193,7 +193,9 @@ const flattenArcs = (tree: any): any => {
 const stitchOutline = (tree: any) => {
   const segs: any[] = []
   for (const c of tree?.children ?? []) if (c?.segments?.length) segs.push(...c.segments)
-  if (segs.length < 2) return tree
+  // Không bỏ qua ở mốc 2 đoạn: cả viền bo TRÒN có khi chỉ là MỘT cung 360° (CAM350),
+  // bỏ qua thì lớp không có `parts` và bên ngoài dựng nhầm thành một khối tự cắt.
+  if (segs.length === 0) return tree
 
   const TOL = 0.05 // mm — KiCad để hở vài µm giữa cung và đoạn thẳng
   const near = (a: number[], b: number[]) => Math.hypot(a[0] - b[0], a[1] - b[1]) <= TOL
@@ -239,9 +241,21 @@ const stitchOutline = (tree: any) => {
   })
 
   // Giữ mọi vòng đủ 3 đoạn — đủ để tạo thành một vùng, kể cả khi còn hở (khung panel
-  // hay bị hở vài chục mm chỗ nối rãnh, bỏ đi thì mất luôn cả khung). Vòng 1–2 đoạn
-  // chỉ là đường thẳng lẻ (vạch v-cut, khe tab), tô đặc không ra hình gì.
-  const usable = chains.filter((ch) => ch.length >= 3)
+  // hay bị hở vài chục mm chỗ nối rãnh, bỏ đi thì mất luôn cả khung).
+  //
+  // Vòng 1–2 đoạn thì phải xét đã KHÉP KÍN chưa, không được loại thẳng: EasyEDA vẽ lỗ
+  // tròn/cutout tròn bằng ĐÚNG HAI cung 180°, vài bộ xuất khác dùng một cung 360°.
+  // Loại theo số đoạn là mất sạch mấy lỗ đó (bo drone EasyEDA: 4 lỗ đầu càng biến mất).
+  // Còn hở mà chỉ 1–2 đoạn thì đúng là đường lẻ (vạch v-cut, khe tab), bỏ.
+  // Phải có ít nhất một cung: hai ĐOẠN THẲNG khép kín chỉ là đi ra rồi đi về trên cùng
+  // một vạch, diện tích bằng 0.
+  const isClosedArc = (ch: any[]) =>
+    near(ch[0].start, ch[ch.length - 1].end) && ch.some((s) => s?.type === 'arc')
+  const usable = chains.filter((ch) => ch.length >= 3 || isClosedArc(ch))
+
+  // Lọc sạch nhẵn thì trả lại nguyên cây: lớp .GM1 nhiều khi chỉ có một vạch ghi chú cơ
+  // khí, dựng ra rỗng là vẽ ít hơn trước.
+  if (usable.length === 0) return tree
 
   const main = asTree(usable.flat())
   return { ...main, parts: usable.map(asTree) }
@@ -424,17 +438,34 @@ const isProfileOnly = (content: string) => {
  * biết để quyết định vẽ một file gộp hay vẽ TẤT CẢ file tách — trước chỉ đoán theo
  * đuôi "-PTH.drl"/"-NPTH.drl" của KiCad nên bộ Proteus ("Drill TOP-BOT Plated.GBR" +
  * "… NonPlated.GBR") bị coi là hai file gộp và chỉ vẽ file nhiều lỗ hơn, mất lỗ NPTH.
+ *
+ * Ba nguồn, theo độ tin cậy giảm dần:
+ *   1. X2 FileFunction (Plated/NonPlated/MixedPlating).
+ *   2. Chú thích ";TYPE=PLATED" / ";TYPE=NON_PLATED" trong header Excellon — EasyEDA và
+ *      Altium ghi kiểu này, không có X2.
+ *   3. Tên file. Phải tách token rồi so khớp cả từ, KHÔNG dùng /-(N?PTH)\.\w+$/: đuôi đó
+ *      chỉ khớp đúng kiểu KiCad "…-NPTH.drl", còn "Drill_NPTH_Through.DRL" (EasyEDA) thì
+ *      trượt, cả bộ ba PTH/NPTH/Via đều bị coi là file gộp và chỉ file đông lỗ nhất được
+ *      vẽ — mất sạch lỗ không mạ lẫn lỗ via. So khớp cả từ để "DEPTH" không hoá thành PTH.
  */
 export const drillPlatingOf = (
   filename: string,
   content?: string
 ): 'PTH' | 'NPTH' | 'mixed' | undefined => {
-  const fn = content?.slice(0, 4000).match(X2_FILE_FUNCTION)?.[1].split(',')[0].trim().toLowerCase()
+  const head = content?.slice(0, 4000)
+  const fn = head?.match(X2_FILE_FUNCTION)?.[1].split(',')[0].trim().toLowerCase()
   if (fn === 'plated') return 'PTH'
   if (fn === 'nonplated') return 'NPTH'
   if (fn === 'mixedplating') return 'mixed'
-  const m = filename.match(/-(N?PTH)\.\w+$/i)
-  return m ? (m[1].toUpperCase() as 'PTH' | 'NPTH') : undefined
+
+  const type = head?.match(/^\s*;\s*TYPE\s*=\s*([A-Z_ ]+)/im)?.[1].replace(/[^A-Z]/gi, '').toUpperCase()
+  if (type === 'NONPLATED') return 'NPTH'
+  if (type === 'PLATED') return 'PTH'
+
+  const tokens = normalizeName(filename).split(' ')
+  if (tokens.includes('npth') || tokens.includes('nonplated')) return 'NPTH'
+  if (tokens.includes('pth')) return 'PTH'
+  return undefined
 }
 
 /**
