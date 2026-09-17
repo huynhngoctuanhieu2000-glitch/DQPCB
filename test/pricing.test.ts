@@ -10,6 +10,8 @@ import {
   DEFAULT_CONFIG,
   computePrice,
   fitsTable,
+  fitsStencil,
+  pickStencil,
   priceFromFormula,
   priceFromTable,
   roundUp,
@@ -250,5 +252,62 @@ describe('Cấu hình sửa được mà không đụng code', () => {
     expect(r.kind).toBe('table')
     if (r.kind !== 'table') return
     expect(r.priceVnd).toBe(990000)
+  })
+})
+
+describe('Bảng giá stencil (Bang Gia STENCIL 8_8_22)', () => {
+  const S = CFG.stencil.tiers
+
+  it('đủ 18 cỡ khung, đúng thứ tự trong bảng giá', () => {
+    expect(S).toHaveLength(18)
+    expect(S[0]).toEqual({ frameW: 28, frameH: 38, noFrame: true, areaW: 19, areaH: 29, priceVnd: 380000, weightKg: 0.8 })
+    expect(S[7]).toMatchObject({ frameW: 58.4, frameH: 58.4, areaW: 38, areaH: 38, priceVnd: 850000, weightKg: 3.2 })
+    expect(S[17]).toMatchObject({ frameW: 50, frameH: 150, areaW: 32, areaH: 130, priceVnd: 1400000, weightKg: 8 })
+  })
+
+  it('chỉ cỡ nhỏ nhất là tấm không khung', () => {
+    expect(S.filter((t) => t.noFrame)).toHaveLength(1)
+  })
+
+  it('vùng mạch luôn nhỏ hơn khung', () => {
+    for (const t of S) {
+      expect(t.areaW).toBeLessThan(t.frameW)
+      expect(t.areaH).toBeLessThan(t.frameH)
+    }
+  })
+})
+
+describe('Chọn cỡ stencil cho bo', () => {
+  const ST = CFG.stencil
+
+  it('bo xoay 90° vẫn tính là vừa', () => {
+    const t = ST.tiers[1] // khung 30*40, vùng mạch 14*24
+    expect(fitsStencil(14, 24, t)).toBe(true)
+    expect(fitsStencil(24, 14, t)).toBe(true)
+    expect(fitsStencil(14.1, 24, t)).toBe(false)
+  })
+
+  it('chọn cỡ RẺ NHẤT vừa bo, không phải cỡ nhỏ nhất', () => {
+    // Bo 30*45: vừa khung 50*70 (vùng 32*50, 800.000) lẫn khung 55*65 (vùng 35*45,
+    // 950.000). Chọn theo cỡ khung thì ra 55*65 đắt hơn 150.000 mà không cần thiết.
+    const pick = pickStencil(30, 45, ST)!
+    expect(pick.priceVnd).toBe(800000)
+    expect(pick.frameW).toBe(50)
+    expect(pick.frameH).toBe(70)
+  })
+
+  it('bo nhỏ lấy tấm không khung 380.000', () => {
+    expect(pickStencil(10, 15, ST)).toMatchObject({ noFrame: true, priceVnd: 380000 })
+  })
+
+  it('bo quá khổ thì không có cỡ nào', () => {
+    expect(pickStencil(60, 200, ST)).toBeNull()
+  })
+
+  it('cùng giá thì lấy khung nhỏ hơn', () => {
+    // 950.000 có ba khung: 40*100, 55*65, 50*80 — 55*65 (3575cm²) nhỏ nhất.
+    const pick = pickStencil(34, 44, ST)!
+    expect(pick.priceVnd).toBe(950000)
+    expect(pick.frameW * pick.frameH).toBe(55 * 65)
   })
 })

@@ -54,5 +54,29 @@
     { "key": "ENIG2", "label": "Mạ vàng 2 lớp", "small": { "base": 120, "area": 0.063 }, "large": { "base": 150, "board": 0.18, "area": 0.046 } },
     { "key": "OZ2",   "label": "2oz 2 lớp",     "small": { "base": 120, "area": 0.064 }, "large": { "base": 150, "board": 0.18, "area": 0.047 } },
     { "key": "FLEX",  "label": "Mạch dẻo",      "small": { "base": 150, "area": 0.080 }, "large": { "base": 300, "board": 0.18, "area": 0.065 } }
-  ]
+  ],
+
+  "stencil": {
+    "note": "Bảng giá stencil khung nhôm (Bang Gia STENCIL THIEN LAM PCB 8_8_22). Khung và vùng mạch tính bằng cm; vùng mạch là kích thước bo lớn nhất đặt vừa khung đó. Giá là giá một tấm.",
+    "tiers": [
+      { "frameW": 28, "frameH": 38, "noFrame": true, "areaW": 19, "areaH": 29, "priceVnd": 380000, "weightKg": 0.8 },
+      { "frameW": 30, "frameH": 40, "areaW": 14, "areaH": 24, "priceVnd": 420000, "weightKg": 1 },
+      { "frameW": 37, "frameH": 47, "areaW": 19, "areaH": 29, "priceVnd": 450000, "weightKg": 1.5 },
+      { "frameW": 42, "frameH": 52, "areaW": 24, "areaH": 34, "priceVnd": 600000, "weightKg": 1.8 },
+      { "frameW": 45, "frameH": 55, "areaW": 27, "areaH": 37, "priceVnd": 650000, "weightKg": 2 },
+      { "frameW": 40, "frameH": 60, "areaW": 22, "areaH": 40, "priceVnd": 750000, "weightKg": 2.5 },
+      { "frameW": 40, "frameH": 80, "areaW": 22, "areaH": 60, "priceVnd": 850000, "weightKg": 3.5 },
+      { "frameW": 58.4, "frameH": 58.4, "areaW": 38, "areaH": 38, "priceVnd": 850000, "weightKg": 3.2 },
+      { "frameW": 50, "frameH": 70, "areaW": 32, "areaH": 50, "priceVnd": 800000, "weightKg": 3.5 },
+      { "frameW": 40, "frameH": 100, "areaW": 22, "areaH": 76, "priceVnd": 950000, "weightKg": 4 },
+      { "frameW": 55, "frameH": 65, "areaW": 35, "areaH": 45, "priceVnd": 950000, "weightKg": 3.5 },
+      { "frameW": 50, "frameH": 80, "areaW": 32, "areaH": 60, "priceVnd": 950000, "weightKg": 3.5 },
+      { "frameW": 40, "frameH": 120, "areaW": 22, "areaH": 100, "priceVnd": 1200000, "weightKg": 6 },
+      { "frameW": 73.6, "frameH": 73.6, "areaW": 50, "areaH": 50, "priceVnd": 1200000, "weightKg": 5 },
+      { "frameW": 40, "frameH": 140, "areaW": 22, "areaH": 120, "priceVnd": 1300000, "weightKg": 7 },
+      { "frameW": 50, "frameH": 120, "areaW": 32, "areaH": 100, "priceVnd": 1300000, "weightKg": 7 },
+      { "frameW": 50, "frameH": 140, "areaW": 32, "areaH": 120, "priceVnd": 1350000, "weightKg": 7.5 },
+      { "frameW": 50, "frameH": 150, "areaW": 32, "areaH": 130, "priceVnd": 1400000, "weightKg": 8 }
+    ]
+  }
 }

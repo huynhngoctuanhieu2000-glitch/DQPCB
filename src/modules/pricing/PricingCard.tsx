@@ -1,10 +1,13 @@
 /**
- * Thẻ tính giá trong cột phải, ngay dưới bảng "Thông tin bo".
+ * Cột phải: thông tin bo và báo giá gộp làm một.
+ *
+ * Kích thước và loại bo vừa là thông tin đọc từ Gerber vừa là đầu vào tính giá — để
+ * hai bảng riêng thì mỗi thứ hiện hai lần (mm chỉ đọc ở trên, cm sửa được ở dưới).
+ * Gộp lại: đọc từ Gerber sẵn, sửa tay ngay tại dòng đó nếu cần.
  *
  * Trường hợp thường gặp nhất — bo dưới 10x10cm, không ghép panel — thì chỉ có một
- * việc phải làm: bấm một mốc số lượng. Kích thước đọc thẳng từ Gerber, đường giá tự
- * chọn, giá hiện ngay. Mọi thứ còn lại (phương án, panel, rail, phí thêm) nằm trong
- * phần xổ ra, chỉ bung khi bo lớn hoặc khi người lập cần.
+ * việc phải làm: bấm một mốc số lượng. Mọi thứ còn lại (panel, rail, phí thêm) nằm
+ * trong phần xổ ra, chỉ bung khi bo lớn hoặc khi người lập cần.
  */
 import React, { useEffect, useMemo, useState } from 'react'
 import type { BoardState } from '../../models/BoardDataModel'
@@ -187,7 +190,7 @@ export const PricingCard: React.FC<{
       ? panelX > 1 || panelY > 1
         ? 'đã ghép panel'
         : option !== cfg.table.coversOption
-          ? `phương án "${cfg.options.find((o) => o.key === option)?.label ?? option}" không nằm trong bảng giá nhà máy (bảng chỉ có ${cfg.options.find((o) => o.key === cfg.table.coversOption)?.label ?? cfg.table.coversOption})`
+          ? `loại "${cfg.options.find((o) => o.key === option)?.label ?? option}" không nằm trong bảng giá nhà máy (bảng chỉ có ${cfg.options.find((o) => o.key === cfg.table.coversOption)?.label ?? cfg.table.coversOption})`
           : forceFormula
             ? 'đang ép dùng công thức'
             : null
@@ -223,55 +226,54 @@ export const PricingCard: React.FC<{
     )
   }, [onPriceChange, synced, canSend, board.activeBoardId, qty, amount, basis, sizeText])
 
-  return (
-    <div style={S.card}>
-      <div style={S.head}>
-        <span style={S.title}>Tính giá</span>
-        {input && (
-          <span style={{ ...S.badge, ...(onTablePath ? S.badgeTable : S.badgeFormula) }}>
-            {onTablePath ? 'Bảng tra' : 'Công thức'}
-          </span>
-        )}
-        <button style={S.gear} onClick={onOpenSettings} title="Cài đặt → Công thức tính tiền">
-          ⚙
-        </button>
-      </div>
+  // Kích thước hiện bằng mm cho khớp số đọc từ Gerber và cột KÍCH THƯỚC của báo giá;
+  // state vẫn giữ cm vì công thức giá tính bằng cm.
+  const mm = (cm: number) => +(cm * 10).toFixed(2)
+  const folder = !board.isLoaded
+    ? '--'
+    : board.sourceDir || (window.electronFiles ? 'không đọc được đường dẫn' : 'chạy trên trình duyệt')
 
-      {/* Kích thước — đọc từ Gerber, vẫn sửa được khi chưa mở bo hoặc khi báo giá bo khác */}
-      <div style={S.row}>
-        <span style={S.label}>Kích thước</span>
+  return (
+    <div>
+      {/* ── Thông tin bo — đọc từ Gerber; kích thước và loại bo sửa được để báo giá ── */}
+      <InfoRow label="Tên bo">{board.projectName || '--'}</InfoRow>
+
+      <InfoRow label="Kích thước">
         <div style={S.sizeGroup}>
           <input
             style={S.sizeInput}
-            value={size ? +size.w.toFixed(2) : ''}
+            value={size ? mm(size.w) : ''}
             placeholder="—"
             onChange={(e) => {
               const w = parseNum(e.target.value)
-              setSizeOverride({ w: w ?? 0, h: size?.h ?? 0 })
+              setSizeOverride({ w: (w ?? 0) / 10, h: size?.h ?? 0 })
             }}
           />
           <span style={S.times}>×</span>
           <input
             style={S.sizeInput}
-            value={size ? +size.h.toFixed(2) : ''}
+            value={size ? mm(size.h) : ''}
             placeholder="—"
             onChange={(e) => {
               const h = parseNum(e.target.value)
-              setSizeOverride({ w: size?.w ?? 0, h: h ?? 0 })
+              setSizeOverride({ w: size?.w ?? 0, h: (h ?? 0) / 10 })
             }}
           />
-          <span style={S.unit}>cm</span>
+          <span style={S.unit}>mm</span>
         </div>
-      </div>
+      </InfoRow>
       {sizeOverride && boardCm && (
-        <button style={S.linkBtn} onClick={() => setSizeOverride(null)}>
-          ↺ về kích thước đọc từ Gerber
-        </button>
+        <div style={S.originLine}>
+          <span style={S.originManual}>đã sửa tay</span>
+          <button style={S.linkInline} onClick={() => setSizeOverride(null)}>
+            ↺ về {mm(boardCm.w)} × {mm(boardCm.h)} theo Gerber
+          </button>
+        </div>
       )}
 
-      {/* Phương án — mặc định suy từ số lớp của bo, sửa tay được ngay tại đây */}
-      <div style={S.row}>
-        <span style={S.label}>Phương án</span>
+      {/* Loại bo = số lớp đồng + bề mặt/độ dày đồng. Gerber chỉ cho biết số lớp, nên
+          mặc định suy từ đó; mạ vàng, 2oz, mạch dẻo thì người lập chọn tay. */}
+      <InfoRow label="Loại bo">
         <select
           style={S.select}
           value={option}
@@ -286,7 +288,7 @@ export const PricingCard: React.FC<{
             </option>
           ))}
         </select>
-      </div>
+      </InfoRow>
       {board.isLoaded && (
         <div style={S.originLine}>
           {optionTouched ? (
@@ -300,18 +302,37 @@ export const PricingCard: React.FC<{
                     setOptionTouched(false)
                   }}
                 >
-                  ↺ về {board.layerCount} lớp theo bo
+                  ↺ về {board.layerCount} lớp theo Gerber
                 </button>
               )}
             </>
           ) : (
-            <span>theo bo: {board.layerCount} lớp đồng</span>
+            <span>theo Gerber: {board.layerCount} lớp đồng</span>
           )}
         </div>
       )}
 
+      <InfoRow label="File khoan">{board.isLoaded ? `${board.drillCount}` : '--'}</InfoRow>
+      <InfoRow label="Tổng lớp đọc được">{board.isLoaded ? `${board.layers.length}` : '--'}</InfoRow>
+      {/* Thư mục là nguồn để đoán tên khách và chọn chỗ lưu báo giá. Chỉ có khi chạy
+          trong Electron, nên hiện luôn ra đây để biết ngay app có đọc được đường dẫn không. */}
+      <InfoRow label="Thư mục">{folder}</InfoRow>
+
+      {/* ── Báo giá ──────────────────────────────────────── */}
+      <div style={S.head}>
+        <span style={S.title}>Báo giá</span>
+        {input && (
+          <span style={{ ...S.badge, ...(onTablePath ? S.badgeTable : S.badgeFormula) }}>
+            {onTablePath ? 'Bảng tra' : 'Công thức'}
+          </span>
+        )}
+        <button style={S.gear} onClick={onOpenSettings} title="Cài đặt → Công thức tính tiền">
+          ⚙
+        </button>
+      </div>
+
       {/* Số lượng — mốc nhà máy bấm một phát, ô số để gõ trường hợp lạ */}
-      <div style={{ ...S.row, marginTop: 10 }}>
+      <div style={S.row}>
         <span style={S.label}>Số lượng</span>
         <div style={S.qtyGroup}>
           <input
@@ -443,16 +464,16 @@ export const PricingCard: React.FC<{
             <div style={S.sizeGroup}>
               <input
                 style={S.sizeInput}
-                value={railX}
-                onChange={(e) => setRailX(parseNum(e.target.value) ?? 0)}
+                value={mm(railX)}
+                onChange={(e) => setRailX((parseNum(e.target.value) ?? 0) / 10)}
               />
               <span style={S.times}>×</span>
               <input
                 style={S.sizeInput}
-                value={railY}
-                onChange={(e) => setRailY(parseNum(e.target.value) ?? 0)}
+                value={mm(railY)}
+                onChange={(e) => setRailY((parseNum(e.target.value) ?? 0) / 10)}
               />
-              <span style={S.unit}>cm</span>
+              <span style={S.unit}>mm</span>
             </div>
           </div>
 
@@ -505,6 +526,14 @@ export const PricingCard: React.FC<{
   )
 }
 
+/** Một dòng thông tin bo — cùng kiểu với bảng thông tin cũ: nhãn trái, giá trị phải. */
+const InfoRow: React.FC<{ label: string; children: React.ReactNode }> = ({ label, children }) => (
+  <div style={S.infoRow}>
+    <span style={S.infoLabel}>{label}</span>
+    <div style={S.infoValue}>{children}</div>
+  </div>
+)
+
 const BreakRow: React.FC<{ label: string; value: string }> = ({ label, value }) => (
   <tr>
     <td style={S.breakLabel}>{label}</td>
@@ -524,14 +553,36 @@ const inputBase: React.CSSProperties = {
 }
 
 const S: Record<string, React.CSSProperties> = {
-  card: {
-    marginTop: 14,
-    padding: '10px 10px 12px',
-    borderRadius: 6,
-    border: '1px solid #2c313c',
-    backgroundColor: '#14161b',
+  infoRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+    minHeight: 30,
+    padding: '4px 0',
+    borderBottom: '1px solid #22252e',
   },
-  head: { display: 'flex', alignItems: 'center', gap: 6, marginBottom: 10 },
+  infoLabel: { color: '#94a3b8', fontSize: 11, flexShrink: 0 },
+  infoValue: {
+    marginLeft: 'auto',
+    display: 'flex',
+    justifyContent: 'flex-end',
+    color: '#f1f5f9',
+    fontSize: 12,
+    fontWeight: 500,
+    textAlign: 'right',
+    wordBreak: 'break-all',
+    minWidth: 0,
+  },
+  // Tiêu đề mục Báo giá: một đường kẻ đậm hơn ngăn với phần thông tin bo phía trên.
+  head: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 14,
+    paddingTop: 10,
+    marginBottom: 8,
+    borderTop: '1px solid #2c313c',
+  },
   title: { color: '#e2e8f0', fontWeight: 600, fontSize: 12 },
   badge: { fontSize: 10, padding: '1px 6px', borderRadius: 999, fontWeight: 600 },
   badgeTable: { backgroundColor: '#0c4a3e', color: '#5eead4', border: '1px solid #115e52' },
@@ -549,28 +600,22 @@ const S: Record<string, React.CSSProperties> = {
   label: { color: '#94a3b8', fontSize: 11, flex: 1, whiteSpace: 'nowrap' },
   sizeGroup: { display: 'flex', alignItems: 'center', gap: 3 },
   qtyGroup: { display: 'flex', alignItems: 'center', gap: 4 },
-  sizeInput: { ...inputBase, width: 48 },
+  sizeInput: { ...inputBase, width: 56 },
   qtyInput: { ...inputBase, width: 60, fontWeight: 600 },
   // Viền vàng cho biết đây là số gõ tay, không phải số app tính ra. Phải ghi lại cả
   // shorthand `border` chứ không đắp thêm borderColor — React cảnh báo khi trộn hai loại.
   manualInput: { ...inputBase, width: 90, fontWeight: 600, border: '1px solid #7c5b1a' },
   times: { color: '#475569', fontSize: 11 },
   unit: { color: '#64748b', fontSize: 10 },
-  linkBtn: {
-    background: 'none',
-    border: 'none',
-    color: '#38bdf8',
-    fontSize: 10,
-    cursor: 'pointer',
-    padding: '0 0 4px',
-  },
   originLine: {
     display: 'flex',
     alignItems: 'center',
     gap: 6,
     color: '#64748b',
     fontSize: 10,
-    margin: '-2px 0 8px',
+    justifyContent: 'flex-end',
+    padding: '3px 0',
+    borderBottom: '1px solid #22252e',
   },
   originManual: { color: '#fcd34d' },
   linkInline: {

@@ -41,6 +41,8 @@ export const SettingsPanel: React.FC<{ onClose: () => void }> = ({ onClose }) =>
     JSON.parse(JSON.stringify(PricingStore.getConfig())),
   )
   const [saved, setSaved] = useState(false)
+  /** Hai trang giá tách riêng: mạch in và stencil là hai bảng giá không liên quan nhau. */
+  const [page, setPage] = useState<'pcb' | 'stencil'>('pcb')
 
   /** Sửa sâu trong cây cấu hình mà không phải viết spread lồng bốn tầng ở mỗi ô. */
   const edit = (fn: (draft: PricingConfig) => void) => {
@@ -78,12 +80,32 @@ export const SettingsPanel: React.FC<{ onClose: () => void }> = ({ onClose }) =>
         <div style={S.header}>
           <span style={S.headerTitle}>⚙ Cài đặt</span>
           <span style={S.headerSub}>Công thức tính tiền</span>
+          <div style={S.tabs}>
+            {(
+              [
+                ['pcb', 'PCB'],
+                ['stencil', 'Stencil'],
+              ] as const
+            ).map(([key, label]) => (
+              <button
+                key={key}
+                onClick={() => setPage(key)}
+                style={{ ...S.tab, ...(page === key ? S.tabOn : null) }}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
           <button style={S.close} onClick={onClose}>
             ✕
           </button>
         </div>
 
         <div style={S.body}>
+          {page === 'stencil' ? (
+            <StencilSection cfg={cfg} edit={edit} />
+          ) : (
+          <>
           {/* ── Bảng giá cố định ────────────────────────── */}
           <Section
             title="Bảng giá dưới 10×10 cm (không ghép panel)"
@@ -473,6 +495,8 @@ export const SettingsPanel: React.FC<{ onClose: () => void }> = ({ onClose }) =>
               </tbody>
             </table>
           </Section>
+          </>
+          )}
         </div>
 
         <div style={S.footer}>
@@ -501,6 +525,115 @@ export const SettingsPanel: React.FC<{ onClose: () => void }> = ({ onClose }) =>
         </div>
       </div>
     </div>
+  )
+}
+
+/**
+ * Trang Stencil: bảng giá stencil khung nhôm theo cỡ khung. Mỗi cỡ khung nhận được bo
+ * lớn tới "vùng mạch"; giá là giá một tấm, khối lượng dùng để tính cước gửi.
+ */
+const StencilSection: React.FC<{
+  cfg: PricingConfig
+  edit: (fn: (draft: PricingConfig) => void) => void
+}> = ({ cfg, edit }) => {
+  const tiers = cfg.stencil.tiers
+  /** Ô số trong bảng: sửa một trường của một dòng. */
+  const cell = (i: number, field: 'frameW' | 'frameH' | 'areaW' | 'areaH' | 'weightKg') => (
+    <input
+      style={{ ...S.cellInput, ...S.cellSmall }}
+      value={tiers[i][field]}
+      onChange={(e) =>
+        edit((d) => void (d.stencil.tiers[i][field] = num(e.target.value, tiers[i][field])))
+      }
+    />
+  )
+
+  return (
+    <Section
+      title="Bảng giá stencil khung nhôm"
+      note="Giá một tấm theo cỡ khung. Vùng mạch là bo lớn nhất đặt vừa khung đó (xoay 90° vẫn tính). Kích thước tính bằng cm."
+    >
+      <table style={S.table}>
+        <thead>
+          <tr>
+            <th style={S.th}>#</th>
+            <th style={S.th}>Khung (cm)</th>
+            <th style={S.th}>Không khung</th>
+            <th style={S.th}>Vùng mạch (cm)</th>
+            <th style={S.th}>Giá (đ)</th>
+            <th style={S.th}>Khối lượng (kg)</th>
+            <th style={S.th} />
+          </tr>
+        </thead>
+        <tbody>
+          {tiers.map((t, i) => (
+            <tr key={i}>
+              <td style={{ ...S.td, color: '#64748b', width: 24 }}>{i + 1}</td>
+              <td style={S.td}>
+                <div style={S.pair}>
+                  {cell(i, 'frameW')}
+                  <span style={S.times}>×</span>
+                  {cell(i, 'frameH')}
+                </div>
+              </td>
+              <td style={{ ...S.td, textAlign: 'center' }}>
+                <input
+                  type="checkbox"
+                  checked={!!t.noFrame}
+                  onChange={(e) =>
+                    edit((d) => {
+                      if (e.target.checked) d.stencil.tiers[i].noFrame = true
+                      else delete d.stencil.tiers[i].noFrame
+                    })
+                  }
+                />
+              </td>
+              <td style={S.td}>
+                <div style={S.pair}>
+                  {cell(i, 'areaW')}
+                  <span style={S.times}>×</span>
+                  {cell(i, 'areaH')}
+                </div>
+              </td>
+              <td style={S.td}>
+                <input
+                  style={S.cellInput}
+                  value={money(t.priceVnd)}
+                  onChange={(e) =>
+                    edit(
+                      (d) =>
+                        void (d.stencil.tiers[i].priceVnd = Math.round(
+                          num(e.target.value.replace(/\./g, ''), t.priceVnd),
+                        )),
+                    )
+                  }
+                />
+              </td>
+              <td style={{ ...S.td, width: 90 }}>{cell(i, 'weightKg')}</td>
+              <td style={{ ...S.td, width: 28 }}>
+                <button
+                  style={S.rowDel}
+                  title="Xoá cỡ này"
+                  onClick={() => edit((d) => void d.stencil.tiers.splice(i, 1))}
+                >
+                  ✕
+                </button>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <button
+        style={S.addRow}
+        onClick={() =>
+          edit((d) =>
+            d.stencil.tiers.push({ frameW: 0, frameH: 0, areaW: 0, areaH: 0, priceVnd: 0, weightKg: 0 }),
+          )
+        }
+      >
+        + Thêm cỡ khung
+      </button>
+    </Section>
   )
 }
 
@@ -558,6 +691,28 @@ const S: Record<string, React.CSSProperties> = {
   },
   headerTitle: { color: '#e2e8f0', fontWeight: 600, fontSize: 13 },
   headerSub: { color: '#38bdf8', fontSize: 12 },
+  tabs: {
+    display: 'flex',
+    marginLeft: 12,
+    backgroundColor: '#0f172a',
+    border: '1px solid #334155',
+    borderRadius: 14,
+    padding: 2,
+  },
+  tab: {
+    background: 'none',
+    border: 'none',
+    borderRadius: 12,
+    color: '#94a3b8',
+    cursor: 'pointer',
+    fontSize: 12,
+    fontWeight: 500,
+    padding: '2px 14px',
+  },
+  tabOn: { backgroundColor: '#3b82f6', color: '#ffffff' },
+  pair: { display: 'flex', alignItems: 'center', gap: 4 },
+  cellSmall: { width: 64 },
+  times: { color: '#475569', fontSize: 11 },
   close: {
     marginLeft: 'auto',
     background: 'none',

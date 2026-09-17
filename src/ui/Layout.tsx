@@ -954,37 +954,9 @@ export const Layout: React.FC = () => {
             </div>
           </div>
 
-          {/* Parameters Table — chỉ hiển thị số liệu thật sự đọc được từ Gerber */}
+          {/* Thông tin bo + báo giá gộp một khối: kích thước và loại bo đọc từ Gerber
+              đồng thời là đầu vào tính giá, nên không hiện hai lần ở hai bảng. */}
           <div style={{ flex: 1, overflowY: 'auto', padding: '8px 12px' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
-              <tbody>
-                <AnalysisRow label="Tên bo" value={boardState.projectName || '--'} />
-                <AnalysisRow
-                  label="Kích thước"
-                  value={
-                    boardState.bounds
-                      ? `${boardState.bounds.widthMM.toFixed(2)} × ${boardState.bounds.heightMM.toFixed(2)} mm`
-                      : '--'
-                  }
-                />
-                <AnalysisRow label="Số lớp đồng" value={boardState.isLoaded ? `${boardState.layerCount}` : '--'} />
-                <AnalysisRow label="File khoan" value={boardState.isLoaded ? `${boardState.drillCount}` : '--'} />
-                <AnalysisRow label="Tổng lớp đọc được" value={boardState.isLoaded ? `${boardState.layers.length}` : '--'} />
-                {/* Thư mục là nguồn để đoán tên khách và chọn chỗ lưu báo giá. Chỉ có
-                    khi chạy trong Electron, nên hiện luôn ra đây để biết ngay là app
-                    có đọc được đường dẫn hay không. */}
-                <AnalysisRow
-                  label="Thư mục"
-                  value={
-                    !boardState.isLoaded
-                      ? '--'
-                      : boardState.sourceDir ||
-                        (window.electronFiles ? 'không đọc được đường dẫn' : 'chạy trên trình duyệt')
-                  }
-                />
-              </tbody>
-            </table>
-
             <PricingCard
               board={boardState}
               onOpenSettings={() => setShowSettings(true)}
@@ -1084,20 +1056,3 @@ const BoardBadge: React.FC<{
     </div>
   )
 }
-
-const AnalysisRow: React.FC<{ label: string; value: string }> = ({ label, value }) => (
-  <tr style={{ borderBottom: '1px solid #22252e' }}>
-    <td style={{ padding: '6px 0', color: '#94a3b8', fontSize: '11px' }}>{label}</td>
-    <td
-      style={{
-        padding: '6px 0 6px 8px',
-        textAlign: 'right',
-        color: '#f1f5f9',
-        fontWeight: 500,
-        wordBreak: 'break-all',
-      }}
-    >
-      {value}
-    </td>
-  </tr>
-)

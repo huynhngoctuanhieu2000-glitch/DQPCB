@@ -6,10 +6,18 @@ import React, { useEffect, useMemo, useRef, useState } from 'react'
 import type { Board, BoardState } from '../../models/BoardDataModel'
 import { MASK_COLORS } from '../../models/MaskColors'
 import {
+  applyNoteSuggestion,
   applyVatFlag,
+  noteHas,
+  withPanelNote,
   createQuotation,
   emptyItem,
   itemFromBoard,
+  itemFromStencil,
+  sameStencil,
+  stencilSideFromBoard,
+  stencilSizeLabel,
+  withStencil,
   QUOTATION_DEFAULTS,
   subtotal,
   vatAmount,
@@ -17,7 +25,7 @@ import {
 } from './QuotationModel'
 import type { Quotation, QuotationItem } from './QuotationModel'
 import { exportQuotationToPdf, revealInFolder } from './exportPdf'
-import { computePrice, type PriceBasis } from '../pricing/PricingModel'
+import { computePrice, pickStencil, type PriceBasis, type StencilTier } from '../pricing/PricingModel'
 import { PricingStore } from '../pricing/PricingStore'
 import { QuotationPreview } from './QuotationPreview'
 
@@ -68,7 +76,21 @@ export const QuotationPanel: React.FC<{
       quantity: price.quantity,
       amount: price.amount,
       priceBasis: price.basis,
+      sourceBoardId: b.id,
       ...(price.size ? { size: price.size } : null),
+      // Panel là thứ khách phải biết và nhà máy phải làm, nên ghi thẳng vào báo giá.
+      note: withPanelNote(it.note, price.basis.panelX, price.basis.panelY),
+    }
+  }
+
+  /** Thành tiền theo cơ sở tính giá và số lượng; ngoài bảng giá nhà máy thì trả null. */
+  const amountFor = (basis: PriceBasis, qty: number): number | null => {
+    try {
+      const r = computePrice({ ...basis, qty }, PricingStore.getConfig())
+      return r.kind === 'off-table' ? null : r.priceVnd
+    } catch {
+      // Cấu hình giá đổi sau khi dòng được tạo (vd xoá phương án) — để tiền cho nhập tay.
+      return null
     }
   }
 
@@ -79,6 +101,10 @@ export const QuotationPanel: React.FC<{
    * con số cũ trông như đúng.
    */
   const changeQuantity = (it: QuotationItem, quantity: number | null) => {
+    if (it.stencil && quantity) {
+      patchItem(it.id, { quantity, amount: it.stencil.priceVnd * quantity })
+      return
+    }
     if (!it.priceBasis || !quantity) {
       patchItem(it.id, { quantity })
       return
@@ -126,8 +152,67 @@ export const QuotationPanel: React.FC<{
 
   const addItem = () => setQ((prev) => ({ ...prev, items: [...prev.items, emptyItem()] }))
 
+  /**
+   * Dòng lấy từ bo bám theo thẻ tính giá: đổi kích thước, loại bo hay cách ghép panel
+   * bên đó thì dòng này đổi theo ngay, không phải xoá đi thêm lại.
+   *
+   * SỐ LƯỢNG là của riêng dòng — người lập hay sửa để báo nhiều mức số lượng cho cùng
+   * một bo, nên không kéo theo; tiền tính lại bằng chính số lượng đang có trên dòng.
+   */
+  // Chỉnh ngay trong lúc render theo khuôn "điều chỉnh state khi prop đổi" của React,
+  // không dùng effect: effect sẽ vẽ một lượt bằng số cũ rồi mới sửa, người lập thấy
+  // tiền nhấp nháy — mà đây là số tiền sắp gửi khách.
+  const [seenPrices, setSeenPrices] = useState(prices)
+  if (prices !== seenPrices) {
+    setSeenPrices(prices)
+    setQ((prev) => {
+      let changed = false
+      const items = prev.items.map((it) => {
+        const price = it.sourceBoardId ? prices[it.sourceBoardId] : undefined
+        if (!price) return it
+        const qty = it.quantity ?? price.quantity
+        const size = price.size ?? it.size
+        const note = withPanelNote(it.note, price.basis.panelX, price.basis.panelY)
+        const amount = amountFor(price.basis, qty)
+        if (it.size === size && it.note === note && it.amount === amount && it.quantity === qty) {
+          return it
+        }
+        changed = true
+        return { ...it, size, note, amount, quantity: qty, priceBasis: price.basis }
+      })
+      return changed ? { ...prev, items } : prev
+    })
+  }
+
   // Mở một bo thì thêm thẳng; mở nhiều bo thì xổ danh sách cho chọn.
   const [boardMenu, setBoardMenu] = useState(false)
+
+  // ── Stencil ──
+  // Bảng giá stencil có thể vừa được sửa bên Cài đặt nên phải theo dõi, không chụp
+  // một lần lúc mở form.
+  const [pricingCfg, setPricingCfg] = useState(PricingStore.getConfig())
+  useEffect(() => PricingStore.subscribe(setPricingCfg), [])
+  const [stencilMenu, setStencilMenu] = useState(false)
+  const stencilTiers = pricingCfg.stencil.tiers
+  /** Cỡ rẻ nhất mà bo đang mở đặt vừa — để không phải tự dò trong 18 cỡ. */
+  const suggestedStencil = board.bounds
+    ? pickStencil(board.bounds.widthMM / 10, board.bounds.heightMM / 10, pricingCfg.stencil)
+    : null
+
+  const addStencil = (tier: StencilTier) => {
+    setQ((prev) => ({
+      ...prev,
+      items: [
+        ...prev.items,
+        itemFromStencil(
+          tier,
+          board.isLoaded ? board.projectName : undefined,
+          stencilSideFromBoard(board.isLoaded ? board : undefined),
+        ),
+      ],
+    }))
+    setStencilMenu(false)
+  }
 
   const addBoards = (list: Board[]) => {
     if (list.length === 0) return
@@ -316,6 +401,43 @@ export const QuotationPanel: React.FC<{
                 </div>
               )}
             </div>
+            {/* Stencil — chọn cỡ khung từ bảng giá; cỡ vừa bo đang mở được gợi ý sẵn */}
+            <div style={{ position: 'relative' }}>
+              <button
+                onClick={() => setStencilMenu((open) => !open)}
+                style={S.smallBtn}
+                title="Thêm dòng stencil, giá lấy theo cỡ khung trong Cài đặt → Stencil"
+              >
+                + Thêm stencil
+              </button>
+
+              {stencilMenu && (
+                <div style={{ ...S.menu, maxHeight: 260, overflowY: 'auto' }}>
+                  {suggestedStencil && (
+                    <button
+                      onClick={() => addStencil(suggestedStencil)}
+                      style={{ ...S.menuItem, borderBottom: '1px solid #334155' }}
+                    >
+                      <span style={{ color: '#5eead4' }}>
+                        ✓ {stencilSizeLabel(suggestedStencil)}
+                      </span>
+                      <span style={{ color: '#64748b', fontSize: '10px' }}>
+                        vừa bo đang mở · {money(suggestedStencil.priceVnd)} đ
+                      </span>
+                    </button>
+                  )}
+                  {stencilTiers.map((t, i) => (
+                    <button key={i} onClick={() => addStencil(t)} style={S.menuItem}>
+                      <span>{stencilSizeLabel(t)}</span>
+                      <span style={{ color: '#64748b', fontSize: '10px' }}>
+                        vùng mạch {+t.areaW.toFixed(1)}*{+t.areaH.toFixed(1)}cm ·{' '}
+                        {money(t.priceVnd)} đ
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
             <button onClick={addItem} style={S.smallBtn}>
               + Thêm dòng trống
             </button>
@@ -355,11 +477,35 @@ export const QuotationPanel: React.FC<{
                       />
                     </td>
                     <td style={S.td}>
-                      <input
-                        style={{ ...S.cellInput, width: '92px' }}
-                        value={it.size}
-                        onChange={(e) => patchItem(it.id, { size: e.target.value })}
-                      />
+                      {it.stencil ? (
+                        // Dòng stencil: cỡ khung là một trong các cỡ nhà máy có, nên cho
+                        // chọn lại bao nhiêu lần cũng được thay vì gõ tay.
+                        <select
+                          style={{ ...S.cellInput, width: '92px' }}
+                          value={stencilTiers.findIndex((t) => sameStencil(t, it.stencil!))}
+                          onChange={(e) =>
+                            patchItem(it.id, withStencil(it, stencilTiers[Number(e.target.value)]))
+                          }
+                          title={stencilSizeLabel(it.stencil)}
+                        >
+                          {/* Cỡ đã chọn có thể vừa bị xoá trong Cài đặt — vẫn phải hiện ra
+                              chứ không nhảy sang cỡ khác sau lưng người lập. */}
+                          {stencilTiers.every((t) => !sameStencil(t, it.stencil!)) && (
+                            <option value={-1}>{stencilSizeLabel(it.stencil)} (đã xoá)</option>
+                          )}
+                          {stencilTiers.map((t, i) => (
+                            <option key={i} value={i}>
+                              {stencilSizeLabel(t)} · {money(t.priceVnd)}
+                            </option>
+                          ))}
+                        </select>
+                      ) : (
+                        <input
+                          style={{ ...S.cellInput, width: '92px' }}
+                          value={it.size}
+                          onChange={(e) => patchItem(it.id, { size: e.target.value })}
+                        />
+                      )}
                     </td>
                     <td style={S.td}>
                       <input
@@ -561,13 +707,9 @@ const NoteCell: React.FC<{ value: string; onChange: (v: string) => void }> = ({
     return () => document.removeEventListener('mousedown', onDown)
   }, [menu])
 
-  const pick = (text: string) => {
-    // Đã có chữ thì nối thêm dòng, không đạp lên cái đang gõ dở.
-    onChange(value.trim() ? `${value.trim()}
-${text}` : text)
-    setMenu(false)
-    areaRef.current?.focus()
-  }
+  // Bấm một dòng là bật/tắt dòng đó; danh sách KHÔNG đóng lại để chọn tiếp được nhiều
+  // dòng. Đóng bằng cách bấm ra ngoài hoặc bấm lại nút ▾.
+  const pick = (text: string) => onChange(applyNoteSuggestion(value, text))
 
   return (
     <div ref={boxRef} style={{ position: 'relative', display: 'flex', gap: '2px', width: '170px' }}>
@@ -597,11 +739,20 @@ ${text}` : text)
 
       {menu && (
         <div style={{ ...S.menu, right: 0, left: 'auto' }}>
-          {QUOTATION_DEFAULTS.noteSuggestions.map((text) => (
-            <button key={text} onClick={() => pick(text)} style={S.menuItem}>
-              {text}
-            </button>
-          ))}
+          {QUOTATION_DEFAULTS.noteSuggestions.map((text) => {
+            const on = noteHas(value, text)
+            return (
+              <button
+                key={text}
+                onClick={() => pick(text)}
+                style={{ ...S.menuItem, ...S.noteMenuItem, ...(on ? S.menuItemOn : null) }}
+                title={on ? 'Bấm lại để bỏ chọn' : undefined}
+              >
+                <span style={{ color: on ? '#5eead4' : '#475569', width: 12 }}>{on ? '✓' : ''}</span>
+                <span>{text}</span>
+              </button>
+            )
+          })}
         </div>
       )}
     </div>
@@ -818,6 +969,9 @@ const S: Record<string, React.CSSProperties> = {
     cursor: 'pointer',
     width: '100%',
   },
+  // Ghi chú chọn được nhiều dòng nên mỗi dòng là một hàng ngang có ô đánh dấu.
+  noteMenuItem: { flexDirection: 'row', alignItems: 'center', gap: '6px' },
+  menuItemOn: { backgroundColor: '#14303a', color: '#e2e8f0' },
   noteMenuBtn: {
     backgroundColor: '#1e293b',
     border: '1px solid #334155',

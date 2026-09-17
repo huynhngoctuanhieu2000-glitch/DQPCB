@@ -60,10 +60,31 @@ export interface FormulaConfig {
   }
 }
 
+/** Một cỡ stencil khung nhôm. Mọi kích thước tính bằng cm. */
+export interface StencilTier {
+  /** Kích thước khung (tấm) */
+  frameW: number
+  frameH: number
+  /** Tấm trần, không có khung nhôm — cỡ nhỏ nhất */
+  noFrame?: boolean
+  /** Vùng mạch: bo lớn nhất đặt vừa khung này */
+  areaW: number
+  areaH: number
+  /** Giá một tấm */
+  priceVnd: number
+  /** Khối lượng, để tính cước gửi */
+  weightKg: number
+}
+
+export interface StencilConfig {
+  tiers: StencilTier[]
+}
+
 export interface PricingConfig {
   table: TableConfig
   formula: FormulaConfig
   options: OptionConfig[]
+  stencil: StencilConfig
 }
 
 /** Cấu hình gốc đọc từ JSON. PricingStore phủ chỉnh sửa của người dùng lên trên. */
@@ -163,6 +184,39 @@ export function fitsTable(widthMm: number, heightMm: number, table: TableConfig)
   const maxLong = Math.max(table.maxWidthMm, table.maxHeightMm)
   const maxShort = Math.min(table.maxWidthMm, table.maxHeightMm)
   return long <= maxLong && short <= maxShort
+}
+
+// ── Stencil ──────────────────────────────────────────────────────
+
+/** Bo (cm) có đặt vừa vùng mạch của cỡ khung này không — xoay 90° vẫn tính là vừa. */
+export function fitsStencil(boardW: number, boardH: number, t: StencilTier): boolean {
+  const long = Math.max(boardW, boardH)
+  const short = Math.min(boardW, boardH)
+  return long <= Math.max(t.areaW, t.areaH) && short <= Math.min(t.areaW, t.areaH)
+}
+
+/**
+ * Cỡ khung rẻ nhất mà bo đặt vừa. Rẻ nhất chứ không phải nhỏ nhất: bảng giá không
+ * tăng đều theo cỡ (khung 50×70 giá 800.000 trong khi khung 58.4×58.4 nhỏ hơn lại
+ * 850.000), nên chọn theo cỡ sẽ báo giá đắt hơn mức cần thiết.
+ */
+export function pickStencil(
+  boardW: number,
+  boardH: number,
+  stencil: StencilConfig
+): StencilTier | null {
+  const fit = stencil.tiers.filter((t) => fitsStencil(boardW, boardH, t))
+  if (fit.length === 0) return null
+  return fit.reduce((best, t) =>
+    t.priceVnd !== best.priceVnd
+      ? t.priceVnd < best.priceVnd
+        ? t
+        : best
+      : // Cùng giá thì lấy khung nhỏ hơn cho dễ thao tác.
+        t.frameW * t.frameH < best.frameW * best.frameH
+        ? t
+        : best
+  )
 }
 
 export function priceFromTable(qty: number, table: TableConfig): TableResult | OffTableResult {

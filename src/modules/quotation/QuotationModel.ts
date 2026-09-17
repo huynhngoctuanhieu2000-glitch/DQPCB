@@ -6,7 +6,7 @@
 import defaults from '../../config/quotation-defaults.json'
 import { maskColorLabel } from '../../models/MaskColors'
 import type { Board, BoardState } from '../../models/BoardDataModel'
-import type { PriceBasis } from '../pricing/PricingModel'
+import type { PriceBasis, StencilTier } from '../pricing/PricingModel'
 
 /** Một dòng hàng trong bảng báo giá. */
 export interface QuotationItem {
@@ -29,10 +29,17 @@ export interface QuotationItem {
   /** GHI CHÚ */
   note: string
   /**
+   * Cỡ stencil của dòng này — chỉ có ở dòng thêm bằng "+ Thêm stencil". Giữ lại để đổi
+   * cỡ ngay trên bảng (ô KÍCH THƯỚC thành danh sách chọn) và tính lại tiền theo SL.
+   */
+  stencil?: StencilTier
+  /**
    * Cơ sở tính giá của bo (kích thước, phương án, panel…) — chỉ có ở dòng lấy từ bo
    * đã tính giá. Đổi SL trên form thì thành tiền tra lại từ đây. Không xuất ra file.
    */
   priceBasis?: PriceBasis
+  /** Bo nguồn của dòng này — để dòng bám theo thẻ tính giá khi bên đó đổi. */
+  sourceBoardId?: string
 }
 
 export interface QuotationCustomer {
@@ -104,6 +111,127 @@ export const itemFromBoard = (board: Board): QuotationItem => ({
     : '',
   maskColor: maskColorLabel(board.maskColor),
 })
+
+/** "37*47cm" — bỏ số 0 thừa sau dấu phẩy (58.4 giữ nguyên, 40.0 thành 40). */
+export const stencilSize = (t: StencilTier): string =>
+  `${+t.frameW.toFixed(1)}*${+t.frameH.toFixed(1)}cm`
+
+/** Nhãn đầy đủ cho danh sách chọn, có kèm "không khung". */
+export const stencilSizeLabel = (t: StencilTier): string =>
+  `${stencilSize(t)}${t.noFrame ? ' (không khung)' : ''}`
+
+/**
+ * Dòng stencil. Không phải bo nên bỏ trống SỐ LỚP và MÀU PHỦ; cột KÍCH THƯỚC chỉ ghi
+ * cỡ khung cho vừa bề ngang, còn loại khung và vùng mạch đưa xuống ghi chú — vùng mạch
+ * là thứ khách cần để biết bo mình có đặt vừa không.
+ */
+/**
+ * Hai mục có phải cùng một cỡ khung không — so theo kích thước khung chứ không so
+ * object, vì cỡ lưu trong dòng báo giá là bản sao chụp lúc thêm, còn bảng giá bên Cài
+ * đặt có thể đã được sửa giá sau đó.
+ */
+export const sameStencil = (a: StencilTier, b: StencilTier): boolean =>
+  a.frameW === b.frameW && a.frameH === b.frameH && !!a.noFrame === !!b.noFrame
+
+/** Mặt cần làm stencil — theo cách gọi trong danh sách gợi ý ghi chú sẵn có. */
+export type StencilSide = 'Top' | 'Bot'
+
+/** "Stencil Khung Top" / "Stencil Không Khung Bot" — đúng mẫu ghi chú đang dùng. */
+export const stencilNote = (t: StencilTier, side: StencilSide): string =>
+  `Stencil ${t.noFrame ? 'Không Khung' : 'Khung'} ${side}`
+
+/** Hai cách ghi tự sinh của một cỡ — để biết ghi chú có bị sửa tay hay chưa. */
+const autoNotes = (t: StencilTier): string[] => [stencilNote(t, 'Top'), stencilNote(t, 'Bot')]
+
+const isStencilNote = (s: string) => /^Stencil (Khung|Không Khung) (Top|Bot)$/.test(s.trim())
+
+/** Dòng gợi ý này đã có trong ghi chú chưa. */
+export const noteHas = (current: string, text: string): boolean =>
+  current.split('\n').some((l) => l.trim() === text.trim())
+
+/**
+ * Bật/tắt một dòng trong danh sách gợi ý ghi chú. Bấm lần nữa là bỏ chọn, nên chọn
+ * được nhiều dòng cùng lúc mà không phải gõ tay.
+ *
+ * Một dòng hàng mang được nhiều ghi chú (hàng gấp, phủ hai mặt, ghép panel…) nên mặc
+ * định là nối thêm. Riêng ghi chú stencil thì LOẠI TRỪ nhau: chọn "Stencil Khung Bot"
+ * khi đang là "Stencil Không Khung Top" phải thay chỗ, nối thêm sẽ ra hai dòng đá nhau.
+ */
+export const applyNoteSuggestion = (current: string, picked: string): string => {
+  const lines = current.trim() ? current.trim().split('\n') : []
+  const at = lines.findIndex((l) => l.trim() === picked.trim())
+  if (at >= 0) return lines.filter((_, i) => i !== at).join('\n') // bấm lại = bỏ chọn
+  if (lines.length === 0) return picked
+  if (isStencilNote(picked)) {
+    const i = lines.findIndex(isStencilNote)
+    if (i >= 0) {
+      lines[i] = picked
+      return lines.join('\n')
+    }
+  }
+  return [...lines, picked].join('\n')
+}
+
+/** Ghi chú panel, chỉ có khi thật sự ghép nhiều tấm. */
+export const panelNote = (panelX = 1, panelY = 1): string | null =>
+  panelX > 1 || panelY > 1 ? `Panel ${panelX}*${panelY}` : null
+
+const PANEL_LINE = /^Panel\s+\d+\s*\*\s*\d+$/
+
+/**
+ * Đặt lại dòng panel trong ghi chú, giữ nguyên mọi dòng khác. Đổi cách ghép bên thẻ
+ * tính giá thì dòng này đổi theo chứ không chồng thêm một dòng panel thứ hai.
+ */
+export const withPanelNote = (note: string, panelX = 1, panelY = 1): string => {
+  const rest = note.split('\n').filter((l) => l.trim() && !PANEL_LINE.test(l.trim()))
+  const line = panelNote(panelX, panelY)
+  return (line ? [line, ...rest] : rest).join('\n')
+}
+
+/**
+ * Bo này cần stencil mặt nào: nhìn lớp kem hàn (paste) đọc được từ Gerber. Chỉ có kem
+ * mặt dưới thì là Bot, còn lại mặc định Top — người lập vẫn đổi được bằng tay ở ô ghi chú.
+ */
+export const stencilSideFromBoard = (board?: Board): StencilSide => {
+  const paste = board?.layers.filter((l) => l.type === 'solderpaste') ?? []
+  const hasTop = paste.some((l) => l.side === 'top')
+  const hasBot = paste.some((l) => l.side === 'bottom')
+  return hasBot && !hasTop ? 'Bot' : 'Top'
+}
+
+export const itemFromStencil = (
+  tier: StencilTier,
+  boardName?: string,
+  side: StencilSide = 'Top'
+): QuotationItem => ({
+  ...emptyItem(),
+  name: boardName ? `Stencil ${boardName}` : 'Stencil',
+  size: stencilSize(tier),
+  quantity: 1,
+  amount: tier.priceVnd,
+  note: stencilNote(tier, side),
+  stencil: tier,
+})
+
+/**
+ * Đổi cỡ stencil của một dòng: kích thước và tiền đi theo cỡ mới (tiền nhân số lượng
+ * đang đặt). Ghi chú chỉ ghi đè khi người lập CHƯA sửa tay — sửa rồi thì giữ nguyên,
+ * không đạp lên chữ họ viết.
+ */
+export const withStencil = (item: QuotationItem, tier: StencilTier): QuotationItem => {
+  // Ghi chú đang là chữ app tự sinh thì viết lại theo cỡ mới, GIỮ NGUYÊN mặt đã chọn;
+  // người lập gõ tay hay chọn tay trong danh sách gợi ý thì để y như vậy.
+  const auto = item.stencil ? autoNotes(item.stencil) : []
+  const keepNote = !auto.includes(item.note)
+  const side: StencilSide = item.note === stencilNote(item.stencil ?? tier, 'Bot') ? 'Bot' : 'Top'
+  return {
+    ...item,
+    stencil: tier,
+    size: stencilSize(tier),
+    amount: tier.priceVnd * (item.quantity ?? 1),
+    note: keepNote ? item.note : stencilNote(tier, side),
+  }
+}
 
 /**
  * Đoán tên khách từ đường dẫn thư mục chứa gerber.
