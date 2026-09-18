@@ -131,27 +131,32 @@ describe('matchLayer — tên lớp ba chữ kiểu CAM350/OrCAD', () => {
 })
 
 describe('dilateRegions — lấp khe giữa các dải phủ đồng', () => {
-  /** Hai dải chữ nhật kề nhau, hở 0.02 mm — kiểu CAM350 xuất phủ đồng. */
-  const twoStrips = gbr(
-    [
-      'G36*', 'G01X0Y0D02*', 'G01X1000000Y0D01*', 'G01X1000000Y20000D01*', 'G01X0Y20000D01*', 'G01X0Y0D01*', 'G37*',
-      'G36*', 'G01X0Y22000D02*', 'G01X1000000Y22000D01*', 'G01X1000000Y42000D01*', 'G01X0Y42000D01*', 'G01X0Y22000D01*', 'G37*',
-    ].join('\n'),
-  )
+  /** Chữ nhật tô đặc, toạ độ theo đơn vị file (1e-5 mm). */
+  const box = (x0: number, y0: number, x1: number, y1: number) =>
+    ['G36*', `G01X${x0}Y${y0}D02*`, `G01X${x1}Y${y0}D01*`, `G01X${x1}Y${y1}D01*`, `G01X${x0}Y${y1}D01*`, `G01X${x0}Y${y0}D01*`, 'G37*'].join('\n')
+  /** Sáu dải cao 0.2 mm xếp chồng, hở 0.02 mm — kiểu CAM350 xuất phủ đồng. */
+  const strips = gbr(Array.from({ length: 6 }, (_, k) => box(0, k * 22000, 1000000, k * 22000 + 20000)).join('\n'))
+  const regionsOf = (board: any) => board.layers[0].imageTree.children.filter((c: any) => c.type === 'imageRegion')
   const yRange = (region: any) => {
     const ys = region.segments.map((s: any) => s.start[1])
     return [Math.min(...ys), Math.max(...ys)]
   }
 
-  it('dải trên và dải dưới sau khi nới phải chồng lên nhau', async () => {
-    const [board] = await parse([['Gerber_TopLayer.GTL', twoStrips]])
-    const regions = board.layers[0].imageTree.children.filter((c: any) => c.type === 'imageRegion')
-    expect(regions).toHaveLength(2)
-    const [a, b] = regions.map(yRange).sort((p, q) => p[0] - q[0])
-    expect(a[1]).toBeGreaterThan(b[0]) // đỉnh dải dưới vượt qua đáy dải trên
-    expect(a[1] - 0.2).toBeCloseTo(0.035, 3) // cạnh áp sát: đẩy đúng 0.035 mm
-    expect(a[0]).toBeCloseTo(0, 3) // cạnh ngoài: đứng yên
-    expect(b[1]).toBeCloseTo(0.42, 3)
+  it('lớp kiểu dải: nới đều cả dải, dải kề phủ lên nhau', async () => {
+    const [board] = await parse([['Gerber_TopLayer.GTL', strips]])
+    const ranges = regionsOf(board).map(yRange).sort((p: number[], q: number[]) => p[0] - q[0])
+    expect(ranges).toHaveLength(6)
+    expect(ranges[0][1]).toBeGreaterThan(ranges[1][0])
+    expect(ranges[0][0]).toBeCloseTo(-0.035, 3)
+    expect(ranges[0][1]).toBeCloseTo(0.235, 3)
+  })
+
+  it('mảnh chạm khít kiểu KiCad (khe 0) giữ nguyên, mép không bị răng cưa', async () => {
+    const pieces = gbr(Array.from({ length: 6 }, (_, k) => box(0, k * 20000, 1000000, k * 20000 + 20000)).join('\n'))
+    const [board] = await parse([['Gerber_TopLayer.GTL', pieces]])
+    const ranges = regionsOf(board).map(yRange).sort((p: number[], q: number[]) => p[0] - q[0])
+    expect(ranges[0][0]).toBeCloseTo(0, 5)
+    expect(ranges[0][1]).toBeCloseTo(0.2, 5)
   })
 
   it('pad đứng riêng giữ nguyên kích thước (khe 0.25 mm như chân QFP)', async () => {

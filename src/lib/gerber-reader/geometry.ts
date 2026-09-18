@@ -131,12 +131,16 @@ export const dilateRegions = (tree: any): any => {
   const tol = ARC_TOLERANCE_MM * scale
   const reach = 2 * d
 
-  // CHỈ đẩy những CẠNH đang áp sát một vùng khác (khe ≤ 2·d) — đó là khe giữa các dải
-  // phủ đồng CAM350, hay giữa các mảnh KiCad 10 cắt một pad ra. Cạnh ngoài của pad và
-  // của mảng đồng giữ nguyên. Nới cả vùng như bản trước thì pad phình ra 0.035 mm mỗi
-  // bên, khe giữa chân QFP hẹp lại thấy rõ, nhìn như chân dính nhau (bo KiCad
-  // "FC_F405RGT6_Wing" — mask ở đó mở bằng đúng pad).
-  const regions: { i: number; pts: number[][]; box: number[] }[] = []
+  // Chỉ nới lớp xuất kiểu DẢI: nhiều cặp DẢI CHỮ NHẬT hở nhau một khe THẬT — khe
+  // 0 < g ≤ 2·d, điểm giữa khe sát mép thật của cả hai dải và không vùng nào khác lấp.
+  // Rồi nới ĐỀU cả lớp như bản đầu (dải chữ nhật nới đều vẫn phẳng mép).
+  //
+  // Bo KiCad "FC_F405RGT6_Wing" cắt pad/mảng đồng thành nhiều mảnh nhưng các mảnh chạm
+  // khít (khe 0), không có gì để lấp. Bản trước nới theo TỪNG CẠNH ở mọi lớp: mép cong
+  // bẻ thành đoạn ngắn, đoạn dò thấy hàng xóm bị đẩy, đoạn kế bên không, mép thành răng
+  // cưa ("gợn") ngay chỗ đường dây nhập vào mảng đồng. Nới đều mọi lớp thì pad KiCad
+  // phình ra, khe chân QFP hẹp lại nhìn như chạm.
+  const regions: { i: number; pts: number[][]; box: number[]; strip: boolean }[] = []
   children.forEach((child, i) => {
     if (child?.type !== 'imageRegion' || child.polarity === 'clear' || !Array.isArray(child.segments)) return
     const pts = regionPoints(child, tol)
@@ -148,59 +152,79 @@ export const dilateRegions = (tree: any): any => {
       if (y < y0) y0 = y
       if (y > y1) y1 = y
     }
-    regions.push({ i, pts, box: [x0, y0, x1, y1] })
+    // Dải CAM350: chữ nhật thẳng trục, cạnh dài vượt quãng với tới. Pad bo góc (hàng trăm
+    // đỉnh) hay hạt vụn 0.01 mm của KiCad không tính — khe giữa hai pad là cầu mask thật.
+    const ring = pts.length > 4 && Math.hypot(pts[4][0] - pts[0][0], pts[4][1] - pts[0][1]) <= 1e-9 ? pts.slice(0, 4) : pts
+    const strip =
+      ring.length === 4 &&
+      Math.max(x1 - x0, y1 - y0) > reach &&
+      ring.every((a, e) => {
+        const b = ring[(e + 1) % 4]
+        return Math.abs(a[0] - b[0]) <= 1e-9 || Math.abs(a[1] - b[1]) <= 1e-9
+      })
+    regions.push({ i, pts, box: [x0, y0, x1, y1], strip })
   })
+  // CAM350 "3W NHUA XANH": 47-77% vùng là dải; KiCad "FC_F405RGT6_Wing": ≤ 6%, toàn
+  // mảnh vụn 0.01 mm quanh pad.
+  if (regions.length < 5 || regions.filter((r) => r.strip).length < regions.length * 0.25) return tree
 
-  // Cặp vùng có ô bao cách nhau ≤ reach: ứng viên hàng xóm.
-  const neighbours = new Map<number, number[]>()
-  const byX = [...regions].map((_, k) => k).sort((a, b) => regions[a].box[0] - regions[b].box[0])
-  for (let a = 0; a < byX.length; a++) {
-    const A = regions[byX[a]].box
+  const distToRegion = (p: number[], pts: number[][]) => {
+    let best = Infinity
+    for (let j = 0; j < pts.length; j++) best = Math.min(best, distToSegment(p, pts[j], pts[(j + 1) % pts.length]))
+    return best
+  }
+  const inside = (p: number[], pts: number[][]) => {
+    let hit = false
+    for (let j = 0, k = pts.length - 1; j < pts.length; k = j++) {
+      const [xj, yj] = pts[j], [xk, yk] = pts[k]
+      if (yj > p[1] !== yk > p[1] && p[0] < ((xk - xj) * (p[1] - yj)) / (yk - yj) + xj) hit = !hit
+    }
+    return hit
+  }
+
+  const eps = d / 50
+  const byX = regions.map((_, k) => k).sort((a, b) => regions[a].box[0] - regions[b].box[0])
+  const covered = (p: number[]) => {
+    for (const k of byX) {
+      const [x0, y0, x1, y1] = regions[k].box
+      if (x0 > p[0]) break
+      if (p[0] <= x1 && p[1] >= y0 && p[1] <= y1 && inside(p, regions[k].pts)) return true
+    }
+    return false
+  }
+  const need = 5
+  let gaps = 0
+  scan: for (let a = 0; a < byX.length; a++) {
+    const A = regions[byX[a]]
     for (let b = a + 1; b < byX.length; b++) {
-      const B = regions[byX[b]].box
-      if (B[0] - A[2] > reach) break
-      const gx = Math.max(0, B[0] - A[2], A[0] - B[2])
-      const gy = Math.max(0, B[1] - A[3], A[1] - B[3])
-      if (Math.hypot(gx, gy) > reach) continue
-      for (const [x, y] of [[byX[a], byX[b]], [byX[b], byX[a]]]) {
-        if (!neighbours.has(x)) neighbours.set(x, [])
-        neighbours.get(x)!.push(y)
-      }
+      const B = regions[byX[b]]
+      if (B.box[0] - A.box[2] > reach) break
+      if (!A.strip || !B.strip) continue
+      const gx = Math.max(B.box[0] - A.box[2], A.box[0] - B.box[2])
+      const gy = Math.max(B.box[1] - A.box[3], A.box[1] - B.box[3])
+      // Mặt đối mặt: hở theo đúng một trục, trục kia chồng lên nhau.
+      let probe: number[]
+      if (gx > eps && gx <= reach && gy < 0) {
+        const x = A.box[2] < B.box[0] ? (A.box[2] + B.box[0]) / 2 : (B.box[2] + A.box[0]) / 2
+        probe = [x, (Math.max(A.box[1], B.box[1]) + Math.min(A.box[3], B.box[3])) / 2]
+      } else if (gy > eps && gy <= reach && gx < 0) {
+        const y = A.box[3] < B.box[1] ? (A.box[3] + B.box[1]) / 2 : (B.box[3] + A.box[1]) / 2
+        probe = [(Math.max(A.box[0], B.box[0]) + Math.min(A.box[2], B.box[2])) / 2, y]
+      } else continue
+      if (distToRegion(probe, A.pts) > reach || distToRegion(probe, B.pts) > reach || covered(probe)) continue
+      if (++gaps >= need) break scan
     }
   }
-  if (neighbours.size === 0) return tree
+  if (gaps < need) return tree
 
   const replaced = new Map<number, any>()
-  for (const [k, list] of neighbours) {
-    const { pts, i } = regions[k]
-    const n = pts.length
-    let area = 0
-    for (let e = 0; e < n; e++) area += pts[e][0] * pts[(e + 1) % n][1] - pts[(e + 1) % n][0] * pts[e][1]
-    const sign = area >= 0 ? 1 : -1
-    const dist = pts.map((a, e) => {
-      const b = pts[(e + 1) % n]
-      const dx = b[0] - a[0], dy = b[1] - a[1]
-      const len = Math.hypot(dx, dy)
-      if (len === 0) return 0
-      // Điểm giữa cạnh, nhích ra ngoài nửa quãng với tới: có vùng hàng xóm nào sát đó?
-      const nx = (sign * dy) / len, ny = (-sign * dx) / len
-      const probe = [(a[0] + b[0]) / 2 + nx * (reach / 2), (a[1] + b[1]) / 2 + ny * (reach / 2)]
-      for (const other of list) {
-        const q = regions[other].pts
-        for (let j = 0; j < q.length; j++) {
-          if (distToSegment(probe, q[j], q[(j + 1) % q.length]) <= reach / 2) return d
-        }
-      }
-      return 0
-    })
-    if (!dist.some((v) => v > 0)) continue
-    const moved = offsetEdges(pts, dist)
+  for (const { i, pts } of regions) {
+    const moved = offsetEdges(pts, pts.map(() => d))
     replaced.set(i, {
       ...children[i],
       segments: moved.map((p, e) => ({ type: 'line', start: p, end: moved[(e + 1) % moved.length] })),
     })
   }
-  if (replaced.size === 0) return tree
   return { ...tree, children: children.map((c, i) => replaced.get(i) ?? c) }
 }
 
