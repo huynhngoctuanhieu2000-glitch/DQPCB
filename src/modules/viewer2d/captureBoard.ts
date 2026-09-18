@@ -1,6 +1,6 @@
 /**
  * Chụp chế độ "2 Mặt" ra một ảnh PNG: hai khung Top/Bot ghép cạnh nhau đúng như đang
- * nhìn, kèm nhãn mặt và nhãn kích thước — để gửi khách hoặc dán vào báo giá mà không
+ * nhìn, kèm nhãn kích thước — để gửi khách hoặc dán vào báo giá mà không
  * phải chụp màn hình rồi cắt tay.
  */
 
@@ -79,8 +79,8 @@ export const composeTwoSides = (input: TwoSideCaptureInput): HTMLCanvasElement =
   }
   const bt = contentBox(top, background) ?? [0, 0, top.width, top.height]
   const bb = contentBox(bottom, background) ?? [0, 0, bottom.width, bottom.height]
-  // Lề đủ chỗ cho nhãn mặt ở trên và nhãn kích thước ở dưới.
-  const padX = 24 * s, padTop = 40 * s, padBottom = 56 * s
+  // Lề đều quanh bo, đáy rộng hơn để chứa nhãn kích thước.
+  const padX = 24 * s, padTop = 24 * s, padBottom = 56 * s
   const y0 = Math.max(0, Math.min(bt[1], bb[1]) - padTop)
   const y1 = Math.min(Math.max(top.height, bottom.height), Math.max(bt[3], bb[3]) + padBottom)
   const cut = (c: HTMLCanvasElement, box: number[]) => ({
@@ -102,10 +102,7 @@ export const composeTwoSides = (input: TwoSideCaptureInput): HTMLCanvasElement =
   g.drawImage(top, ct.x, y0, ct.w, H, 0, 0, ct.w, H)
   g.drawImage(bottom, cb.x, y0, cb.w, H, ct.w + gap, 0, cb.w, H)
 
-  // Nhãn mặt ở góc trên mỗi khung, giống overlay trên màn hình.
-  const tag = { radius: 4, padX: 8, padY: 3, font: 11 }
-  drawTag(g, 'TOP — nhìn từ trên', 8 * s, 8 * s, s, tag)
-  drawTag(g, 'BOT — nhìn từ dưới', ct.w + gap + 8 * s, 8 * s, s, tag)
+  // Không in nhãn TOP/BOT lên ảnh — ảnh gửi khách chỉ cần hai mặt bo và kích thước.
 
   // Nhãn kích thước ở đáy, giữa hai khung.
   const size = `${input.layerCount} lớp   |   ${input.widthMM.toFixed(2)} × ${input.heightMM.toFixed(2)} mm`
