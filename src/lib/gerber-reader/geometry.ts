@@ -282,3 +282,36 @@ export const stitchOutline = (tree: any) => {
   const main = asTree(usable.flat())
   return { ...main, parts: usable.map(asTree) }
 }
+
+/**
+ * [DQPCB] Ô bao của lớp viền tính lại từ các vòng ĐÃ NỐI (sau khi bẻ cung), cộng nửa bề
+ * rộng nét như web-gerber vẫn cộng.
+ *
+ * `size` của web-gerber tính trên dữ liệu thô, gồm cả nét lẻ mà stitchOutline đã bỏ.
+ * Bo KiCad "FC_F405RGT6_Wing" có một chấm lẻ trong Edge_Cuts cách bo 47 mm: ô bao thô
+ * ra 89.68 mm trong khi bo chỉ 41.5 mm — sai kích thước là sai luôn giá. Trả null nếu
+ * lớp không có vòng nào (để bên gọi giữ nguyên số của web-gerber).
+ */
+export const outlineSize = (tree: any): [number, number, number, number] | null => {
+  const parts = tree?.parts
+  if (!Array.isArray(parts) || parts.length === 0) return null
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity, stroke = 0
+  for (const part of parts) {
+    for (const child of part?.children ?? []) {
+      if (typeof child?.width === 'number') stroke = Math.max(stroke, child.width)
+      for (const seg of child?.segments ?? []) {
+        const pieces = seg?.type === 'arc' ? arcToLines(seg, ARC_TOLERANCE_MM / (tree.units === 'in' ? 25.4 : 1)) : [seg]
+        for (const piece of pieces) {
+          for (const p of [piece.start, piece.end]) {
+            if (!p) continue
+            minX = Math.min(minX, p[0]); maxX = Math.max(maxX, p[0])
+            minY = Math.min(minY, p[1]); maxY = Math.max(maxY, p[1])
+          }
+        }
+      }
+    }
+  }
+  if (!Number.isFinite(minX)) return null
+  const h = stroke / 2
+  return [minX - h, minY - h, maxX + h, maxY + h]
+}

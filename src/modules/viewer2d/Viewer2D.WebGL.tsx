@@ -452,10 +452,11 @@ export const Viewer2DWebGL: React.FC<Viewer2DWebGLProps> = ({
           pcb.OutLine = obj
         }
         else if (id.type === 'drill') {
-          // Object rỗng khởi tạo ban đầu không có mesh -> file khoan đầu tiên thay thế nó,
-          // các file sau gắn làm con để cùng chịu scale/transform của assembly.
-          if (drillPlaced === 0) pcb.Drill = obj
-          else pcb.Drill.add(obj)
+          // Mọi file khoan đều là CON của khung rỗng ban đầu, kể cả file đầu tiên. Trước
+          // đây file đầu tiên thay chỗ khung rồi các file sau gắn vào nó — mà file khoan
+          // inch đã tự phóng ×25.4, nên file thứ hai bị nhân hai lần (×645) và văng khỏi
+          // bo: bo KiCad 6 lớp mất sạch 250 lỗ PTH, chỉ còn 2 lỗ NPTH của file đầu.
+          pcb.Drill.add(obj)
           drillPlaced++
         }
         else continue

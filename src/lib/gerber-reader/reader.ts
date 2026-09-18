@@ -20,7 +20,7 @@ import {
   matchLayer,
   shortenNames,
 } from './identify'
-import { dilateRegions, flattenArcs, stitchOutline } from './geometry'
+import { dilateRegions, flattenArcs, outlineSize, stitchOutline } from './geometry'
 import { convertIncrementalToAbsolute, detectFileUnits, parseApertureList } from './normalize'
 import { buildEstimatedOutline, extractProfileGerber, plotOutline } from './outline'
 
@@ -328,6 +328,12 @@ export class GerberParser {
         const imageTree = flattenArcs(
           isOutline ? stitchOutline(plotted) : fillTypes.includes(meta.type) ? dilateRegions(plotted) : plotted,
         )
+
+        // Viền: ô bao lấy từ vòng đã nối, không lấy số thô của web-gerber (xem outlineSize).
+        if (isOutline) {
+          const real = outlineSize(imageTree)
+          if (real) imageTree.size = real
+        }
 
         let size: [number, number, number, number] = [0, 0, 0, 0]
         if (imageTree.size && imageTree.size.length === 4) {
