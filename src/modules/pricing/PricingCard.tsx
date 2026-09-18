@@ -44,8 +44,10 @@ const parseDigits = (raw: string): number | null => {
  * 2oz nhìn từ Gerber vẫn là 2 lớp. Nên đây là điểm khởi đầu, người lập vẫn phải đổi
  * tay khi khách đặt loại khác.
  */
-const optionFromLayers = (layerCount: number): string =>
-  layerCount >= 4 ? 'L4' : layerCount <= 1 ? 'L1' : 'L2'
+// Mỗi số lớp một phương án riêng (L1, L2, L4, L6…). Trước đây mọi bo từ 4 lớp trở lên
+// gộp vào L4 — bo 6 lớp bị báo theo giá 4 lớp, thấp hơn thật mà không ai hay. Giờ số
+// lớp chưa có đơn giá thì phương án không tồn tại, thẻ báo rõ và không ra giá.
+const optionFromLayers = (layerCount: number): string => `L${Math.max(1, layerCount)}`
 
 /** Những gì người lập đã nhập trên thẻ cho một bo. */
 interface CardInputs {
@@ -305,6 +307,11 @@ export const PricingCard: React.FC<{
             setOptionTouched(true)
           }}
         >
+          {!cfg.options.some((o) => o.key === option) && (
+            <option value={option} disabled>
+              {option.replace(/^L/, '')} lớp — chưa có đơn giá
+            </option>
+          )}
           {cfg.options.map((o) => (
             <option key={o.key} value={o.key}>
               {o.label}
@@ -312,6 +319,13 @@ export const PricingCard: React.FC<{
           ))}
         </select>
       </InfoRow>
+      {!cfg.options.some((o) => o.key === option) && (
+        <div style={S.noRate}>
+          Chưa có đơn giá cho bo {option.replace(/^L/, '')} lớp — app không lấy giá loại khác
+          thay vào. Thêm phương án {option} trong pricing-rules.json, hoặc chọn loại bo khác
+          nếu khách đồng ý.
+        </div>
+      )}
       {board.isLoaded && (
         <div style={S.originLine}>
           {optionTouched ? (
@@ -623,6 +637,16 @@ const S: Record<string, React.CSSProperties> = {
   },
   title: { color: '#e2e8f0', fontWeight: 600, fontSize: 12 },
   badge: { fontSize: 10, padding: '1px 6px', borderRadius: 999, fontWeight: 600 },
+  noRate: {
+    fontSize: 11,
+    lineHeight: 1.45,
+    color: '#fca5a5',
+    backgroundColor: '#2a1215',
+    border: '1px solid #5b1f24',
+    borderRadius: 6,
+    padding: '6px 8px',
+    margin: '4px 0 6px',
+  },
   pathToggle: { display: 'flex', gap: 2, padding: 2, borderRadius: 999, backgroundColor: '#14161b', border: '1px solid #2c313c' },
   pathBtn: {
     fontSize: 10,
