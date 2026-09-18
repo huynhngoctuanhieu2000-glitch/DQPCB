@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { Viewer2DWebGL } from '../modules/viewer2d/Viewer2D.WebGL'
 import type { CaptureFn } from '../modules/viewer2d/Viewer2D.WebGL'
-import { captureFileName, composeTwoSides, savePng } from '../modules/viewer2d/captureBoard'
+import { composeTwoSides, copyPng } from '../modules/viewer2d/captureBoard'
 import { BoardDataModel } from '../models/BoardDataModel'
 import type { BoardState } from '../models/BoardDataModel'
 import { GerberParser } from '../core/GerberParser'
@@ -45,6 +45,8 @@ export const Layout: React.FC = () => {
   const captureTopRef = useRef<CaptureFn | null>(null)
   const captureBotRef = useRef<CaptureFn | null>(null)
   const [capturing, setCapturing] = useState(false)
+  // Báo "đã copy" ngay trên nút vài giây, vì copy vào clipboard không có dấu hiệu nào khác
+  const [copied, setCopied] = useState(false)
 
   const captureTwoSides = async () => {
     if (!boardState.bounds || capturing) return
@@ -64,7 +66,9 @@ export const Layout: React.FC = () => {
         widthMM: boardState.bounds.widthMM,
         heightMM: boardState.bounds.heightMM,
       })
-      await savePng(img, captureFileName(boardState.projectName))
+      await copyPng(img)
+      setCopied(true)
+      window.setTimeout(() => setCopied(false), 2500)
     } catch (err: any) {
       setErrorMessage(err?.message || 'Không chụp được ảnh bo')
     } finally {
@@ -932,11 +936,11 @@ export const Layout: React.FC = () => {
                   />
                 </div>
 
-                {/* Chụp cả hai mặt ra một ảnh PNG, đúng như đang nhìn */}
+                {/* Chụp cả hai mặt đúng như đang nhìn (kể cả đang zoom) vào clipboard */}
                 <button
                   onClick={captureTwoSides}
                   disabled={capturing}
-                  title="Lưu ảnh PNG hai mặt bo (nét gấp đôi màn hình)"
+                  title="Copy ảnh hai mặt bo vào clipboard, đúng khung đang nhìn (nét gấp đôi màn hình)"
                   style={{
                     position: 'absolute',
                     top: 10,
@@ -952,7 +956,7 @@ export const Layout: React.FC = () => {
                     border: '1px solid #334155',
                   }}
                 >
-                  {capturing ? 'Đang chụp…' : '📷 Chụp 2 mặt'}
+                  {capturing ? 'Đang chụp…' : copied ? '✓ Đã copy' : '📋 Copy ảnh 2 mặt'}
                 </button>
 
                 {/* Nhãn kích thước nổi giữa hai khung, sát bo — thanh chạy hết chiều

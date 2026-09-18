@@ -75,24 +75,6 @@ ipcMain.handle(
   }
 )
 
-// Lưu ảnh chụp bo (PNG): cùng cơ chế với báo giá, chỉ khác bộ lọc đuôi file.
-ipcMain.handle(
-  'image:save',
-  async (_event, payload: { fileName: string; data: Uint8Array }) => {
-    const target = win
-      ? await dialog.showSaveDialog(win, {
-          title: 'Lưu ảnh bo',
-          defaultPath: payload.fileName,
-          filters: [{ name: 'Ảnh PNG', extensions: ['png'] }],
-        })
-      : await dialog.showSaveDialog({ defaultPath: payload.fileName })
-
-    if (target.canceled || !target.filePath) return { canceled: true }
-    await fs.writeFile(target.filePath, Buffer.from(payload.data))
-    return { canceled: false, filePath: target.filePath }
-  }
-)
-
 // Xuất báo giá PDF: renderer gửi sang một trang HTML tự chứa (ảnh đã là data URL),
 // main nạp vào một cửa sổ ẩn rồi in ra PDF. Làm ở đây thay vì dùng jsPDF để khỏi
 // phải nhúng font tiếng Việt — cửa sổ Chromium dùng font hệ thống là ra đúng chữ.

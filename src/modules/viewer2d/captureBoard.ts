@@ -75,43 +75,25 @@ export const composeTwoSides = (input: TwoSideCaptureInput): HTMLCanvasElement =
   return c
 }
 
-/** Tên file ảnh: theo tên bo, bỏ ký tự Windows không cho phép. */
-export const captureFileName = (projectName: string): string => {
-  const base =
-    (projectName || '')
-      .replace(/[\\/:*?"<>|]+/g, '_')
-      .replace(/^_+|_+$/g, '')
-      .trim() || 'board'
-  return `${base}_2mat.png`
-}
-
-interface IpcBridge {
-  invoke(channel: string, ...args: unknown[]): Promise<unknown>
-}
-
 /**
- * Lưu PNG: trong Electron mở hộp thoại "Save as" qua main; trên trình duyệt thì tải
- * xuống như một link download.
+ * Đưa ảnh vào clipboard để dán thẳng vào Zalo/mail/báo giá — người lập chụp bo để
+ * gửi khách chứ không phải để lưu file. Clipboard API chạy được cả trong Electron
+ * (Chromium) lẫn trình duyệt; cú bấm nút đã cho trang focus nên không bị từ chối.
  */
-export const savePng = async (canvas: HTMLCanvasElement, fileName: string): Promise<void> => {
+export const copyPng = async (canvas: HTMLCanvasElement): Promise<void> => {
   const blob = await new Promise<Blob | null>((res) => canvas.toBlob(res, 'image/png'))
   if (!blob) throw new Error('Không tạo được ảnh PNG')
-
-  const ipc = (window as unknown as { ipcRenderer?: IpcBridge }).ipcRenderer
-  if (ipc) {
-    const data = new Uint8Array(await blob.arrayBuffer())
-    await ipc.invoke('image:save', { fileName, data })
-    return
+  if (!navigator.clipboard?.write || typeof ClipboardItem === 'undefined') {
+    throw new Error('Trình duyệt này không cho copy ảnh vào clipboard')
   }
-
-  const url = URL.createObjectURL(blob)
   try {
-    const a = document.createElement('a')
-    a.href = url
-    a.download = fileName
-    a.click()
-  } finally {
-    // Thu hồi sau khi trình duyệt đã kịp bắt đầu tải.
-    setTimeout(() => URL.revokeObjectURL(url), 10_000)
+    await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })])
+  } catch (err) {
+    // Trình duyệt từ chối khi trang chưa có focus hoặc bị chính sách chặn; nói bằng
+    // tiếng Việt thay vì ném nguyên "Write permission denied" ra màn hình.
+    if ((err as { name?: string })?.name === 'NotAllowedError') {
+      throw new Error('Trình duyệt chặn copy vào clipboard — bấm vào khung bo rồi thử lại')
+    }
+    throw err
   }
 }
