@@ -1,5 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { BoardDataModel } from '../../models/BoardDataModel'
+import { realPalette, HOLE, MASK_OPENING, BASE_BOARD } from '../../models/RealPalette'
+import { copperSamplePoints, splitOutlineLoops } from './outlineLoops'
 // @ts-ignore - web-gerber typings for named exports are incomplete
 import {
   createParser,
@@ -33,30 +35,15 @@ import {
  * Chế độ CAM: xem file gia công, mỗi lớp một màu phẳng tương phản trên nền tối,
  * không có mask/nền FR-4.
  */
-/**
- * Lỗ khoan, lỗ phay và các vòng tròn khoét trên lớp outline đều tô TRẮNG.
- * Lỗ là chỗ thủng: mắt phải thấy nền sáng lọt qua thì mới ra cảm giác xuyên bo.
- * Trước đây tô xám gần đen nên trông như nút bịt đặc chứ không phải lỗ.
- */
-const HOLE = 0xffffff
-
 const REAL = {
   background: 0xeeeeee,
-  Oil: 0x0f4f26,         // soldermask xanh phủ vùng không có đồng
-  // Đồng nằm DƯỚI mask nên thấy màu đồng đã bị mask xanh lọc qua — sáng hơn nền mask
-  // rõ rệt, đúng như bo thật soi thẳng. Trước đây để gần trùng màu Oil vì tưởng đó là
-  // nguyên nhân "nhìn xuyên", nhưng thủ phạm thật là lõi FR-4 bị thủng (xem stitchOutline);
-  // sửa xong lõi rồi thì mạch nổi lên vẫn không hề bị xuyên xuống mặt dưới.
-  Copper: 0x49b06a,
-  // Lỗ mở mask = pad. Nhà máy mạ thiếc chì HASL (đúng thông số mặc định ghi trong
-  // báo giá) nên pad ra màu xám thiếc, không phải vàng ENIG.
-  //
-  // Xám trung tính ở quãng giữa nên dùng chung được cho mọi màu bo — thử trên bo đen
-  // và bo trắng đều nổi. (Bản trước để bạc sáng 0xd0d8e2 thì phải chia hai sắc độ,
-  // vì trên bo trắng nó lẫn hẳn vào nền.)
-  MaskOpening: 0x9aa1a8,
+  // Oil/Copper thật sự dùng khi dựng bo do `realPalette` suy ra từ màu bo người dùng
+  // chọn; hai giá trị dưới chỉ là mốc tham chiếu cho màu xanh mặc định.
+  Oil: 0x185428,
+  Copper: 0x2c7834,
+  MaskOpening: MASK_OPENING,
   Silkscreen: 0xf2f2f2,
-  BaseBoard: 0xbfaf42,
+  BaseBoard: BASE_BOARD,
   Drill: HOLE,
 }
 
@@ -99,84 +86,128 @@ const splitPolarityRuns = (tree: any): { erase: boolean; tree: any }[] | null =>
   return runs.map((r) => ({ erase: r.erase, tree: { ...tree, children: r.children } }))
 }
 
-/** Diện tích hình chữ nhật bao của một vòng outline, theo đơn vị của file. */
-const loopArea = (part: any): number => {
-  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
-  for (const child of part?.children ?? []) {
-    for (const seg of child?.segments ?? []) {
-      for (const pt of [seg.start, seg.end]) {
-        if (!pt) continue
-        minX = Math.min(minX, pt[0]); maxX = Math.max(maxX, pt[0])
-        minY = Math.min(minY, pt[1]); maxY = Math.max(maxY, pt[1])
-      }
-    }
-  }
-  if (!Number.isFinite(minX)) return 0
-  return (maxX - minX) * (maxY - minY)
-}
-
-/**
- * Chia các vòng của lớp outline thành phần THÂN BO và phần LỖ KHOÉT.
- *
- * Lớp outline có thể chứa nhiều vòng kín vì hai lý do khác hẳn nhau:
- *  - bo có lỗ phay bên trong (lỗ bắt ốc không nằm trong file khoan vì quá to so với
- *    mũi khoan) — phải thủng;
- *  - tấm panel gồm nhiều bo con cộng khung ngoài — mỗi vòng là một miếng vật liệu
- *    thật, phải đặc.
- *
- * Phân biệt bằng độ lớn tương đối: lỗ phay thường bé xíu so với bo (lỗ 3.2mm trên bo
- * 121×86mm chỉ chiếm 0.08%), còn một bo con trong panel 9 bo chiếm cỡ 11%. Ngưỡng 5%
- * nằm giữa hai con số đó, cách xa cả hai bên.
- */
-const OUTLINE_CUTOUT_MAX_RATIO = 0.05
-
-const splitOutlineLoops = (parts: any[]): { body: any[]; cutouts: any[] } => {
-  if (!Array.isArray(parts) || parts.length < 2) return { body: parts ?? [], cutouts: [] }
-  const areas = parts.map(loopArea)
-  const biggest = Math.max(...areas)
-  if (!(biggest > 0)) return { body: parts, cutouts: [] }
-  const body: any[] = []
-  const cutouts: any[] = []
-  parts.forEach((part, i) => {
-    if (areas[i] / biggest < OUTLINE_CUTOUT_MAX_RATIO) cutouts.push(part)
-    else body.push(part)
-  })
-  return body.length > 0 ? { body, cutouts } : { body: parts, cutouts: [] }
-}
-
-const hexToRgb = (hex: string) => {
-  const n = parseInt(String(hex).replace('#', ''), 16)
-  return Number.isFinite(n) ? [(n >> 16) & 255, (n >> 8) & 255, n & 255] : [28, 122, 60]
-}
-const rgbToHex = ([r, g, b]: number[]) => (r << 16) | (g << 8) | b
-const clamp = (v: number) => Math.max(0, Math.min(255, Math.round(v)))
-
-/**
- * Bảng màu Real/3D suy ra từ màu soldermask người dùng chọn, thay vì cố định màu xanh.
- *  - Đồng nằm DƯỚI mask nên mắt thấy màu mask đã bị đồng làm ngả đi: lệch một quãng
- *    cố định so với nền. Mask sáng thì phải làm TỐI đi, mask tối thì làm SÁNG lên —
- *    nếu không, bo trắng sẽ cho đồng trắng và mất hẳn đường mạch.
- *  - In lụa cũng vậy: trên bo trắng/vàng phải in mực đen mới đọc được.
- */
-const realPalette = (maskHex: string) => {
-  const rgb = hexToRgb(maskHex)
-  // độ sáng cảm nhận (ITU-R BT.601)
-  const lum = (0.299 * rgb[0] + 0.587 * rgb[1] + 0.114 * rgb[2]) / 255
-  const light = lum > 0.6
-  const shift = light ? -52 : 28
-  return {
-    Oil: rgbToHex(rgb.map(clamp)),
-    Copper: rgbToHex(rgb.map((c) => clamp(c + shift))),
-    Silkscreen: light ? 0x1a1a1a : 0xf2f2f2,
-    MaskOpening: REAL.MaskOpening,
-    BaseBoard: REAL.BaseBoard,
-    Drill: REAL.Drill,
-  }
-}
-
 // Stack-up phóng đại theo trục z. Giữ đúng tỉ lệ tương đối giữa các lớp, chỉ nhân lên
 // để depth buffer phân biệt được — nhìn thẳng từ trên xuống thì không thấy khác biệt.
 const LAMINAR = { Copper: 0.12, SolderMask: 0.14, Oil: 0.04, Silkscreen: 0.04, Total: 2.4 }
+/** Các loại lớp thật sự được lắp vào cảnh. Loại khác dựng xong cũng không có chỗ đặt. */
+const SCENE_TYPES = new Set(['copper', 'soldermask', 'silkscreen', 'outline', 'drill'])
+
+/**
+ * Hình đã dựng cho từng lớp, dùng lại giữa các lần dựng cảnh.
+ *
+ * `renderThree` chiếm hơn 90% thời gian load (đo trên bo thật: parse 0.3 s, dựng hình
+ * 4-5 s), và cảnh bị dựng lại mỗi khi đổi chế độ xem, đổi màu bo, hay — nặng nhất —
+ * mở "2 Mặt": hai khung là hai component, mỗi khung dựng lại toàn bộ từ đầu, cùng một
+ * hình y hệt. Giữ bản gốc ở đây, khung nào cần thì `clone()` (dùng chung geometry và
+ * material, chỉ tốn transform).
+ *
+ * Cache thuộc về một `board.layers` cụ thể: nạp bo khác là dọn sạch, giải phóng GPU.
+ */
+const built: { layers: unknown; entries: Map<string, { obj: any; cutouts: any[] }> } = {
+  layers: null,
+  entries: new Map(),
+}
+/**
+ * Geometry/material đang nằm trong cache — cleanup của cảnh phải chừa chúng ra. Chúng
+ * được dispose khi cache bị dọn (đổi bo), không phải khi một khung đóng.
+ */
+const cachedGpu = new WeakSet<object>()
+
+const materialsOf = (o: any): any[] =>
+  Array.isArray(o.material) ? o.material : o.material ? [o.material] : []
+
+const disposeDeep = (obj: any) =>
+  obj?.traverse?.((o: any) => {
+    o.geometry?.dispose?.()
+    materialsOf(o).forEach((m: any) => m?.dispose?.())
+  })
+
+const claimGpu = (obj: any) =>
+  obj?.traverse?.((o: any) => {
+    if (o.geometry) cachedGpu.add(o.geometry)
+    materialsOf(o).forEach((m: any) => cachedGpu.add(m))
+  })
+
+const ensureBuildCache = (layers: unknown) => {
+  if (built.layers === layers) return
+  for (const { obj, cutouts } of built.entries.values()) {
+    disposeDeep(obj)
+    cutouts.forEach(disposeDeep)
+  }
+  built.entries.clear()
+  built.layers = layers
+}
+
+/**
+ * Dựng hình ba chiều cho một lớp từ ImageTree đã plot. Thuần dựng, không đụng cảnh:
+ * lỗ phay của outline trả riêng để bên gọi quyết định đặt vào đâu theo chế độ.
+ */
+const buildLayerObject = (
+  plotted: any,
+  opts: {
+    color: number
+    eraseColor: number
+    fillOutline: boolean
+    isOutline: boolean
+    holeColor: number
+    /** Điểm đồng (mm) của cả bo — để phân biệt lỗ khoét với bo con, xem outlineLoops. */
+    copperPoints: number[][]
+  },
+): { obj: any; cutouts: any[] } | null => {
+  const { color, eraseColor, fillOutline, isOutline, holeColor, copperPoints } = opts
+  const cutouts: any[] = []
+
+  // Panel có nhiều đường bao rời (9 bo + khung + rãnh v-cut). renderThree chỉ dựng
+  // được MỘT shape mỗi lần gọi, nên gọi riêng từng vòng rồi gộp các mảnh lại;
+  // gộp chung một lần gọi thì các bo bị nối liền thành khối tự cắt.
+  // Lớp có đảo cực phải dựng theo TỪNG ĐOẠN và xếp chồng đúng thứ tự trong
+  // file (xem splitPolarityRuns), nếu không phần vẽ sau sẽ bị phần khoét
+  // trước đó xoá mất.
+  const runs = splitPolarityRuns(plotted)
+
+  let obj: any
+  if (runs) {
+    // Đoạn khoét tô bằng màu của thứ nằm dưới lớp này. Ở Real/3D thứ nằm dưới
+    // in lụa và dưới đồng đều là lớp phủ mask, nên ra đúng cảm giác bo thật.
+    const made = runs
+      .map((run, i) => {
+        const g = renderThree(run.tree, run.erase ? eraseColor : color, undefined, fillOutline)
+        if (g) {
+          g.userData.polarityErase = run.erase
+          // Vị trí trong chuỗi, dùng để xếp thứ tự vẽ và nhấc cao độ.
+          g.userData.polarityIndex = i
+          g.userData.polarityCount = runs.length
+        }
+        return g
+      })
+      .filter(Boolean)
+    obj = made.shift()
+    made.forEach((extra: any) => obj?.add(extra))
+  } else if (isOutline && plotted.parts?.length > 1) {
+    // Lỗ phay bên trong bo tách riêng khỏi đường bao, vì hai lý do:
+    //  - Real/3D: dựng cùng chỗ với lỗ khoan để nó xuyên suốt bề dày bo — tô đặc
+    //    như thân bo thì lỗ biến mất.
+    //  - CAM: tô trắng như lỗ khoan để phân biệt với đường bao gia công; ăn theo
+    //    màu outline thì lỗ bắt vít lẫn hẳn vào viền bo.
+    const { body, cutouts: holes } = splitOutlineLoops(plotted.parts, {
+      scale: plotted.units === 'in' ? 25.4 : 1,
+      copperPoints,
+    })
+    const made = body
+      .map((part: any) => renderThree(part, color, undefined, fillOutline))
+      .filter(Boolean)
+    obj = made.shift()
+    made.forEach((extra: any) => obj?.add(extra))
+    for (const part of holes) {
+      const hole = renderThree(part, holeColor, undefined, fillOutline)
+      if (hole) cutouts.push(hole)
+    }
+  } else {
+    obj = renderThree(plotted, color, undefined, fillOutline)
+  }
+  return obj ? { obj, cutouts } : null
+}
+
 export interface Viewer2DWebGLProps {
   /** Ép chế độ hiển thị, bỏ qua activeView của model (dùng cho khung chia đôi Top/Bot) */
   viewOverride?: 'CAM' | 'Real' | '3D'
@@ -194,13 +225,23 @@ export interface Viewer2DWebGLProps {
    * lề rộng hơn, nếu không hai bo fit sát mép và dính vào nhau ở đường giữa.
    */
   fitPadding?: number
+  /**
+   * Nhận hàm chụp khung hình hiện tại. Trả về một canvas RỜI (đã sao chép pixel) vì
+   * canvas WebGL không giữ bộ đệm sau khi trình duyệt ghép hình (preserveDrawingBuffer
+   * tắt) — đọc muộn một tick là ra ảnh đen.
+   */
+  captureRef?: React.MutableRefObject<CaptureFn | null>
 }
+
+/** Chụp cảnh đang xem; `scale` là hệ số phóng so với kích thước khung (2 = nét gấp đôi). */
+export type CaptureFn = (scale?: number) => HTMLCanvasElement | null
 
 export const Viewer2DWebGL: React.FC<Viewer2DWebGLProps> = ({
   viewOverride,
   faceSide = 'top',
   hideBadge = false,
   fitPadding = 1.15,
+  captureRef,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null)
   // Hàm đưa khung nhìn về vừa khít, do effect dựng cảnh gán vào
@@ -239,10 +280,19 @@ export const Viewer2DWebGL: React.FC<Viewer2DWebGLProps> = ({
       AddResizeListener: true,
     })
     render.Scene.background?.set?.(camMode ? CAM_BACKGROUND : REAL.background)
+    // Chỉ khi chạy dev: lộ cảnh ra window để soi material/light từ console mà không
+    // phải sửa code — three của web-gerber không import được từ ngoài.
+    if (import.meta.env.DEV) {
+      ;(window as any).__dqpcbScene = render.Scene
+      ;(window as any).__dqpcbRender = render
+    }
 
     const t0 = performance.now()
     const bad: string[] = []
     const palette = realPalette(board.maskColor)
+    ensureBuildCache(board.layers)
+    let cacheHits = 0
+    const copperPoints = copperSamplePoints(board.layers)
 
     // --- Chọn file khoan ---
     // KiCad có thể xuất cả bản gộp (.drl, FileFunction MixedPlating) LẪN bộ tách
@@ -301,6 +351,12 @@ export const Viewer2DWebGL: React.FC<Viewer2DWebGLProps> = ({
       const id = { type: raw.type, side: raw.side }
       if (!id.type) continue
 
+      // Dựng xong mà không có chỗ đặt trong cảnh thì dựng làm gì: lớp tài liệu (drill
+      // drawing, assembly…) và file khoan không được chọn vẽ. Trước đây vẫn dựng hết —
+      // riêng ba lớp tài liệu của một bo Altium đã tốn 1.1 s trong tổng 4.7 s.
+      if (!SCENE_TYPES.has(id.type)) continue
+      if (id.type === 'drill' && !drillUse.has(raw.filename)) continue
+
       const isOutline = id.type === 'outline'
       try {
         const plotted = raw.imageTree
@@ -333,58 +389,37 @@ export const Viewer2DWebGL: React.FC<Viewer2DWebGLProps> = ({
         // Outline lại chỉ thấy một mảng tối.
         const fillOutline = isOutline && !camMode
 
-        // Panel có nhiều đường bao rời (9 bo + khung + rãnh v-cut). renderThree chỉ dựng
-        // được MỘT shape mỗi lần gọi, nên gọi riêng từng vòng rồi gộp các mảnh lại;
-        // gộp chung một lần gọi thì các bo bị nối liền thành khối tự cắt.
-        // Lớp có đảo cực phải dựng theo TỪNG ĐOẠN và xếp chồng đúng thứ tự trong
-        // file (xem splitPolarityRuns), nếu không phần vẽ sau sẽ bị phần khoét
-        // trước đó xoá mất.
-        const runs = splitPolarityRuns(plotted)
-
-        let obj: any
-        if (runs) {
-          // Đoạn khoét tô bằng màu của thứ nằm dưới lớp này. Ở Real/3D thứ nằm dưới
-          // in lụa và dưới đồng đều là lớp phủ mask, nên ra đúng cảm giác bo thật.
-          const eraseColor = camMode ? CAM_BACKGROUND : palette.Oil
-          const built = runs
-            .map((run, i) => {
-              const g = renderThree(run.tree, run.erase ? eraseColor : color, undefined, fillOutline)
-              if (g) {
-                g.userData.polarityErase = run.erase
-                // Vị trí trong chuỗi, dùng để xếp thứ tự vẽ và nhấc cao độ.
-                g.userData.polarityIndex = i
-                g.userData.polarityCount = runs.length
-              }
-              return g
-            })
-            .filter(Boolean)
-          obj = built.shift()
-          built.forEach((extra: any) => obj?.add(extra))
-        } else if (isOutline && plotted.parts?.length > 1) {
-          // Lỗ phay bên trong bo tách riêng khỏi đường bao, vì hai lý do:
-          //  - Real/3D: dựng cùng chỗ với lỗ khoan để nó xuyên suốt bề dày bo — tô đặc
-          //    như thân bo thì lỗ biến mất.
-          //  - CAM: tô trắng như lỗ khoan để phân biệt với đường bao gia công; ăn theo
-          //    màu outline thì lỗ bắt vít lẫn hẳn vào viền bo.
-          const { body, cutouts } = splitOutlineLoops(plotted.parts)
-          const built = body
-            .map((part: any) => renderThree(part, color, undefined, fillOutline))
-            .filter(Boolean)
-          obj = built.shift()
-          built.forEach((extra: any) => obj?.add(extra))
-          for (const part of cutouts) {
-            const hole = renderThree(part, HOLE, undefined, fillOutline)
-            if (!hole) continue
-            // Ở CAM lỗ phay là hình vẽ của chính lớp Outline nên phải tắt/bật theo nó.
-            // Real/3D thì nó là chỗ thủng vật liệu, đi chung cụm khoan để kéo dài hết
-            // bề dày bo.
-            if (camMode) obj?.add(hole)
-            else outlineCutouts.push(hole)
-          }
+        const eraseColor = camMode ? CAM_BACKGROUND : palette.Oil
+        const key = [raw.id, camMode ? 'cam' : 'real', color, eraseColor, fillOutline].join('|')
+        let hit = built.entries.get(key)
+        if (hit) {
+          cacheHits++
         } else {
-          obj = renderThree(plotted, color, undefined, fillOutline)
+          const made = buildLayerObject(plotted, {
+            color,
+            eraseColor,
+            fillOutline,
+            isOutline,
+            holeColor: HOLE,
+            copperPoints,
+          })
+          if (!made) continue
+          claimGpu(made.obj)
+          made.cutouts.forEach(claimGpu)
+          built.entries.set(key, made)
+          hit = made
         }
-        if (!obj) continue
+        // Bản trong cache là bản gốc, cảnh chỉ nhận bản clone: assembly và paintOrder
+        // đổi position/scale/renderOrder, mà hai khung "2 Mặt" đặt khác nhau.
+        const obj: any = hit.obj.clone()
+        for (const cut of hit.cutouts) {
+          const hole = cut.clone()
+          // Ở CAM lỗ phay là hình vẽ của chính lớp Outline nên phải tắt/bật theo nó.
+          // Real/3D thì nó là chỗ thủng vật liệu, đi chung cụm khoan để kéo dài hết
+          // bề dày bo.
+          if (camMode) obj.add(hole)
+          else outlineCutouts.push(hole)
+        }
 
         // Các lớp trong cùng một bộ có thể khác đơn vị — bo VOL LED có gerber theo mm
         // nhưng file khoan theo inch. Bounds đã quy về mm sẵn, còn hình học thì giữ
@@ -417,7 +452,6 @@ export const Viewer2DWebGL: React.FC<Viewer2DWebGLProps> = ({
           pcb.OutLine = obj
         }
         else if (id.type === 'drill') {
-          if (!drillUse.has(raw.filename)) continue
           // Object rỗng khởi tạo ban đầu không có mesh -> file khoan đầu tiên thay thế nó,
           // các file sau gắn làm con để cùng chịu scale/transform của assembly.
           if (drillPlaced === 0) pcb.Drill = obj
@@ -466,20 +500,24 @@ export const Viewer2DWebGL: React.FC<Viewer2DWebGLProps> = ({
       })
     }
 
-    // Trước đây tắt depth test và xếp lớp bằng renderOrder — KHÔNG ăn thua: three vẫn
-    // vẽ theo độ sâu nên lớp mặt dưới lọt lên trên nền FR-4 (hiện tượng "nhìn xuyên").
-    // Giờ để depth buffer làm việc của nó; renderOrder chỉ còn là tie-break.
-    const materialsOf = (o: any): any[] =>
-      Array.isArray(o.material) ? o.material : o.material ? [o.material] : []
-
+    // Nhìn thẳng từ trên (2D) thì thứ tự lớp là thứ tự vẽ, KHÔNG dùng depth buffer:
+    // depth ở đây không đáng tin. Pad chỉ cao hơn lớp đồng 0.005, mà lớp đồng của CAM350
+    // là hàng nghìn dải tam giác; dọc mép mỗi tam giác depth nội suy lệch đủ để đồng
+    // thắng pad, lộ lên thành nét mảnh chạy ngang dọc khắp pad (đo trên bo "3W NHUA
+    // XANH": 211 pixel nét trong một ô 400×400, tắt depth test còn 0). polygonOffset
+    // không ăn vì web-gerber bật logarithmicDepthBuffer — depth ghi từ fragment shader.
+    //
+    // Lần trước tắt depth test bị "nhìn xuyên" là vì các lớp còn CHUNG renderOrder nên
+    // three xếp theo khoảng cách; giờ mỗi lớp một số thứ tự riêng, không còn chuyện đó.
+    // 3D thì nhìn nghiêng, phải có depth để che khuất đúng.
     const paintOrder = (obj: any, order: number) => {
       if (!obj) return
       obj.renderOrder = order
       obj.traverse((o: any) => {
         o.renderOrder = order
         materialsOf(o).forEach((m: any) => {
-          m.depthTest = true
-          m.depthWrite = true
+          m.depthTest = threeDMode
+          m.depthWrite = threeDMode
         })
       })
 
@@ -661,6 +699,32 @@ export const Viewer2DWebGL: React.FC<Viewer2DWebGLProps> = ({
     const cam = render.Camera
     const cleanups: Array<() => void> = []
 
+    if (captureRef) {
+      const capture: CaptureFn = (scale = 2) => {
+        const r = render.Renderer
+        const canvas = r?.domElement as HTMLCanvasElement | undefined
+        if (!r || !canvas) return null
+        const w = el.clientWidth
+        const h = el.clientHeight
+        // Vẽ một khung ở độ phân giải cao hơn màn hình rồi chép ra ngay trong cùng
+        // một lượt: bộ đệm WebGL không giữ lại sau khi trình duyệt ghép hình.
+        r.setPixelRatio(scale)
+        r.setSize(w, h, false)
+        r.render(render.Scene, render.Camera)
+        const out = document.createElement('canvas')
+        out.width = canvas.width
+        out.height = canvas.height
+        out.getContext('2d')?.drawImage(canvas, 0, 0)
+        r.setPixelRatio(1)
+        r.setSize(w, h, false)
+        return out
+      }
+      captureRef.current = capture
+      cleanups.push(() => {
+        if (captureRef.current === capture) captureRef.current = null
+      })
+    }
+
     if (cam && Number.isFinite(minX) && maxX > minX && maxY > minY) {
       const w = maxX - minX
       const h = maxY - minY
@@ -799,10 +863,14 @@ export const Viewer2DWebGL: React.FC<Viewer2DWebGLProps> = ({
       }
     }
 
-    setTotalMs(Math.round(performance.now() - t0))
+    const totalMs = Math.round(performance.now() - t0)
+    setTotalMs(totalMs)
+    // Khung chia đôi ẩn badge, nên ghi ra console để còn đo được tốc độ dựng.
+    const mode = camMode ? 'CAM' : threeDMode ? '3D' : 'Real'
+    console.info(`[WebGL] dựng ${fromBelow ? 'bottom' : 'top'}/${mode}: ${totalMs} ms, ${ok} lớp, ${cacheHits} từ cache`)
     setFailed(bad)
     setStatus(
-      `Đã dựng ${ok} lớp · khoan ${drillHoles} lỗ (${drillPlan.map((d) => d.name.split(/[\\/]/).pop()).join(', ') || 'không có'})`
+      `Đã dựng ${ok} lớp${cacheHits ? ` (${cacheHits} từ cache)` : ''} · khoan ${drillHoles} lỗ (${drillPlan.map((d) => d.name.split(/[\\/]/).pop()).join(', ') || 'không có'})`
     )
 
     return () => {
@@ -813,11 +881,14 @@ export const Viewer2DWebGL: React.FC<Viewer2DWebGLProps> = ({
       // GPU cho tới khi tự gọi dispose. Mỗi lần đổi chế độ hoặc đổi màu là một lần dựng
       // lại toàn bộ, không dọn thì bộ nhớ dồn lại và lớp nặng nhất (silkscreen ~5 triệu
       // đỉnh) sẽ là cái đầu tiên dựng hỏng.
+      // Riêng hình lấy từ cache thì để nguyên: nó còn phục vụ khung khác và lần dựng
+      // sau, chỉ dispose khi đổi bo (xem ensureBuildCache).
       try {
         render.Scene?.traverse?.((o: any) => {
-          o.geometry?.dispose?.()
-          const mats = Array.isArray(o.material) ? o.material : o.material ? [o.material] : []
-          mats.forEach((m: any) => m?.dispose?.())
+          if (o.geometry && !cachedGpu.has(o.geometry)) o.geometry.dispose?.()
+          materialsOf(o).forEach((m: any) => {
+            if (m && !cachedGpu.has(m)) m.dispose?.()
+          })
         })
         render.Scene?.clear?.()
       } catch { /* ignore */ }
@@ -827,7 +898,7 @@ export const Viewer2DWebGL: React.FC<Viewer2DWebGLProps> = ({
     }
     // threeDMode phải nằm trong deps: chuyển Real 2D → 3D View không đổi camMode
     // (cả hai đều false) nên effect không chạy lại và cảnh vẫn là ảnh 2D phẳng.
-  }, [board.isLoaded, board.layers, board.maskColor, camMode, threeDMode, fromBelow, fitPadding])
+  }, [board.isLoaded, board.layers, board.maskColor, camMode, threeDMode, fromBelow, fitPadding, captureRef])
 
   // Bật/tắt lớp theo checkbox ở sidebar — chỉ đổi .visible, không dựng lại scene.
   // Sidebar được dựng từ GerberParser (tracespace), mà tracespace parse fail nhiều lớp

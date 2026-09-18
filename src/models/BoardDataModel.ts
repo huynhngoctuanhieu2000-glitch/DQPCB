@@ -45,7 +45,7 @@ export interface BoardState extends Board {
   isLoaded: boolean
 }
 
-const DEFAULT_MASK_COLOR = '#0f4f26'
+const DEFAULT_MASK_COLOR = '#185428'
 
 /** Bo rỗng dùng khi chưa mở file nào — để các trường phẳng luôn có giá trị. */
 const emptyBoard = (): Board => ({

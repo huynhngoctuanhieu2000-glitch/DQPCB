@@ -9,7 +9,7 @@
  *     sạch lỗ không mạ lẫn lỗ via.
  */
 import { describe, it, expect } from 'vitest'
-import { GerberParser, drillPlatingOf } from '../src/core/GerberParser'
+import { GerberParser, drillPlatingOf, matchLayer } from '../src/core/GerberParser'
 
 const asFile = (name: string, content: string) =>
   ({
@@ -112,5 +112,49 @@ describe('drillPlatingOf — tách file khoan PTH/NPTH', () => {
     const x2 = '%TF.FileFunction,NonPlated,1,2,NPTH*%\n%FSLAX45Y45*%\n'
     expect(drillPlatingOf('Drill TOP-BOT Plated.GBR', x2)).toBe('NPTH')
     expect(drillPlatingOf('any.drl', '%TF.FileFunction,MixedPlating,1,2*%\n')).toBe('mixed')
+  })
+})
+
+describe('matchLayer — tên lớp ba chữ kiểu CAM350/OrCAD', () => {
+  it('SMT/SMB là mask, SST/SSB là in lụa, TOP/BOT là đồng', () => {
+    const set = ['TOP.gbr', 'BOT.gbr', 'SMT.gbr', 'SMB.gbr', 'SST.gbr', 'SSB.gbr', 'OUTLINE.gbr', 'drill.drl']
+    expect(matchLayer('SMT.gbr', set)).toMatchObject({ type: 'soldermask', side: 'top' })
+    expect(matchLayer('SMB.gbr', set)).toMatchObject({ type: 'soldermask', side: 'bottom' })
+    expect(matchLayer('SST.gbr', set)).toMatchObject({ type: 'silkscreen', side: 'top' })
+    expect(matchLayer('SSB.gbr', set)).toMatchObject({ type: 'silkscreen', side: 'bottom' })
+    expect(matchLayer('TOP.gbr', set)).toMatchObject({ type: 'copper', side: 'top' })
+  })
+
+  it('"Top SMT Paste" của Proteus vẫn là paste, không bị bắt thành mask', () => {
+    expect(matchLayer('Top SMT Paste.GBR', [])).toMatchObject({ type: 'solderpaste', side: 'top' })
+  })
+})
+
+describe('dilateRegions — lấp khe giữa các dải phủ đồng', () => {
+  /** Hai dải chữ nhật kề nhau, hở 0.02 mm — kiểu CAM350 xuất phủ đồng. */
+  const twoStrips = gbr(
+    [
+      'G36*', 'G01X0Y0D02*', 'G01X1000000Y0D01*', 'G01X1000000Y20000D01*', 'G01X0Y20000D01*', 'G01X0Y0D01*', 'G37*',
+      'G36*', 'G01X0Y22000D02*', 'G01X1000000Y22000D01*', 'G01X1000000Y42000D01*', 'G01X0Y42000D01*', 'G01X0Y22000D01*', 'G37*',
+    ].join('\n'),
+  )
+  const yRange = (region: any) => {
+    const ys = region.segments.map((s: any) => s.start[1])
+    return [Math.min(...ys), Math.max(...ys)]
+  }
+
+  it('dải trên và dải dưới sau khi nới phải chồng lên nhau', async () => {
+    const [board] = await parse([['Gerber_TopLayer.GTL', twoStrips]])
+    const regions = board.layers[0].imageTree.children.filter((c: any) => c.type === 'imageRegion')
+    expect(regions).toHaveLength(2)
+    const [a, b] = regions.map(yRange).sort((p, q) => p[0] - q[0])
+    expect(a[1]).toBeGreaterThan(b[0]) // đỉnh dải dưới vượt qua đáy dải trên
+    expect(a[1] - 0.2).toBeCloseTo(0.035, 3) // nới đúng 0.035 mm
+    expect(a[0]).toBeCloseTo(-0.035, 3)
+  })
+
+  it('không đụng tới viền và lớp khoan', async () => {
+    const [board] = await parse([['Gerber_TopLayer.GTL', copper], ['Gerber_BoardOutlineLayer.GKO', outlineWithRoundHole]])
+    expect(board.bounds.widthMM).toBeCloseTo(10, 1)
   })
 })

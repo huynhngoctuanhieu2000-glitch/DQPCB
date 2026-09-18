@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { Viewer2DWebGL } from '../modules/viewer2d/Viewer2D.WebGL'
+import type { CaptureFn } from '../modules/viewer2d/Viewer2D.WebGL'
+import { captureFileName, composeTwoSides, savePng } from '../modules/viewer2d/captureBoard'
 import { BoardDataModel } from '../models/BoardDataModel'
 import type { BoardState } from '../models/BoardDataModel'
 import { GerberParser } from '../core/GerberParser'
@@ -39,6 +41,36 @@ export const Layout: React.FC = () => {
   // Kích thước khung chia đôi — nhãn kích thước cần biết để bám sát mép bo
   const splitRef = useRef<HTMLDivElement>(null)
   const [splitSize, setSplitSize] = useState<{ w: number; h: number } | null>(null)
+  // Hàm chụp của hai khung Top/Bot, do mỗi Viewer2DWebGL gán vào khi dựng xong cảnh
+  const captureTopRef = useRef<CaptureFn | null>(null)
+  const captureBotRef = useRef<CaptureFn | null>(null)
+  const [capturing, setCapturing] = useState(false)
+
+  const captureTwoSides = async () => {
+    if (!boardState.bounds || capturing) return
+    setCapturing(true)
+    try {
+      const scale = 2
+      const top = captureTopRef.current?.(scale)
+      const bottom = captureBotRef.current?.(scale)
+      if (!top || !bottom) throw new Error('Khung chưa dựng xong, thử lại sau một chút')
+      const img = composeTwoSides({
+        top,
+        bottom,
+        scale,
+        gapPx: SPLIT_GAP_PX,
+        background: '#eeeeee',
+        layerCount: boardState.layerCount,
+        widthMM: boardState.bounds.widthMM,
+        heightMM: boardState.bounds.heightMM,
+      })
+      await savePng(img, captureFileName(boardState.projectName))
+    } catch (err: any) {
+      setErrorMessage(err?.message || 'Không chụp được ảnh bo')
+    } finally {
+      setCapturing(false)
+    }
+  }
 
   useEffect(() => {
     return BoardDataModel.subscribe((state) => {
@@ -449,7 +481,9 @@ export const Layout: React.FC = () => {
                   width: '16px',
                   height: '16px',
                   borderRadius: '3px',
-                  backgroundColor: c.hex,
+                  // Chấm dùng màu thương hiệu JLC; bo dựng bằng c.hex tối hơn, bảy
+                  // chấm tô bằng nó sẽ tối gần như nhau, khó bấm đúng.
+                  backgroundColor: c.dot,
                   cursor: 'pointer',
                   padding: 0,
                   border:
@@ -875,16 +909,51 @@ export const Layout: React.FC = () => {
                   // Khoảng trắng giữa hai khung: bỏ đường kẻ ngăn rồi thì lúc zoom vào,
                   // hai nền bo chạm nhau và đọc thành một khối liền. Dải nền cùng màu
                   // với nền canvas nên tách được mà không phải vẽ lại vạch ngăn.
-                  gap: '28px',
+                  gap: `${SPLIT_GAP_PX}px`,
                   backgroundColor: '#eeeeee',
                 }}
               >
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <Viewer2DWebGL viewOverride="Real" faceSide="top" hideBadge fitPadding={SPLIT_FIT_PADDING} />
+                  <Viewer2DWebGL
+                    viewOverride="Real"
+                    faceSide="top"
+                    hideBadge
+                    fitPadding={SPLIT_FIT_PADDING}
+                    captureRef={captureTopRef}
+                  />
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <Viewer2DWebGL viewOverride="Real" faceSide="bottom" hideBadge fitPadding={SPLIT_FIT_PADDING} />
+                  <Viewer2DWebGL
+                    viewOverride="Real"
+                    faceSide="bottom"
+                    hideBadge
+                    fitPadding={SPLIT_FIT_PADDING}
+                    captureRef={captureBotRef}
+                  />
                 </div>
+
+                {/* Chụp cả hai mặt ra một ảnh PNG, đúng như đang nhìn */}
+                <button
+                  onClick={captureTwoSides}
+                  disabled={capturing}
+                  title="Lưu ảnh PNG hai mặt bo (nét gấp đôi màn hình)"
+                  style={{
+                    position: 'absolute',
+                    top: 10,
+                    right: 10,
+                    zIndex: 6,
+                    padding: '5px 12px',
+                    fontSize: 12,
+                    fontWeight: 600,
+                    borderRadius: 6,
+                    cursor: capturing ? 'wait' : 'pointer',
+                    color: '#e2e8f0',
+                    backgroundColor: 'rgba(15,23,42,0.85)',
+                    border: '1px solid #334155',
+                  }}
+                >
+                  {capturing ? 'Đang chụp…' : '📷 Chụp 2 mặt'}
+                </button>
 
                 {/* Nhãn kích thước nổi giữa hai khung, sát bo — thanh chạy hết chiều
                     ngang ở đáy trông rời rạc khi chụp màn hình. */}
@@ -1001,6 +1070,8 @@ export const Layout: React.FC = () => {
 // Lề khi fit bo trong khung chia đôi — dùng chung cho viewer và nhãn kích thước
 // để hai bên tính ra cùng một vị trí mép bo.
 const SPLIT_FIT_PADDING = 1.4
+/** Khoảng trắng giữa hai khung Top/Bot, cũng là khoảng trắng trong ảnh chụp. */
+const SPLIT_GAP_PX = 28
 
 
 /**
