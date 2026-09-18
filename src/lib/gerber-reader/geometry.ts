@@ -175,7 +175,6 @@ export const stitchOutline = (tree: any) => {
   // ra đa giác zíc zắc và lõi bo tô thành hình nêm.
   const TOL = tree.units === 'in' ? 0.05 / 25.4 : 0.05
   const nearAt = (a: number[], b: number[], tol: number) => Math.hypot(a[0] - b[0], a[1] - b[1]) <= tol
-  const near = (a: number[], b: number[]) => nearAt(a, b, TOL)
   const reverse = (s: any) => ({ ...s, start: s.end, end: s.start })
 
   // CAM350 có khi ghi cả viền BỐN lần y hệt nhau (cùng một bo trên: 4 bản viền + 4 bản
@@ -191,17 +190,29 @@ export const stitchOutline = (tree: any) => {
     const m = (a0 + a1) / 2
     return ((m % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2)
   }
+  //
+  // So TRÙNG bằng sai số siêu nhỏ, KHÔNG dùng TOL nối: KiCad 10 vẽ góc bo tròn bằng 500
+  // đoạn thẳng dài ~0.02 mm — ngắn hơn TOL 0.05 mm, nên hai đoạn KẾ NHAU cũng lọt
+  // "cùng hai đầu mút" và bị xoá mất một. Bản sao của CAM350 trùng tuyệt đối nên
+  // 0.001 mm là đủ bắt.
+  //
+  // Nhưng đoạn thường thì vẫn so bằng TOL: vài bộ xuất vẽ lặp viền lệch nhau vài phần
+  // trăm mm, siết hết về 0.001 mm là để lọt bản sao và vòng viền lại hở (đo trên corpus).
+  const DUP_TOL = TOL / 50
+  const segLen = (a: any) => Math.hypot(a.end[0] - a.start[0], a.end[1] - a.start[1])
   const sameSeg = (a: any, b: any) => {
+    const tol = segLen(a) < TOL * 2 || segLen(b) < TOL * 2 ? DUP_TOL : TOL
+    const same = (p: number[], q: number[]) => nearAt(p, q, tol)
     if ((a.type === 'arc') !== (b.type === 'arc')) return false
     if (a.type === 'arc') {
       return (
         !!a.center && !!b.center &&
-        near(a.center, b.center) &&
+        same(a.center, b.center) &&
         Math.abs((a.radius ?? 0) - (b.radius ?? 0)) <= TOL &&
         Math.abs(midAngle(a) - midAngle(b)) < 1e-6
       )
     }
-    return (near(a.start, b.start) && near(a.end, b.end)) || (near(a.start, b.end) && near(a.end, b.start))
+    return (same(a.start, b.start) && same(a.end, b.end)) || (same(a.start, b.end) && same(a.end, b.start))
   }
   const unique: any[] = []
   for (const s of segs) if (!unique.some((u) => sameSeg(u, s))) unique.push(s)
@@ -222,16 +233,45 @@ export const stitchOutline = (tree: any) => {
         grew = false
         const tail = chain[chain.length - 1].end
         const head = chain[0].start
-        for (let i = 0; i < remaining.length; i++) {
-          const s = remaining[i]
-          if (nearAt(s.start, tail, tol)) chain.push(remaining.splice(i, 1)[0])
-          else if (nearAt(s.end, tail, tol)) chain.push(reverse(remaining.splice(i, 1)[0]))
-          else if (nearAt(s.end, head, tol)) chain.unshift(remaining.splice(i, 1)[0])
-          else if (nearAt(s.start, head, tol)) chain.unshift(reverse(remaining.splice(i, 1)[0]))
-          else continue
-          grew = true
-          break
+        // Hai lượt tìm đoạn nối tiếp, đều theo thứ tự trong file (thứ tự vẽ giữ đúng
+        // đường đi ở chỗ hai vòng chạm nhau tại một điểm, như góc bo con trong panel):
+        //  1. Đoạn KHÍT tuyệt đối (≤ DUP_TOL). Góc bo KiCad 10 là 500 đoạn ngắn hơn cả
+        //     dung sai nối; lượt cũ lấy đoạn đầu tiên lọt dung sai nên nhảy cóc qua góc,
+        //     vòng viền vỡ làm hai — tô mỗi nửa bằng một đường nối thẳng hai đầu hở ra
+        //     vết cắt chéo ngang bo (FC_F405RGT6_Wing).
+        //  2. Không có đoạn khít thì lấy đoạn đầu tiên lọt dung sai như trước. Đã thử
+        //     lấy đoạn GẦN NHẤT thay vào: trên corpus làm hở thêm vòng ở vài panel.
+        const dist = (a: number[], b: number[]) => Math.hypot(a[0] - b[0], a[1] - b[1])
+        // how: 1 đuôi←start, 2 đuôi←end, 3 đầu←end, 4 đầu←start
+        const joins = (s: any): [number, number][] => [
+          [dist(s.start, tail), 1],
+          [dist(s.end, tail), 2],
+          [dist(s.end, head), 3],
+          [dist(s.start, head), 4],
+        ]
+        let best = -1
+        let how = 0
+        for (let i = 0; i < remaining.length && best < 0; i++) {
+          const exact = joins(remaining[i]).find(([d]) => d <= DUP_TOL)
+          if (exact) {
+            best = i
+            how = exact[1]
+          }
         }
+        for (let i = 0; i < remaining.length && best < 0; i++) {
+          const hit = joins(remaining[i]).find(([d]) => d <= tol)
+          if (hit) {
+            best = i
+            how = hit[1]
+          }
+        }
+        if (best < 0) continue
+        const seg = remaining.splice(best, 1)[0]
+        if (how === 1) chain.push(seg)
+        else if (how === 2) chain.push(reverse(seg))
+        else if (how === 3) chain.unshift(seg)
+        else chain.unshift(reverse(seg))
+        grew = true
       }
       out.push(chain)
     }
