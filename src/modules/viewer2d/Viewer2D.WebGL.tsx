@@ -790,6 +790,10 @@ export const Viewer2DWebGL: React.FC<Viewer2DWebGLProps> = ({
           // Chiều cao nhìn thấy = h + 2·PAD; bề ngang theo aspect ra đúng w + 2·PAD.
           view.dist = (h + PAD_MM * 2) / 2 / Math.tan(fov / 2)
           apply()
+          // apply() lấy aspect theo kích thước CSS của khung (cột cao hẹp) — với khung
+          // tạm phải ép lại theo ảnh, nếu không bo bị cắt hai bên.
+          cam.aspect = outW / outH
+          cam.updateProjectionMatrix()
           r.render(render.Scene, render.Camera)
           const out = document.createElement('canvas')
           out.width = canvas.width
