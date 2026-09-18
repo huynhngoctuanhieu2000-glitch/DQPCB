@@ -1,4 +1,4 @@
-import type { ParsedGerberLayer, BoardParsedData } from '../core/GerberParser'
+import type { ParsedGerberLayer, BoardParsedData } from '../lib/gerber-reader'
 
 /** Dữ liệu riêng của MỘT bo. Mở nhiều file thì có nhiều cái như thế này. */
 export interface Board {

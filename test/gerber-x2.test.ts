@@ -13,7 +13,7 @@ import {
   isAuxiliaryFile,
   extractProfileGerber,
   ESTIMATED_OUTLINE_FILE,
-} from '../src/core/GerberParser'
+} from '../src/lib/gerber-reader'
 
 const x2 = (fn: string, body = '') =>
   [

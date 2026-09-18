@@ -9,7 +9,7 @@
  *     sạch lỗ không mạ lẫn lỗ via.
  */
 import { describe, it, expect } from 'vitest'
-import { GerberParser, drillPlatingOf, matchLayer } from '../src/core/GerberParser'
+import { GerberParser, drillPlatingOf, matchLayer } from '../src/lib/gerber-reader'
 
 const asFile = (name: string, content: string) =>
   ({

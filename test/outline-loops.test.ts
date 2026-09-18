@@ -6,7 +6,7 @@
  * bên trong có đồng hay không: rãnh không có, bo con trong panel thì đầy.
  */
 import { describe, it, expect } from 'vitest'
-import { copperSamplePoints, pointInPolygon, splitOutlineLoops } from '../src/modules/viewer2d/outlineLoops'
+import { copperSamplePoints, pointInPolygon, splitOutlineLoops } from '../src/lib/gerber-reader'
 
 /** Vòng chữ nhật kín từ (x, y) kích thước w × h, mỗi cạnh một child một đoạn. */
 const rect = (x: number, y: number, w: number, h: number) => {

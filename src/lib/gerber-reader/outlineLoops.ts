@@ -1,4 +1,6 @@
 /**
+ * [DQPCB] Toàn bộ file này là của DQPCB.
+ *
  * Chia các vòng của lớp outline thành phần THÂN BO và phần LỖ KHOÉT.
  *
  * Lớp outline có thể chứa nhiều vòng kín vì hai lý do khác hẳn nhau:

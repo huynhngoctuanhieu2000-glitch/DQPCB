@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { BoardDataModel } from '../../models/BoardDataModel'
 import { realPalette, HOLE, MASK_OPENING, BASE_BOARD } from '../../models/RealPalette'
-import { copperSamplePoints, splitOutlineLoops } from './outlineLoops'
+import { copperSamplePoints, splitOutlineLoops } from '../../lib/gerber-reader'
 // @ts-ignore - web-gerber typings for named exports are incomplete
 import {
   createParser,
