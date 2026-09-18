@@ -79,8 +79,10 @@ export const composeTwoSides = (input: TwoSideCaptureInput): HTMLCanvasElement =
   }
   const bt = contentBox(top, background) ?? [0, 0, top.width, top.height]
   const bb = contentBox(bottom, background) ?? [0, 0, bottom.width, bottom.height]
-  // Lề đều quanh bo, đáy rộng hơn để chứa nhãn kích thước.
-  const padX = 24 * s, padTop = 24 * s, padBottom = 56 * s
+  // Lề đều quanh bo. Nhãn kích thước nằm trong một DẢI RIÊNG dưới bo, không đè lên
+  // bo — panel cao kín khung thì nhãn đặt chồng sẽ che mất rãnh dưới cùng.
+  const padX = 24 * s, padTop = 24 * s, padBottom = 24 * s
+  const bandH = 64 * s
   const y0 = Math.max(0, Math.min(bt[1], bb[1]) - padTop)
   const y1 = Math.min(Math.max(top.height, bottom.height), Math.max(bt[3], bb[3]) + padBottom)
   const cut = (c: HTMLCanvasElement, box: number[]) => ({
@@ -88,7 +90,8 @@ export const composeTwoSides = (input: TwoSideCaptureInput): HTMLCanvasElement =
     w: Math.min(c.width, box[2] + padX) - Math.max(0, box[0] - padX),
   })
   const ct = cut(top, bt), cb = cut(bottom, bb)
-  const H = y1 - y0
+  const boardsH = y1 - y0
+  const H = boardsH + bandH
   const gap = gapPx * s
   const W = ct.w + gap + cb.w
   const c = document.createElement('canvas')
@@ -99,14 +102,15 @@ export const composeTwoSides = (input: TwoSideCaptureInput): HTMLCanvasElement =
 
   g.fillStyle = background
   g.fillRect(0, 0, W, H)
-  g.drawImage(top, ct.x, y0, ct.w, H, 0, 0, ct.w, H)
-  g.drawImage(bottom, cb.x, y0, cb.w, H, ct.w + gap, 0, cb.w, H)
+  g.drawImage(top, ct.x, y0, ct.w, boardsH, 0, 0, ct.w, boardsH)
+  g.drawImage(bottom, cb.x, y0, cb.w, boardsH, ct.w + gap, 0, cb.w, boardsH)
 
   // Không in nhãn TOP/BOT lên ảnh — ảnh gửi khách chỉ cần hai mặt bo và kích thước.
 
-  // Nhãn kích thước ở đáy, giữa hai khung.
+  // Nhãn kích thước: chữ to, căn giữa dải riêng ở đáy.
   const size = `${input.layerCount} lớp   |   ${input.widthMM.toFixed(2)} × ${input.heightMM.toFixed(2)} mm`
-  drawTag(g, size, W / 2, H - (12 + 30) * s, s, { radius: 999, padX: 14, padY: 6, font: 12, center: true })
+  const font = 20, padY = 9
+  drawTag(g, size, W / 2, boardsH + (bandH - (font + padY * 2) * s) / 2, s, { radius: 999, padX: 22, padY, font, center: true })
   return c
 }
 

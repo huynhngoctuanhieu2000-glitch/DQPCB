@@ -1,5 +1,6 @@
 import { app, BrowserWindow, Menu, dialog, ipcMain, shell } from 'electron'
 import { createRequire } from 'node:module'
+import { execFile } from 'node:child_process'
 import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
@@ -79,13 +80,36 @@ ipcMain.handle(
 // Ảnh chụp bo đi vào clipboard qua main: Clipboard API trong renderer bị Chromium của
 // Electron từ chối.
 //
-// Electron 44 bỏ hẳn clipboard.writeImage/readImage, thay bằng API kiểu W3C:
-// clipboard.write([ClipboardItem]) với Blob — ClipboardItem của CHÍNH electron, không có
-// global. Lấy module bằng require() thật: main chạy ESM, module electron là CJS, và
-// `import { clipboard }` từng trả về object cũ không dùng được. Đã chạy thử trực tiếp
-// trong Electron 44: write rồi read lại ra đúng image/png.
+// Electron 44 có clipboard.write([ClipboardItem]) kiểu W3C nhưng với ảnh nó KHÔNG ghi
+// gì cả — đo trực tiếp: sau write, has('image/png') = false, read() trả ảnh cũ, còn
+// text/plain thì ghi bình thường. Nên clipboard giữ mãi ảnh chụp trước đó. Trên
+// Windows đi vòng qua PowerShell (System.Windows.Forms.Clipboard.SetImage, cần STA):
+// ghi PNG ra file tạm, ghi vào clipboard, đọc lại được đúng kích thước. Mất ~2 s vì
+// phải khởi động PowerShell. Máy khác thì đành thử clipboard.write.
 const requireCjs = createRequire(import.meta.url)
 ipcMain.handle('image:copy', async (_event, data: Uint8Array) => {
+  if (process.platform === 'win32') {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'dqpcb-clip-'))
+    const file = path.join(dir, 'board.png')
+    await fs.writeFile(file, Buffer.from(data))
+    try {
+      const script =
+        'Add-Type -AssemblyName System.Windows.Forms,System.Drawing; ' +
+        `$img = [Drawing.Image]::FromFile('${file.replace(/'/g, "''")}'); ` +
+        '[Windows.Forms.Clipboard]::SetImage($img); $img.Dispose()'
+      await new Promise<void>((resolve, reject) => {
+        execFile(
+          'powershell.exe',
+          ['-NoProfile', '-NonInteractive', '-STA', '-Command', script],
+          { windowsHide: true, timeout: 15000 },
+          (err, _out, stderr) => (err ? reject(new Error(stderr || err.message)) : resolve()),
+        )
+      })
+    } finally {
+      await fs.rm(dir, { recursive: true, force: true }).catch(() => {})
+    }
+    return { ok: true }
+  }
   const { clipboard, ClipboardItem } = requireCjs('electron') as {
     clipboard: { write(items: unknown[]): Promise<void> }
     ClipboardItem: new (items: Record<string, Blob>) => unknown
