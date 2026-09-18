@@ -184,6 +184,19 @@ export const PricingCard: React.FC<{
   }, [input, cfg])
 
   const onTablePath = input ? usesTable(input, cfg) : false
+
+  // Đi công thức thì tính luôn CẢ HAI đường giá để người lập nhìn hai số cạnh nhau
+  // rồi tích chọn — số nào đang chọn mới là số đưa vào báo giá (qua `mode`).
+  const bothModes = useMemo(() => {
+    if (!input || result?.kind !== 'formula') return null
+    try {
+      const flat = computePrice({ ...input, mode: 'flat' }, cfg)
+      const tiered = computePrice({ ...input, mode: 'tiered' }, cfg)
+      return flat.kind === 'formula' && tiered.kind === 'formula' ? { flat, tiered } : null
+    } catch {
+      return null
+    }
+  }, [input, result, cfg])
   // Bo nhỏ mà vẫn phải đi công thức thì phải nói rõ vì sao, không để người lập đoán.
   const tableBlockedBy =
     size && fitsTable(size.w * 10, size.h * 10, cfg.table)
@@ -397,15 +410,39 @@ export const PricingCard: React.FC<{
         </div>
       )}
 
-      {(result?.kind === 'table' || result?.kind === 'formula') && (
+      {result?.kind === 'table' && (
         <div style={S.priceBox}>
           <div style={S.priceMain}>{money(result.priceVnd)} đ</div>
-          <div style={S.priceSub}>
-            {money(result.unitPriceVnd)} đ / pcs
-            {result.kind === 'formula' && (
-              <span style={S.modeTag}>{result.mode === 'flat' ? 'hệ số phẳng' : 'bậc thang'}</span>
-            )}
-          </div>
+          <div style={S.priceSub}>{money(result.unitPriceVnd)} đ / pcs</div>
+        </div>
+      )}
+
+      {result?.kind === 'formula' && bothModes && (
+        <div style={S.priceChoice}>
+          {(
+            [
+              ['flat', 'Hệ số phẳng', bothModes.flat],
+              ['tiered', 'Bậc thang', bothModes.tiered],
+            ] as const
+          ).map(([key, label, r]) => {
+            const on = result.mode === key
+            return (
+              <label key={key} style={{ ...S.priceOption, ...(on ? S.priceOptionOn : null) }}>
+                <div style={S.priceOptionHead}>
+                  <input
+                    type="radio"
+                    name="price-mode"
+                    checked={on}
+                    onChange={() => setMode(key)}
+                    style={{ margin: 0 }}
+                  />
+                  <span style={{ ...S.modeTag, ...(on ? { color: '#e2e8f0' } : null) }}>{label}</span>
+                </div>
+                <div style={{ ...S.priceMain, ...(on ? null : S.priceMainOff) }}>{money(r.priceVnd)} đ</div>
+                <div style={S.priceSub}>{money(r.unitPriceVnd)} đ / pcs</div>
+              </label>
+            )
+          })}
         </div>
       )}
 
@@ -488,27 +525,6 @@ export const PricingCard: React.FC<{
                 onChange={(e) => setExtraFeeCny(parseNum(e.target.value) ?? 0)}
               />
               <span style={S.unit}>¥</span>
-            </div>
-          </div>
-
-          <div style={S.row}>
-            <span style={S.label}>Đường giá</span>
-            <div style={S.segment}>
-              {(
-                [
-                  [null, 'Mặc định'],
-                  ['flat', 'Phẳng'],
-                  ['tiered', 'Bậc'],
-                ] as const
-              ).map(([m, label]) => (
-                <button
-                  key={label}
-                  onClick={() => setMode(m)}
-                  style={{ ...S.segBtn, ...(mode === m ? S.segBtnOn : null) }}
-                >
-                  {label}
-                </button>
-              ))}
             </div>
           </div>
 
@@ -686,6 +702,20 @@ const S: Record<string, React.CSSProperties> = {
     marginBottom: 8,
   },
   priceMain: { color: '#5eead4', fontSize: 19, fontWeight: 700, letterSpacing: '-0.02em' },
+  priceMainOff: { color: '#94a3b8', fontWeight: 600 },
+  // Hai đường giá cạnh nhau, tích ô nào thì ô đó sáng và là số đưa vào báo giá.
+  priceChoice: { display: 'flex', gap: 8, marginBottom: 8 },
+  priceOption: {
+    flex: 1,
+    minWidth: 0,
+    padding: '8px 10px',
+    borderRadius: 6,
+    border: '1px solid #2c313c',
+    backgroundColor: '#14161b',
+    cursor: 'pointer',
+  },
+  priceOptionOn: { border: '1px solid #2dd4bf', backgroundColor: '#0f1f1d' },
+  priceOptionHead: { display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 },
   priceSub: { color: '#94a3b8', fontSize: 11, marginTop: 2, display: 'flex', gap: 6 },
   modeTag: { color: '#64748b', fontSize: 10 },
   breakdown: { width: '100%', borderCollapse: 'collapse', marginBottom: 8 },
