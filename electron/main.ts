@@ -1,4 +1,5 @@
-import { app, BrowserWindow, Menu, clipboard as electronClipboard, dialog, ipcMain, nativeImage, shell } from 'electron'
+import { app, BrowserWindow, Menu, dialog, ipcMain, shell } from 'electron'
+import { createRequire } from 'node:module'
 import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
@@ -76,11 +77,20 @@ ipcMain.handle(
 )
 
 // Ảnh chụp bo đi vào clipboard qua main: Clipboard API trong renderer bị Chromium của
-// Electron từ chối. Ép kiểu vì tsconfig kéo lib DOM vào, `Clipboard` bị hiểu thành kiểu
-// của trình duyệt (không có writeImage).
-const clip = electronClipboard as unknown as { writeImage(img: unknown): void }
-ipcMain.handle('image:copy', (_event, data: Uint8Array) => {
-  clip.writeImage(nativeImage.createFromBuffer(Buffer.from(data)))
+// Electron từ chối.
+//
+// Electron 44 bỏ hẳn clipboard.writeImage/readImage, thay bằng API kiểu W3C:
+// clipboard.write([ClipboardItem]) với Blob — ClipboardItem của CHÍNH electron, không có
+// global. Lấy module bằng require() thật: main chạy ESM, module electron là CJS, và
+// `import { clipboard }` từng trả về object cũ không dùng được. Đã chạy thử trực tiếp
+// trong Electron 44: write rồi read lại ra đúng image/png.
+const requireCjs = createRequire(import.meta.url)
+ipcMain.handle('image:copy', async (_event, data: Uint8Array) => {
+  const { clipboard, ClipboardItem } = requireCjs('electron') as {
+    clipboard: { write(items: unknown[]): Promise<void> }
+    ClipboardItem: new (items: Record<string, Blob>) => unknown
+  }
+  await clipboard.write([new ClipboardItem({ 'image/png': new Blob([data], { type: 'image/png' }) })])
   return { ok: true }
 })
 
