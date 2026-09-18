@@ -4,6 +4,26 @@
  * phải chụp màn hình rồi cắt tay.
  */
 
+import logoUrl from '../../assets/quotation/logo-thien-lam-full.png'
+
+/**
+ * Logo Thiên Lâm in mờ phía sau bo làm dấu bản quyền. Ảnh gửi cho khách hay bị chuyển
+ * tiếp đi nơi khác; logo chìm cho biết ảnh dựng từ đâu mà không che mất bo.
+ */
+const WATERMARK_ALPHA = 0.12
+let logoPromise: Promise<HTMLImageElement | null> | null = null
+const loadLogo = () => {
+  if (!logoPromise) {
+    logoPromise = new Promise((resolve) => {
+      const img = new Image()
+      img.onload = () => resolve(img)
+      img.onerror = () => resolve(null) // thiếu logo thì vẫn chụp, chỉ không có dấu
+      img.src = logoUrl
+    })
+  }
+  return logoPromise
+}
+
 export interface TwoSideCaptureInput {
   top: HTMLCanvasElement
   bottom: HTMLCanvasElement
@@ -66,11 +86,33 @@ const contentBox = (c: HTMLCanvasElement, background: string): [number, number, 
 }
 
 /**
+ * Bản sao của khung với nền canvas làm trong suốt, để logo chìm phía sau lộ ra ở chỗ
+ * không có bo. Khung WebGL vẽ nền đặc (#eeeeee) nên dán thẳng là che mất logo.
+ */
+const withTransparentBackground = (c: HTMLCanvasElement, background: string): HTMLCanvasElement => {
+  const out = document.createElement('canvas')
+  out.width = c.width
+  out.height = c.height
+  const g = out.getContext('2d')
+  if (!g) return c
+  g.drawImage(c, 0, 0)
+  const bg = parseInt(background.replace('#', ''), 16)
+  const br = (bg >> 16) & 255, bgg = (bg >> 8) & 255, bb = bg & 255
+  const img = g.getImageData(0, 0, out.width, out.height)
+  const d = img.data
+  for (let i = 0; i < d.length; i += 4) {
+    if (Math.abs(d[i] - br) + Math.abs(d[i + 1] - bgg) + Math.abs(d[i + 2] - bb) <= 18) d[i + 3] = 0
+  }
+  g.putImageData(img, 0, 0)
+  return out
+}
+
+/**
  * Ghép hai khung thành một canvas, CẮT SÁT phần có bo. Khung xem cao hết cột giữa nên
  * chụp nguyên khung ra một dải dài ngoằng với hai bo bé tí ở giữa; người nhận cần ảnh
  * vừa khít bo. Hai mặt cắt cùng một dải dọc để vẫn thẳng hàng nhau.
  */
-export const composeTwoSides = (input: TwoSideCaptureInput): HTMLCanvasElement => {
+export const composeTwoSides = async (input: TwoSideCaptureInput): Promise<HTMLCanvasElement> => {
   const { top, bottom, scale: s, gapPx, background } = input
   // Khung bị thu về 0 (cửa sổ quá hẹp, panel hai bên chiếm hết) thì toBlob trả null
   // và người dùng chỉ thấy "không tạo được ảnh" — nói thẳng nguyên nhân.
@@ -102,8 +144,21 @@ export const composeTwoSides = (input: TwoSideCaptureInput): HTMLCanvasElement =
 
   g.fillStyle = background
   g.fillRect(0, 0, W, H)
-  g.drawImage(top, ct.x, y0, ct.w, boardsH, 0, 0, ct.w, boardsH)
-  g.drawImage(bottom, cb.x, y0, cb.w, boardsH, ct.w + gap, 0, cb.w, boardsH)
+
+  // Logo mờ ở giữa, sau bo: cao bằng ~70% chiều cao ảnh, không phóng quá bề ngang.
+  const logo = await loadLogo()
+  if (logo) {
+    const lh = Math.min(H * 0.7, (W * 0.6 * logo.height) / logo.width)
+    const lw = (lh * logo.width) / logo.height
+    g.globalAlpha = WATERMARK_ALPHA
+    g.drawImage(logo, (W - lw) / 2, (boardsH - lh) / 2, lw, lh)
+    g.globalAlpha = 1
+  }
+
+  const topT = withTransparentBackground(top, background)
+  const bottomT = withTransparentBackground(bottom, background)
+  g.drawImage(topT, ct.x, y0, ct.w, boardsH, 0, 0, ct.w, boardsH)
+  g.drawImage(bottomT, cb.x, y0, cb.w, boardsH, ct.w + gap, 0, cb.w, boardsH)
 
   // Không in nhãn TOP/BOT lên ảnh — ảnh gửi khách chỉ cần hai mặt bo và kích thước.
 

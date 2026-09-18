@@ -59,7 +59,7 @@ export const Layout: React.FC = () => {
       const top = captureTopRef.current?.(pxPerMm)
       const bottom = captureBotRef.current?.(pxPerMm)
       if (!top || !bottom) throw new Error('Khung chưa dựng xong, thử lại sau một chút')
-      const img = composeTwoSides({
+      const img = await composeTwoSides({
         top,
         bottom,
         scale,
