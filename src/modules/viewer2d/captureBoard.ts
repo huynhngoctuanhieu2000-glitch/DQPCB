@@ -42,7 +42,34 @@ const drawTag = (
   g.fillText(text, left + opts.padX * s, y + h / 2)
 }
 
-/** Ghép hai khung thành một canvas; kích thước ảnh = tổng hai khung + khoảng trống. */
+/** Khung chữ nhật bao phần KHÔNG phải nền trong một canvas, hoặc null nếu trống. */
+const contentBox = (c: HTMLCanvasElement, background: string): [number, number, number, number] | null => {
+  const g = c.getContext('2d')
+  if (!g) return null
+  const bg = parseInt(background.replace('#', ''), 16)
+  const br = (bg >> 16) & 255, bgg = (bg >> 8) & 255, bb = bg & 255
+  const { data } = g.getImageData(0, 0, c.width, c.height)
+  let x0 = c.width, y0 = c.height, x1 = -1, y1 = -1
+  for (let y = 0; y < c.height; y++) {
+    for (let x = 0; x < c.width; x++) {
+      const i = (y * c.width + x) * 4
+      // Lệch quá 6/255 so với màu nền mới tính là hình — mép khử răng cưa vẫn bắt được.
+      if (Math.abs(data[i] - br) + Math.abs(data[i + 1] - bgg) + Math.abs(data[i + 2] - bb) > 18) {
+        if (x < x0) x0 = x
+        if (x > x1) x1 = x
+        if (y < y0) y0 = y
+        if (y > y1) y1 = y
+      }
+    }
+  }
+  return x1 < 0 ? null : [x0, y0, x1 + 1, y1 + 1]
+}
+
+/**
+ * Ghép hai khung thành một canvas, CẮT SÁT phần có bo. Khung xem cao hết cột giữa nên
+ * chụp nguyên khung ra một dải dài ngoằng với hai bo bé tí ở giữa; người nhận cần ảnh
+ * vừa khít bo. Hai mặt cắt cùng một dải dọc để vẫn thẳng hàng nhau.
+ */
 export const composeTwoSides = (input: TwoSideCaptureInput): HTMLCanvasElement => {
   const { top, bottom, scale: s, gapPx, background } = input
   // Khung bị thu về 0 (cửa sổ quá hẹp, panel hai bên chiếm hết) thì toBlob trả null
@@ -50,9 +77,20 @@ export const composeTwoSides = (input: TwoSideCaptureInput): HTMLCanvasElement =
   if (!top.width || !top.height || !bottom.width || !bottom.height) {
     throw new Error('Khung xem đang quá nhỏ để chụp — nới rộng cửa sổ hoặc thu gọn panel hai bên')
   }
+  const bt = contentBox(top, background) ?? [0, 0, top.width, top.height]
+  const bb = contentBox(bottom, background) ?? [0, 0, bottom.width, bottom.height]
+  // Lề đủ chỗ cho nhãn mặt ở trên và nhãn kích thước ở dưới.
+  const padX = 24 * s, padTop = 40 * s, padBottom = 56 * s
+  const y0 = Math.max(0, Math.min(bt[1], bb[1]) - padTop)
+  const y1 = Math.min(Math.max(top.height, bottom.height), Math.max(bt[3], bb[3]) + padBottom)
+  const cut = (c: HTMLCanvasElement, box: number[]) => ({
+    x: Math.max(0, box[0] - padX),
+    w: Math.min(c.width, box[2] + padX) - Math.max(0, box[0] - padX),
+  })
+  const ct = cut(top, bt), cb = cut(bottom, bb)
+  const H = y1 - y0
   const gap = gapPx * s
-  const W = top.width + gap + bottom.width
-  const H = Math.max(top.height, bottom.height)
+  const W = ct.w + gap + cb.w
   const c = document.createElement('canvas')
   c.width = W
   c.height = H
@@ -61,13 +99,13 @@ export const composeTwoSides = (input: TwoSideCaptureInput): HTMLCanvasElement =
 
   g.fillStyle = background
   g.fillRect(0, 0, W, H)
-  g.drawImage(top, 0, 0)
-  g.drawImage(bottom, top.width + gap, 0)
+  g.drawImage(top, ct.x, y0, ct.w, H, 0, 0, ct.w, H)
+  g.drawImage(bottom, cb.x, y0, cb.w, H, ct.w + gap, 0, cb.w, H)
 
   // Nhãn mặt ở góc trên mỗi khung, giống overlay trên màn hình.
   const tag = { radius: 4, padX: 8, padY: 3, font: 11 }
   drawTag(g, 'TOP — nhìn từ trên', 8 * s, 8 * s, s, tag)
-  drawTag(g, 'BOT — nhìn từ dưới', top.width + gap + 8 * s, 8 * s, s, tag)
+  drawTag(g, 'BOT — nhìn từ dưới', ct.w + gap + 8 * s, 8 * s, s, tag)
 
   // Nhãn kích thước ở đáy, giữa hai khung.
   const size = `${input.layerCount} lớp   |   ${input.widthMM.toFixed(2)} × ${input.heightMM.toFixed(2)} mm`
