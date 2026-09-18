@@ -52,9 +52,12 @@ export const Layout: React.FC = () => {
     if (!boardState.bounds || capturing) return
     setCapturing(true)
     try {
-      const scale = 2
-      const top = captureTopRef.current?.(scale)
-      const bottom = captureBotRef.current?.(scale)
+      // Mỗi mặt cỡ ~1000 px theo cạnh dài, bất kể bo 20 mm hay panel 300 mm.
+      const { widthMM, heightMM } = boardState.bounds
+      const pxPerMm = 1000 / (Math.max(widthMM, heightMM) + 12)
+      const scale = Math.max(1, pxPerMm / 5) // cỡ nhãn/lề theo độ phóng
+      const top = captureTopRef.current?.(pxPerMm)
+      const bottom = captureBotRef.current?.(pxPerMm)
       if (!top || !bottom) throw new Error('Khung chưa dựng xong, thử lại sau một chút')
       const img = composeTwoSides({
         top,

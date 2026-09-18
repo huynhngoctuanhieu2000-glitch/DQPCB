@@ -233,8 +233,8 @@ export interface Viewer2DWebGLProps {
   captureRef?: React.MutableRefObject<CaptureFn | null>
 }
 
-/** Chụp cảnh đang xem; `scale` là hệ số phóng so với kích thước khung (2 = nét gấp đôi). */
-export type CaptureFn = (scale?: number) => HTMLCanvasElement | null
+/** Chụp bo fit sát khung, `pxPerMm` quyết định cỡ ảnh theo kích thước bo. */
+export type CaptureFn = (pxPerMm?: number) => HTMLCanvasElement | null
 
 export const Viewer2DWebGL: React.FC<Viewer2DWebGLProps> = ({
   viewOverride,
@@ -699,32 +699,6 @@ export const Viewer2DWebGL: React.FC<Viewer2DWebGLProps> = ({
     const cam = render.Camera
     const cleanups: Array<() => void> = []
 
-    if (captureRef) {
-      const capture: CaptureFn = (scale = 2) => {
-        const r = render.Renderer
-        const canvas = r?.domElement as HTMLCanvasElement | undefined
-        if (!r || !canvas) return null
-        const w = el.clientWidth
-        const h = el.clientHeight
-        // Vẽ một khung ở độ phân giải cao hơn màn hình rồi chép ra ngay trong cùng
-        // một lượt: bộ đệm WebGL không giữ lại sau khi trình duyệt ghép hình.
-        r.setPixelRatio(scale)
-        r.setSize(w, h, false)
-        r.render(render.Scene, render.Camera)
-        const out = document.createElement('canvas')
-        out.width = canvas.width
-        out.height = canvas.height
-        out.getContext('2d')?.drawImage(canvas, 0, 0)
-        r.setPixelRatio(1)
-        r.setSize(w, h, false)
-        return out
-      }
-      captureRef.current = capture
-      cleanups.push(() => {
-        if (captureRef.current === capture) captureRef.current = null
-      })
-    }
-
     if (cam && Number.isFinite(minX) && maxX > minX && maxY > minY) {
       const w = maxX - minX
       const h = maxY - minY
@@ -792,6 +766,48 @@ export const Viewer2DWebGL: React.FC<Viewer2DWebGLProps> = ({
         apply()
       }
       fitViewRef.current = resetView
+
+      if (captureRef) {
+        // Chụp KHÔNG theo khung đang nhìn: dựng riêng một khung fit sát bo, cỡ ảnh tính
+        // theo kích thước bo (pxPerMm) nên bo nhỏ được phóng to, bo/panel lớn thu về
+        // vừa ảnh — ảnh gửi khách lúc nào cũng cùng một cỡ. Xong trả camera và kích
+        // thước canvas về như cũ; bộ đệm WebGL không giữ sau khi ghép hình nên phải
+        // vẽ rồi chép ngay trong cùng một lượt.
+        const capture: CaptureFn = (pxPerMm = 10) => {
+          const r = render.Renderer
+          const canvas = r?.domElement as HTMLCanvasElement | undefined
+          if (!r || !canvas) return null
+          const PAD_MM = 6
+          const outW = Math.round((w + PAD_MM * 2) * pxPerMm)
+          const outH = Math.round((h + PAD_MM * 2) * pxPerMm)
+          const saved = { x: view.x, y: view.y, dist: view.dist, cw: el.clientWidth, ch: el.clientHeight }
+
+          r.setPixelRatio(1)
+          r.setSize(outW, outH, false)
+          cam.aspect = outW / outH
+          view.x = cx
+          view.y = cy
+          // Chiều cao nhìn thấy = h + 2·PAD; bề ngang theo aspect ra đúng w + 2·PAD.
+          view.dist = (h + PAD_MM * 2) / 2 / Math.tan(fov / 2)
+          apply()
+          r.render(render.Scene, render.Camera)
+          const out = document.createElement('canvas')
+          out.width = canvas.width
+          out.height = canvas.height
+          out.getContext('2d')?.drawImage(canvas, 0, 0)
+
+          view.x = saved.x
+          view.y = saved.y
+          view.dist = saved.dist
+          r.setSize(saved.cw, saved.ch, false)
+          apply()
+          return out
+        }
+        captureRef.current = capture
+        cleanups.push(() => {
+          if (captureRef.current === capture) captureRef.current = null
+        })
+      }
       cleanups.push(() => {
         if (fitViewRef.current === resetView) fitViewRef.current = null
       })

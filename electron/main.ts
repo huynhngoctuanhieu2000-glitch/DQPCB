@@ -1,4 +1,4 @@
-import { app, BrowserWindow, Menu, dialog, ipcMain, shell } from 'electron'
+import { app, BrowserWindow, Menu, clipboard as electronClipboard, dialog, ipcMain, nativeImage, shell } from 'electron'
 import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
@@ -74,6 +74,15 @@ ipcMain.handle(
     return { canceled: false, filePath: target.filePath }
   }
 )
+
+// Ảnh chụp bo đi vào clipboard qua main: Clipboard API trong renderer bị Chromium của
+// Electron từ chối. Ép kiểu vì tsconfig kéo lib DOM vào, `Clipboard` bị hiểu thành kiểu
+// của trình duyệt (không có writeImage).
+const clip = electronClipboard as unknown as { writeImage(img: unknown): void }
+ipcMain.handle('image:copy', (_event, data: Uint8Array) => {
+  clip.writeImage(nativeImage.createFromBuffer(Buffer.from(data)))
+  return { ok: true }
+})
 
 // Xuất báo giá PDF: renderer gửi sang một trang HTML tự chứa (ảnh đã là data URL),
 // main nạp vào một cửa sổ ẩn rồi in ra PDF. Làm ở đây thay vì dùng jsPDF để khỏi

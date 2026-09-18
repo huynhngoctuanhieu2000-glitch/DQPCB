@@ -115,9 +115,20 @@ export const composeTwoSides = (input: TwoSideCaptureInput): HTMLCanvasElement =
  * gửi khách chứ không phải để lưu file. Clipboard API chạy được cả trong Electron
  * (Chromium) lẫn trình duyệt; cú bấm nút đã cho trang focus nên không bị từ chối.
  */
+interface IpcBridge {
+  invoke(channel: string, ...args: unknown[]): Promise<unknown>
+}
+
 export const copyPng = async (canvas: HTMLCanvasElement): Promise<void> => {
   const blob = await new Promise<Blob | null>((res) => canvas.toBlob(res, 'image/png'))
   if (!blob) throw new Error('Không tạo được ảnh PNG')
+  // Electron: trang chạy trong app bị Chromium từ chối Clipboard API, nên nhờ main
+  // ghi bằng clipboard của Electron.
+  const ipc = (window as unknown as { ipcRenderer?: IpcBridge }).ipcRenderer
+  if (ipc) {
+    await ipc.invoke('image:copy', new Uint8Array(await blob.arrayBuffer()))
+    return
+  }
   if (!navigator.clipboard?.write || typeof ClipboardItem === 'undefined') {
     throw new Error('Trình duyệt này không cho copy ảnh vào clipboard')
   }
