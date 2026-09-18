@@ -149,8 +149,25 @@ describe('dilateRegions — lấp khe giữa các dải phủ đồng', () => {
     expect(regions).toHaveLength(2)
     const [a, b] = regions.map(yRange).sort((p, q) => p[0] - q[0])
     expect(a[1]).toBeGreaterThan(b[0]) // đỉnh dải dưới vượt qua đáy dải trên
-    expect(a[1] - 0.2).toBeCloseTo(0.035, 3) // nới đúng 0.035 mm
-    expect(a[0]).toBeCloseTo(-0.035, 3)
+    expect(a[1] - 0.2).toBeCloseTo(0.035, 3) // cạnh áp sát: đẩy đúng 0.035 mm
+    expect(a[0]).toBeCloseTo(0, 3) // cạnh ngoài: đứng yên
+    expect(b[1]).toBeCloseTo(0.42, 3)
+  })
+
+  it('pad đứng riêng giữ nguyên kích thước (khe 0.25 mm như chân QFP)', async () => {
+    const pads = gbr(
+      [
+        'G36*', 'G01X0Y0D02*', 'G01X25000Y0D01*', 'G01X25000Y100000D01*', 'G01X0Y100000D01*', 'G01X0Y0D01*', 'G37*',
+        'G36*', 'G01X50000Y0D02*', 'G01X75000Y0D01*', 'G01X75000Y100000D01*', 'G01X50000Y100000D01*', 'G01X50000Y0D01*', 'G37*',
+      ].join('\n'),
+    )
+    const [board] = await parse([['Gerber_TopLayer.GTL', pads]])
+    const xs = board.layers[0].imageTree.children
+      .filter((c: any) => c.type === 'imageRegion')
+      .map((r: any) => r.segments.map((s: any) => s.start[0]))
+    expect(Math.min(...xs[0])).toBeCloseTo(0, 3)
+    expect(Math.max(...xs[0])).toBeCloseTo(0.25, 3)
+    expect(Math.min(...xs[1])).toBeCloseTo(0.5, 3)
   })
 
   it('không đụng tới viền và lớp khoan', async () => {

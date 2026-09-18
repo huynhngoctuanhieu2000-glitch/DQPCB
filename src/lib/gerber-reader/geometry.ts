@@ -71,16 +71,27 @@ const regionPoints = (region: any, tol: number): number[][] => {
   return pts.filter((p, i) => i === 0 || Math.hypot(p[0] - pts[i - 1][0], p[1] - pts[i - 1][1]) > 1e-9)
 }
 
-/** Đa giác nới ra `d` (âm là co vào) theo pháp tuyến tại mỗi đỉnh, góc nhọn cắt miter. */
-const offsetPolygon = (pts: number[][], d: number): number[][] => {
+
+/** Khoảng cách từ điểm p tới đoạn ab. */
+const distToSegment = (p: number[], a: number[], b: number[]) => {
+  const dx = b[0] - a[0], dy = b[1] - a[1]
+  const len2 = dx * dx + dy * dy
+  const t = len2 > 0 ? Math.max(0, Math.min(1, ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / len2)) : 0
+  return Math.hypot(p[0] - (a[0] + t * dx), p[1] - (a[1] + t * dy))
+}
+
+/**
+ * Đa giác với mỗi cạnh đẩy ra một quãng RIÊNG (`dist[i]` cho cạnh i → i+1). Đỉnh mới là
+ * giao của hai cạnh kề đã đẩy; hai cạnh gần song song thì đẩy đỉnh theo cạnh xa hơn.
+ */
+const offsetEdges = (pts: number[][], dist: number[]): number[][] => {
   const n = pts.length
-  if (n < 3) return pts
   let area = 0
   for (let i = 0; i < n; i++) {
     const a = pts[i], b = pts[(i + 1) % n]
     area += a[0] * b[1] - b[0] * a[1]
   }
-  const sign = area >= 0 ? 1 : -1 // CCW: pháp tuyến ngoài là (dy, -dx)
+  const sign = area >= 0 ? 1 : -1
   const normal = (i: number) => {
     const a = pts[i], b = pts[(i + 1) % n]
     const dx = b[0] - a[0], dy = b[1] - a[1]
@@ -89,12 +100,25 @@ const offsetPolygon = (pts: number[][], d: number): number[][] => {
   }
   const out: number[][] = []
   for (let i = 0; i < n; i++) {
-    const n0 = normal((i - 1 + n) % n), n1 = normal(i)
-    const mx = n0[0] + n1[0], my = n0[1] + n1[1]
-    const dot = 1 + (n0[0] * n1[0] + n0[1] * n1[1])
-    // Góc quá nhọn thì miter vọt xa; lấy bevel (trung bình pháp tuyến) cho an toàn.
-    const k = dot > 0.3 ? d / dot : d / Math.max(Math.hypot(mx, my), 1e-9)
-    out.push([pts[i][0] + mx * k, pts[i][1] + my * k])
+    const prev = (i - 1 + n) % n
+    const n0 = normal(prev), n1 = normal(i)
+    const d0 = dist[prev], d1 = dist[i]
+    if (d0 === 0 && d1 === 0) {
+      out.push(pts[i])
+      continue
+    }
+    // Giải [n0; n1]·v = [d0; d1] để v dịch đỉnh sao cho cả hai cạnh đều lùi đúng quãng.
+    const det = n0[0] * n1[1] - n0[1] * n1[0]
+    if (Math.abs(det) < 0.2) {
+      const d = Math.max(d0, d1)
+      const mx = n0[0] + n1[0], my = n0[1] + n1[1]
+      const len = Math.hypot(mx, my) || 1
+      out.push([pts[i][0] + (mx / len) * d, pts[i][1] + (my / len) * d])
+      continue
+    }
+    const vx = (d0 * n1[1] - d1 * n0[1]) / det
+    const vy = (n0[0] * d1 - n1[0] * d0) / det
+    out.push([pts[i][0] + vx, pts[i][1] + vy])
   }
   return out
 }
@@ -105,16 +129,79 @@ export const dilateRegions = (tree: any): any => {
   const scale = tree.units === 'in' ? 1 / 25.4 : 1
   const d = REGION_DILATE_MM * scale
   const tol = ARC_TOLERANCE_MM * scale
-  let touched = false
-  const out = children.map((child) => {
-    if (child?.type !== 'imageRegion' || child.polarity === 'clear' || !Array.isArray(child.segments)) return child
-    const pts = offsetPolygon(regionPoints(child, tol), d)
-    if (pts.length < 3) return child
-    touched = true
-    const segments = pts.map((p, i) => ({ type: 'line', start: p, end: pts[(i + 1) % pts.length] }))
-    return { ...child, segments }
+  const reach = 2 * d
+
+  // CHỈ đẩy những CẠNH đang áp sát một vùng khác (khe ≤ 2·d) — đó là khe giữa các dải
+  // phủ đồng CAM350, hay giữa các mảnh KiCad 10 cắt một pad ra. Cạnh ngoài của pad và
+  // của mảng đồng giữ nguyên. Nới cả vùng như bản trước thì pad phình ra 0.035 mm mỗi
+  // bên, khe giữa chân QFP hẹp lại thấy rõ, nhìn như chân dính nhau (bo KiCad
+  // "FC_F405RGT6_Wing" — mask ở đó mở bằng đúng pad).
+  const regions: { i: number; pts: number[][]; box: number[] }[] = []
+  children.forEach((child, i) => {
+    if (child?.type !== 'imageRegion' || child.polarity === 'clear' || !Array.isArray(child.segments)) return
+    const pts = regionPoints(child, tol)
+    if (pts.length < 3) return
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity
+    for (const [x, y] of pts) {
+      if (x < x0) x0 = x
+      if (x > x1) x1 = x
+      if (y < y0) y0 = y
+      if (y > y1) y1 = y
+    }
+    regions.push({ i, pts, box: [x0, y0, x1, y1] })
   })
-  return touched ? { ...tree, children: out } : tree
+
+  // Cặp vùng có ô bao cách nhau ≤ reach: ứng viên hàng xóm.
+  const neighbours = new Map<number, number[]>()
+  const byX = [...regions].map((_, k) => k).sort((a, b) => regions[a].box[0] - regions[b].box[0])
+  for (let a = 0; a < byX.length; a++) {
+    const A = regions[byX[a]].box
+    for (let b = a + 1; b < byX.length; b++) {
+      const B = regions[byX[b]].box
+      if (B[0] - A[2] > reach) break
+      const gx = Math.max(0, B[0] - A[2], A[0] - B[2])
+      const gy = Math.max(0, B[1] - A[3], A[1] - B[3])
+      if (Math.hypot(gx, gy) > reach) continue
+      for (const [x, y] of [[byX[a], byX[b]], [byX[b], byX[a]]]) {
+        if (!neighbours.has(x)) neighbours.set(x, [])
+        neighbours.get(x)!.push(y)
+      }
+    }
+  }
+  if (neighbours.size === 0) return tree
+
+  const replaced = new Map<number, any>()
+  for (const [k, list] of neighbours) {
+    const { pts, i } = regions[k]
+    const n = pts.length
+    let area = 0
+    for (let e = 0; e < n; e++) area += pts[e][0] * pts[(e + 1) % n][1] - pts[(e + 1) % n][0] * pts[e][1]
+    const sign = area >= 0 ? 1 : -1
+    const dist = pts.map((a, e) => {
+      const b = pts[(e + 1) % n]
+      const dx = b[0] - a[0], dy = b[1] - a[1]
+      const len = Math.hypot(dx, dy)
+      if (len === 0) return 0
+      // Điểm giữa cạnh, nhích ra ngoài nửa quãng với tới: có vùng hàng xóm nào sát đó?
+      const nx = (sign * dy) / len, ny = (-sign * dx) / len
+      const probe = [(a[0] + b[0]) / 2 + nx * (reach / 2), (a[1] + b[1]) / 2 + ny * (reach / 2)]
+      for (const other of list) {
+        const q = regions[other].pts
+        for (let j = 0; j < q.length; j++) {
+          if (distToSegment(probe, q[j], q[(j + 1) % q.length]) <= reach / 2) return d
+        }
+      }
+      return 0
+    })
+    if (!dist.some((v) => v > 0)) continue
+    const moved = offsetEdges(pts, dist)
+    replaced.set(i, {
+      ...children[i],
+      segments: moved.map((p, e) => ({ type: 'line', start: p, end: moved[(e + 1) % moved.length] })),
+    })
+  }
+  if (replaced.size === 0) return tree
+  return { ...tree, children: children.map((c, i) => replaced.get(i) ?? c) }
 }
 
 /**

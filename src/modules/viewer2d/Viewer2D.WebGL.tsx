@@ -253,6 +253,8 @@ export const Viewer2DWebGL: React.FC<Viewer2DWebGLProps> = ({
     topOil: any
     bottomOil: any
     camMode: boolean
+    /** Object luôn bật/tắt theo một object khác (pad cắt theo lỗ mở mask → theo lớp mask). */
+    followers: { obj: any; leader: any }[]
   } | null>(null)
   const [board, setBoard] = useState(BoardDataModel.getState())
   const [status, setStatus] = useState('Chưa tải dữ liệu')
@@ -622,20 +624,61 @@ export const Viewer2DWebGL: React.FC<Viewer2DWebGLProps> = ({
     //    depth test. Nâng mask lên trên in lụa (silk ở 1.20 còn đồng chỉ 1.02) sẽ làm
     //    pad cao hơn mặt đồng gần 0.2 — nhìn ngang thành cục vàng dựng đứng.
     const EPS = 0.005
+    // 3D nhìn nghiêng từ xa: log depth buffer không tách nổi hai mặt cách nhau 0.005 —
+    // pad và mặt đồng giành nhau thành sọc dọc trên pad. Khoảng cách trong 3D phải
+    // đủ lớn để nhìn thấy được độ dày mask; 2D vẽ theo thứ tự nên không cần.
+    const MASK_T = threeDMode ? 0.04 : 0
+    const GAP = threeDMode ? 0.02 : EPS
     const flushToCopper = (slot: any, outward: 1 | -1) => {
       if (!slot?.Copper) return
       const copperOuter = slot.Copper.position.z + (outward * slot.Copper.scale.z) / 2
+      // Mặt ngoài của lớp mask phủ lên đồng (chỉ có ở 3D, xem maskSheet bên dưới).
+      const maskOuter = copperOuter + outward * MASK_T
       if (slot.Silkscreen) {
         slot.Silkscreen.position.z =
-          copperOuter + outward * (EPS / 2 - slot.Silkscreen.scale.z / 2)
+          maskOuter + outward * (GAP / 2 - slot.Silkscreen.scale.z / 2)
       }
       if (slot.SolderMask) {
         slot.SolderMask.position.z =
-          copperOuter + outward * (EPS - slot.SolderMask.scale.z / 2)
+          maskOuter + outward * (GAP - slot.SolderMask.scale.z / 2)
       }
     }
     flushToCopper(pcb.Top, 1)
     flushToCopper(pcb.Btm, -1)
+
+    // --- 3D: lớp mask PHỦ LÊN đồng ---
+    // Lớp phủ assembly dựng sẵn nằm DƯỚI đồng (đồng được tô màu "đồng nhìn qua mask"),
+    // nên nhìn nghiêng thì đường mạch thành gờ nổi trên mặt mask, như chưa phủ mask.
+    // Bo thật: mask phủ trùm lên đồng, mạch chỉ là gờ mờ bên dưới, pad lộ ra ở lỗ mở.
+    // Thêm một tấm mask mờ cùng hình bo đặt trên mặt đồng; tấm cũ bên dưới vẫn giữ để
+    // màu nền bo không đổi (mask mờ đè lên mask đặc cùng màu thì vẫn ra đúng màu đó).
+    const maskSheets: any[] = []
+    if (threeDMode) {
+      for (const [oil, slot, outward] of [
+        [topOil, pcb.Top, 1],
+        [bottomOil, pcb.Btm, -1],
+      ] as const) {
+        if (!oil || !slot?.Copper) continue
+        const sheet = oil.clone()
+        sheet.traverse((o: any) => {
+          const mats = Array.isArray(o.material) ? o.material : o.material ? [o.material] : []
+          const own = mats.map((m: any) => {
+            const c = m.clone()
+            c.transparent = true
+            c.opacity = 0.55
+            c.depthWrite = false
+            c.color?.set?.(palette.Oil)
+            return c
+          })
+          if (own.length) o.material = Array.isArray(o.material) ? own : own[0]
+        })
+        const copperOuter = slot.Copper.position.z + (outward * slot.Copper.scale.z) / 2
+        sheet.scale.setZ(MASK_T)
+        sheet.position.setZ(copperOuter + (outward * MASK_T) / 2)
+        render.Scene.add(sheet)
+        maskSheets.push(sheet)
+      }
+    }
 
     // Các đoạn đảo cực nằm trùng mặt phẳng với nhau, nên phải nhấc dần ra phía ngoài
     // theo đúng trình tự thì depth test mới cho đoạn sau thắng đoạn trước. Nhấc ÍT
@@ -662,13 +705,87 @@ export const Viewer2DWebGL: React.FC<Viewer2DWebGLProps> = ({
     if (pcb.Drill?.scale) {
       const outer = [
         pcb.Top.SolderMask, pcb.Top.Silkscreen, pcb.Top.Copper, topOil, pcb.OutLine,
+        ...maskSheets,
       ]
         .filter(Boolean)
         .map((o: any) => o.position.z + o.scale.z / 2)
       const topOuter = Math.max(...outer)
       if (Number.isFinite(topOuter) && topOuter > 0) {
-        pcb.Drill.position.setZ(0)
-        pcb.Drill.scale.setZ((topOuter + EPS) * 2)
+        if (threeDMode) {
+          pcb.Drill.position.setZ(0)
+          pcb.Drill.scale.setZ((topOuter + EPS) * 2)
+        } else {
+          // 2D nhìn thẳng vẽ theo thứ tự, không depth test: trụ khoan cao suốt bề dày bo
+          // thì cả thân trụ lẫn đáy trụ đều hiện, mà camera phối cảnh làm đáy lệch ra
+          // xa tâm màn hình — lỗ thành vệt dài lệch khỏi tâm vòng đồng. Ép thành một lát
+          // mỏng nằm ngay mặt đang nhìn.
+          const face = fromBelow ? -1 : 1
+          pcb.Drill.scale.setZ(EPS)
+          pcb.Drill.position.setZ(face * (topOuter + EPS))
+        }
+      }
+    }
+
+    // --- 2D Real: pad = đồng ∩ lỗ mở mask ---
+    // Lớp "SolderMask" của Gerber là LỖ MỞ, không phải pad. KiCad gộp cả dãy chân IC
+    // thành một lỗ mở khi khe giữa chân nhỏ hơn mức mask tối thiểu — tô nguyên lỗ mở bằng
+    // màu đồng thì cả dãy chân thành một khối, nhìn như chạm nhau. Bo thật: lỗ mở chỉ
+    // làm lộ PHẦN ĐỒNG nằm trong nó, giữa các chân là nền FR-4.
+    //
+    // Không có stencil buffer (web-gerber tạo renderer không kèm stencil), nên mượn depth
+    // buffer làm mặt nạ — ở 2D depth test đã tắt cho mọi lớp nên buffer đang trống:
+    //   1. lỗ mở vẽ màu FR-4 và GHI depth → depth buffer thành bản đồ "chỗ có lỗ mở";
+    //   2. đồng mặt trước vẽ lại màu pad, chỉ cho qua chỗ đã có depth của lỗ mở
+    //      (GreaterDepth: mảnh đồng đặt SÂU hơn lỗ mở 0.1, chỗ không có lỗ mở thì
+    //      depth còn là giá trị xoá = xa nhất nên không mảnh nào qua được).
+    // Mặt xa nằm dưới lõi bo, không cần. 3D và CAM giữ nguyên.
+    const followers: { obj: any; leader: any }[] = []
+    if (!camMode && !threeDMode) {
+      const near = fromBelow ? pcb.Btm : pcb.Top
+      const face = fromBelow ? -1 : 1
+      const openings = near?.SolderMask
+      const copper = near?.Copper
+      if (openings && copper && copper.parent) {
+        // Hằng của three (bản đóng gói trong web-gerber không export ra).
+        const ALWAYS_DEPTH = 1
+        const GREATER_DEPTH = 6
+        const restyle = (obj: any, fn: (m: any, o: any) => void) =>
+          obj.traverse((o: any) => {
+            const mats = materialsOf(o)
+            if (!mats.length) return
+            const own = mats.map((m: any) => {
+              const c = m.clone()
+              fn(c, o)
+              return c
+            })
+            o.material = Array.isArray(o.material) ? own : own[0]
+          })
+        restyle(openings, (m) => {
+          m.color?.set?.(BASE_BOARD)
+          // Tắt depth test trong WebGL là tắt luôn cả ghi depth, nên phải BẬT test
+          // nhưng cho mọi mảnh qua (AlwaysDepth) thì lỗ mở mới ghi được mặt nạ.
+          m.depthTest = true
+          m.depthFunc = ALWAYS_DEPTH
+          m.depthWrite = true
+        })
+        const pads = copper.clone()
+        restyle(pads, (m, o) => {
+          // Đoạn khoét (đảo cực) trong lớp đồng vẫn là chỗ KHÔNG có đồng.
+          const erased = o.userData?.polarityErase || o.parent?.userData?.polarityErase
+          m.color?.set?.(erased ? BASE_BOARD : palette.MaskOpening)
+          m.depthTest = true
+          m.depthWrite = false
+          m.depthFunc = GREATER_DEPTH
+        })
+        const base = openings.renderOrder + 0.5
+        pads.traverse((o: any) => {
+          o.renderOrder = base + (o.renderOrder - copper.renderOrder) * 0.1
+        })
+        pads.position.z = copper.position.z - face * 0.1
+        copper.parent.add(pads)
+        // Bật/tắt theo lớp mask: tắt mask ở sidebar thì pad (vốn là "đồng lộ qua mask")
+        // cũng tắt, khỏi còn trơ lại một lớp đồng màu pad.
+        followers.push({ obj: pads, leader: openings })
       }
     }
 
@@ -702,7 +819,7 @@ export const Viewer2DWebGL: React.FC<Viewer2DWebGLProps> = ({
       }
     }
 
-    sceneRef.current = { byFile, maskFiles, topOil, bottomOil, camMode }
+    sceneRef.current = { byFile, maskFiles, topOil, bottomOil, camMode, followers }
 
     // --- Camera top-down + pan/zoom tự quản (chỉ set số, không tạo object three) ---
     const cam = render.Camera
@@ -940,6 +1057,7 @@ export const Viewer2DWebGL: React.FC<Viewer2DWebGLProps> = ({
     const shown = (file: string) => (listed.has(file) ? board.visibleLayers.has(file) : true)
 
     for (const [file, obj] of s.byFile) obj.visible = shown(file)
+    for (const { obj, leader } of s.followers) obj.visible = leader.visible
     // Lớp "oil" (mask phủ cả bo) do assembly tự sinh, không có file riêng
     // -> coi như thuộc lớp soldermask cùng mặt.
     const anyShown = (files: string[]) => files.length === 0 || files.some(shown)
