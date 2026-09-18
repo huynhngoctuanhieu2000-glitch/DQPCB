@@ -1,6 +1,7 @@
 {
   "note": "Cấu hình giá — sửa trực tiếp ở đây hoặc trong Cài đặt → Công thức tính tiền. Không cần sửa code.",
   "source": "TÍNH GIÁ KHÁCH → Bản giá mới 7_26 (A1:AC45). Xem 'Tinh gia/bao-cao-cong-thuc-gia.html'.",
+  "optionsNote": "OZ2_5/OZ3_5/OZ4_5: sheet gốc không có dòng cho các độ dày đồng này (chỉ có 6 phương án L1/L2/L4/ENIG2/OZ2/FLEX). Hệ số của ba dòng này là NỘI SUY TUYẾN TÍNH từ chênh lệch L2 (1oz) → OZ2 (2oz): mỗi +1oz cộng thêm base +100, area +0.010 (small) / base +100, area +0.005 (large). Chưa đối chiếu với giá xưởng thật cho 2.5oz trở lên — nên xin báo giá thật từ nhà máy rồi thay số trước khi báo giá khách số lượng lớn.",
 
   "table": {
     "note": "Bảng giá cố định nhà máy, dòng 15-18 của sheet: bo dưới 10x10cm KHÔNG ghép panel. Giá là THÀNH TIỀN cả đơn, không phải đơn giá. coversOption = phương án mà bảng này áp — chọn phương án khác thì phải tính bằng công thức, vì bảng không phân biệt loại bo.",
@@ -53,6 +54,9 @@
     { "key": "L4",    "label": "4 lớp",         "small": { "base": 150, "area": 0.065 }, "large": { "base": 150, "board": 0.24, "area": 0.046 } },
     { "key": "ENIG2", "label": "Mạ vàng 2 lớp", "small": { "base": 120, "area": 0.063 }, "large": { "base": 150, "board": 0.18, "area": 0.046 } },
     { "key": "OZ2",   "label": "2oz 2 lớp",     "small": { "base": 120, "area": 0.064 }, "large": { "base": 150, "board": 0.18, "area": 0.047 } },
+    { "key": "OZ2_5", "label": "2.5oz 2 lớp (ước tính)", "small": { "base": 170, "area": 0.069 }, "large": { "base": 200, "board": 0.18, "area": 0.050 } },
+    { "key": "OZ3_5", "label": "3.5oz 2 lớp (ước tính)", "small": { "base": 270, "area": 0.079 }, "large": { "base": 300, "board": 0.18, "area": 0.055 } },
+    { "key": "OZ4_5", "label": "4.5oz 2 lớp (ước tính)", "small": { "base": 370, "area": 0.089 }, "large": { "base": 400, "board": 0.18, "area": 0.060 } },
     { "key": "FLEX",  "label": "Mạch dẻo",      "small": { "base": 150, "area": 0.080 }, "large": { "base": 300, "board": 0.18, "area": 0.065 } }
   ],
 
