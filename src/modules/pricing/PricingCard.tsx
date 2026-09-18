@@ -204,10 +204,20 @@ export const PricingCard: React.FC<{
         ? 'đã ghép panel'
         : option !== cfg.table.coversOption
           ? `loại "${cfg.options.find((o) => o.key === option)?.label ?? option}" không nằm trong bảng giá nhà máy (bảng chỉ có ${cfg.options.find((o) => o.key === cfg.table.coversOption)?.label ?? cfg.table.coversOption})`
-          : forceFormula
-            ? 'đang ép dùng công thức'
-            : null
+          : null // người lập tự gạt sang Công thức thì không cần giải thích
       : null
+
+  // Bảng tra dùng được không, BỎ QUA lựa chọn của người lập — để nút gạt biết có
+  // cho bấm "Bảng tra" hay không, và nói được vì sao không.
+  const tableUnavailable = !size
+    ? 'chưa có kích thước bo'
+    : !fitsTable(size.w * 10, size.h * 10, cfg.table)
+      ? 'bo lớn hơn khổ bảng giá nhà máy'
+      : panelX > 1 || panelY > 1
+        ? 'đã ghép panel'
+        : option !== cfg.table.coversOption
+          ? `bảng giá nhà máy chỉ có loại ${cfg.options.find((o) => o.key === cfg.table.coversOption)?.label ?? cfg.table.coversOption}`
+          : null
 
   const amount =
     result?.kind === 'table' || result?.kind === 'formula' ? result.priceVnd : manualAmount
@@ -335,9 +345,29 @@ export const PricingCard: React.FC<{
       <div style={S.head}>
         <span style={S.title}>Báo giá</span>
         {input && (
-          <span style={{ ...S.badge, ...(onTablePath ? S.badgeTable : S.badgeFormula) }}>
-            {onTablePath ? 'Bảng tra' : 'Công thức'}
-          </span>
+          // Chọn đường tính giá ngay tại đây. Bảng tra chỉ bấm được khi bo đủ điều
+          // kiện; không đủ thì mờ đi và di chuột vào sẽ thấy lý do.
+          <div style={S.pathToggle}>
+            <button
+              style={{
+                ...S.pathBtn,
+                ...(onTablePath ? S.badgeTable : null),
+                ...(tableUnavailable ? S.pathBtnOff : null),
+              }}
+              disabled={!!tableUnavailable}
+              title={tableUnavailable ? `Không dùng được bảng tra: ${tableUnavailable}` : 'Tra bảng giá nhà máy'}
+              onClick={() => setForceFormula(false)}
+            >
+              Bảng tra
+            </button>
+            <button
+              style={{ ...S.pathBtn, ...(!onTablePath ? S.badgeFormula : null) }}
+              title="Tính theo công thức kích thước"
+              onClick={() => setForceFormula(true)}
+            >
+              Công thức
+            </button>
+          </div>
         )}
         <button style={S.gear} onClick={onOpenSettings} title="Cài đặt → Công thức tính tiền">
           ⚙
@@ -528,14 +558,6 @@ export const PricingCard: React.FC<{
             </div>
           </div>
 
-          <label style={S.check}>
-            <input
-              type="checkbox"
-              checked={forceFormula}
-              onChange={(e) => setForceFormula(e.target.checked)}
-            />
-            Ép dùng công thức (bỏ qua bảng tra)
-          </label>
         </div>
       )}
     </div>
@@ -601,6 +623,18 @@ const S: Record<string, React.CSSProperties> = {
   },
   title: { color: '#e2e8f0', fontWeight: 600, fontSize: 12 },
   badge: { fontSize: 10, padding: '1px 6px', borderRadius: 999, fontWeight: 600 },
+  pathToggle: { display: 'flex', gap: 2, padding: 2, borderRadius: 999, backgroundColor: '#14161b', border: '1px solid #2c313c' },
+  pathBtn: {
+    fontSize: 10,
+    fontWeight: 600,
+    padding: '2px 8px',
+    borderRadius: 999,
+    border: '1px solid transparent',
+    background: 'none',
+    color: '#64748b',
+    cursor: 'pointer',
+  },
+  pathBtnOff: { opacity: 0.35, cursor: 'not-allowed' },
   badgeTable: { backgroundColor: '#0c4a3e', color: '#5eead4', border: '1px solid #115e52' },
   badgeFormula: { backgroundColor: '#3b2c09', color: '#fcd34d', border: '1px solid #57410d' },
   gear: {
