@@ -497,7 +497,10 @@ export const Viewer2DWebGL: React.FC<Viewer2DWebGLProps> = ({
         const t = (i + 1) / (innerCopper.length + 1)
         obj.position.z = topZ + (botZ - topZ) * t
         obj.scale.setZ(thickness)
-        render.Scene.add(obj)
+        // Real nhìn thẳng (Real 2D, 2 Mặt): lớp giữa kẹp trong lõi FR-4, không bao giờ
+        // nhìn thấy — không đưa vào cảnh, khỏi lộ ra ở mép khe phay hay chỗ lõi khuyết.
+        // CAM thì cần soi, 3D thì depth test đã tự che.
+        if (camMode || threeDMode) render.Scene.add(obj)
       })
     }
 
@@ -594,10 +597,15 @@ export const Viewer2DWebGL: React.FC<Viewer2DWebGLProps> = ({
     paintOrder(farOil, 3)
     paintOrder(pcb.OutLine, 4)
     paintOrder(nearOil, 5)
-    // Lớp giữa nằm giữa hai lớp đồng ngoài, cả về cao độ lẫn thứ tự vẽ.
-    innerCopper.forEach(({ obj }, i) =>
-      paintOrder(obj, 2 + ((i + 1) / (innerCopper.length + 1)) * 4)
-    )
+    // Lớp giữa nằm TRONG lõi bo: vẽ sau lớp phủ mặt xa (3) nhưng trước lõi FR-4 (4),
+    // để ở Real lõi che kín chúng như bo thật. Trước đây rải trong (2, 6) — lớp giữa cuối
+    // cùng ra 5.2, vẽ đè lên mask mặt trên (5) nên đường mạch bên trong lộ hẳn ra. Lúc
+    // còn depth test thì cao độ che giúp; 2D giờ vẽ theo thứ tự nên thứ tự phải đúng.
+    // Mặt xa → mặt gần theo đúng chiều nhìn: nhìn từ dưới thì In4 là lớp gần hơn.
+    innerCopper.forEach(({ obj }, i) => {
+      const k = fromBelow ? innerCopper.length - 1 - i : i
+      paintOrder(obj, 3 + ((innerCopper.length - k) / (innerCopper.length + 1)))
+    })
     paintOrder(near.Copper, 6)
     paintOrder(near.Silkscreen, 7)
     paintOrder(near.SolderMask, 8)
