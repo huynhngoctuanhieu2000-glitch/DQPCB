@@ -242,6 +242,38 @@ export const Layout: React.FC = () => {
     e.target.value = ''
   }
 
+  /** Đầu bảng trượt trên điện thoại: hai tab Lớp / Thông tin, cả hai ngăn dùng chung. */
+  const sheetTabs = (
+    <div style={{ display: 'flex', borderBottom: '1px solid #282b34', backgroundColor: '#14161b', flexShrink: 0 }}>
+      {(
+        [
+          ['layers', `Lớp (${boardState.layers.length})`],
+          ['info', 'Thông tin bo'],
+        ] as const
+      ).map(([key, label]) => {
+        const on = drawer === key
+        return (
+          <div
+            key={key}
+            onClick={() => setDrawer(key)}
+            style={{
+              flex: 1,
+              padding: '10px 8px',
+              textAlign: 'center',
+              fontSize: '13px',
+              fontWeight: 600,
+              color: on ? '#38bdf8' : '#64748b',
+              borderBottom: `2px solid ${on ? '#38bdf8' : 'transparent'}`,
+              cursor: 'pointer',
+            }}
+          >
+            {label}
+          </div>
+        )
+      })}
+    </div>
+  )
+
   return (
     <div
       style={{
@@ -409,14 +441,6 @@ export const Layout: React.FC = () => {
           ...(isMobile ? { padding: '0 8px', gap: '8px' } : null),
         }}
       >
-        {isMobile && (
-          <button
-            onClick={() => setDrawer((d) => (d === 'layers' ? null : 'layers'))}
-            style={drawerBtn(drawer === 'layers')}
-          >
-            ☰ Layers
-          </button>
-        )}
         {/* Chế độ xem: hai công tắc, mỗi lần chỉ một nhóm sáng.
             CAM ⇄ 2 Mặt (bản vẽ phẳng) và 2D ⇄ 3D (ảnh thật). Bấm nhóm đang sáng thì
             gạt sang lựa chọn kia; bấm nhóm đang tắt thì chuyển sang nhóm đó ở lựa chọn đầu. */}
@@ -534,12 +558,14 @@ export const Layout: React.FC = () => {
           </div>
         )}
 
+        {/* Điện thoại: một nút mở bảng trượt từ đáy, trong đó có hai tab Lớp / Thông tin.
+            Hai ngăn kéo hai bên hẹp quá, bảng thông tin không đủ bề ngang để đọc. */}
         {isMobile && (
           <button
-            onClick={() => setDrawer((d) => (d === 'info' ? null : 'info'))}
-            style={{ ...drawerBtn(drawer === 'info'), marginLeft: 'auto' }}
+            onClick={() => setDrawer((d) => (d ? null : 'info'))}
+            style={{ ...drawerBtn(drawer !== null), marginLeft: 'auto' }}
           >
-            ℹ Thông tin
+            {drawer ? '✕ Đóng' : '☰ Lớp · Thông tin'}
           </button>
         )}
       </div>
@@ -550,16 +576,17 @@ export const Layout: React.FC = () => {
         {/* ================= COLUMN 1: LEFT LAYERS PANEL ================= */}
         <div
           style={{
-            width: isMobile ? 'min(300px, 85vw)' : '240px',
+            width: '240px',
             backgroundColor: '#181a20',
             borderRight: '1px solid #282b34',
             display: isMobile && drawer !== 'layers' ? 'none' : 'flex',
             flexDirection: 'column',
             overflow: 'hidden',
-            ...(isMobile ? { position: 'absolute', top: 0, bottom: 0, left: 0, zIndex: 40, boxShadow: '4px 0 16px rgba(0,0,0,0.5)' } : null),
+            ...(isMobile ? SHEET : null),
           }}
         >
           {/* Layers header & tabs */}
+          {isMobile ? sheetTabs : (
           <div
             style={{
               display: 'flex',
@@ -581,6 +608,7 @@ export const Layout: React.FC = () => {
               Layers ({boardState.layers.length})
             </div>
           </div>
+          )}
 
           {/* Side Filter Tabs (All / Top / Bottom) */}
           {boardState.layers.length > 0 && (
@@ -993,16 +1021,17 @@ export const Layout: React.FC = () => {
         {/* ================= COLUMN 3: RIGHT PCB ANALYSIS PANEL ================= */}
         <div
           style={{
-            width: isMobile ? 'min(340px, 92vw)' : '280px',
+            width: '280px',
             backgroundColor: '#181a20',
             borderLeft: '1px solid #282b34',
             display: isMobile && drawer !== 'info' ? 'none' : 'flex',
             flexDirection: 'column',
             overflow: 'hidden',
-            ...(isMobile ? { position: 'absolute', top: 0, bottom: 0, right: 0, zIndex: 40, boxShadow: '-4px 0 16px rgba(0,0,0,0.5)' } : null),
+            ...(isMobile ? SHEET : null),
           }}
         >
           {/* Tab Header */}
+          {isMobile ? sheetTabs : (
           <div
             style={{
               display: 'flex',
@@ -1024,6 +1053,7 @@ export const Layout: React.FC = () => {
               Thông tin bo
             </div>
           </div>
+          )}
 
           {/* Thông tin bo + báo giá gộp một khối: kích thước và loại bo đọc từ Gerber
               đồng thời là đầu vào tính giá, nên không hiện hai lần ở hai bảng. */}
@@ -1068,6 +1098,9 @@ export const Layout: React.FC = () => {
     </div>
   )
 }
+
+/** Bảng trượt từ đáy trên điện thoại: full bề ngang, cao 72% để vẫn thấy một phần bo. */
+const SHEET: React.CSSProperties = { position: 'absolute', left: 0, right: 0, bottom: 0, height: '72%', width: '100%', zIndex: 40, borderTop: '1px solid #334155', borderRadius: '12px 12px 0 0', boxShadow: '0 -6px 20px rgba(0,0,0,0.55)' }
 
 const drawerBtn = (on: boolean): React.CSSProperties => ({
   flexShrink: 0,
