@@ -22,6 +22,8 @@ function createWindow() {
     minWidth: 900,
     minHeight: 600,
     autoHideMenuBar: true,
+    // Icon cửa sổ + taskbar. Windows dùng .ico (đủ cỡ 16→256), nơi khác dùng .png.
+    icon: path.join(process.env.VITE_PUBLIC || '', process.platform === 'win32' ? 'icon.ico' : 'icon.png'),
     webPreferences: {
       preload: path.join(__dirname, 'preload.mjs'),
     },

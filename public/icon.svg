@@ -1,0 +1,87 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
+  <defs>
+    <!-- vành kim loại: sáng góc trên-trái, tối góc dưới-phải, có dải sáng giữa như thép đánh bóng -->
+    <linearGradient id="rim" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#f0f9ff"/>
+      <stop offset=".35" stop-color="#7dd3fc"/>
+      <stop offset=".6" stop-color="#0284c7"/>
+      <stop offset="1" stop-color="#083344"/>
+    </linearGradient>
+    <linearGradient id="handle" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#bae6fd"/>
+      <stop offset=".45" stop-color="#0284c7"/>
+      <stop offset="1" stop-color="#083344"/>
+    </linearGradient>
+    <linearGradient id="collar" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#e0f2fe"/>
+      <stop offset=".5" stop-color="#38bdf8"/>
+      <stop offset="1" stop-color="#0c4a6e"/>
+    </linearGradient>
+    <!-- thấu kính lồi: giữa trong, càng ra rìa càng tối và ánh xanh -->
+    <radialGradient id="glass" cx=".5" cy=".5" r=".5">
+      <stop offset="0" stop-color="#e0f2fe" stop-opacity=".10"/>
+      <stop offset=".6" stop-color="#bae6fd" stop-opacity=".14"/>
+      <stop offset=".9" stop-color="#0c4a6e" stop-opacity=".45"/>
+      <stop offset="1" stop-color="#082f49" stop-opacity=".65"/>
+    </radialGradient>
+    <!-- vệt sáng phản chiếu lớn phía trên-trái -->
+    <linearGradient id="gloss" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff" stop-opacity=".6"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
+    </linearGradient>
+    <clipPath id="lens"><circle cx="86" cy="72" r="26"/></clipPath>
+    <clipPath id="boardClip"><rect width="128" height="128" rx="28"/></clipPath>
+    <!-- Nội dung bản mạch: nền, mạch in, chữ D. Vẽ một lần, dùng lại trong kính lúp. -->
+    <g id="board">
+      <rect width="128" height="128" rx="28" fill="#0f2a5c"/>
+      <g clip-path="url(#boardClip)">
+        <!-- chỉ còn lưới mờ như nền CAD -->
+        <g stroke="#1e3a8a" stroke-width=".6" opacity=".5">
+          <path d="M12 0V128M28 0V128M44 0V128M60 0V128M76 0V128M92 0V128M108 0V128M124 0V128"/>
+          <path d="M0 12H128M0 28H128M0 44H128M0 60H128M0 76H128M0 92H128M0 108H128M0 124H128"/>
+        </g>
+      </g>
+    </g>
+    <g id="dletter">
+      <!-- Chữ D: viền tối mỏng để tách khỏi mạch phía sau -->
+      <path d="M42 42 H62 A22 22 0 0 1 62 86 H42 Z"
+            fill="none" stroke="#0b1220" stroke-width="15" stroke-linejoin="round" opacity=".85"/>
+      <path d="M42 42 H62 A22 22 0 0 1 62 86 H42 Z"
+            fill="none" stroke="#ffffff" stroke-width="10.5" stroke-linejoin="round"/>
+    </g>
+  </defs>
+
+  <rect width="128" height="128" rx="28" fill="#0b1220"/>
+  <use href="#board"/>
+  <use href="#dletter"/>
+
+  <!-- Kính lúp = chữ Q. Cả cụm xén theo khung bo góc: cán chạy dài ra khỏi hình như bị khung cắt -->
+  <g clip-path="url(#boardClip)">
+  <!-- bóng đổ lệch xuống dưới-phải -->
+  <ellipse cx="90" cy="77" rx="29" ry="27" fill="#000000" opacity=".32"/>
+  <!-- tròng kính: nhìn xuyên xuống bản mạch, phóng to 1.5 lần -->
+  <g clip-path="url(#lens)">
+    <g transform="translate(86 72) scale(1.4) translate(-80 -68)">
+      <use href="#board"/>
+      <use href="#dletter"/>
+    </g>
+    <circle cx="86" cy="72" r="26" fill="url(#glass)"/>
+    <!-- phản chiếu chính: vệt cong to phía trên-trái -->
+    <path d="M66 64 A22 22 0 0 1 94 51 A26 26 0 0 0 66 64 Z" fill="url(#gloss)"/>
+    <!-- phản chiếu phụ: chấm nhỏ phía dưới-phải -->
+    <ellipse cx="99" cy="86" rx="3.5" ry="2" fill="#ffffff" opacity=".35" transform="rotate(40 99 86)"/>
+  </g>
+  <!-- vành kính: bóng trong, thân kim loại có bo cạnh, viền ngoài tối -->
+  <circle cx="86" cy="72" r="24.2" fill="none" stroke="#041c2b" stroke-width="1.6" opacity=".7"/>
+  <circle cx="86" cy="72" r="27" fill="none" stroke="url(#rim)" stroke-width="6"/>
+  <circle cx="86" cy="72" r="29.6" fill="none" stroke="#041c2b" stroke-width="1.4"/>
+  <circle cx="86" cy="72" r="25.2" fill="none" stroke="#ffffff" stroke-width=".9" opacity=".6"/>
+  <!-- cán = đuôi chữ Q: một khối liền từ vành kính kéo dài ra, thon dần, đầu tròn -->
+  <g transform="translate(104.5 90.5) rotate(45)">
+    <path d="M0 -6 L44 -4.4 A4.4 4.4 0 0 1 44 4.4 L0 6 Z" fill="url(#handle)" stroke="#041c2b" stroke-width="1.2" stroke-linejoin="round"/>
+    <!-- hai gân đai sát vành, gợi cổ kim loại mà không cắt khúc -->
+    <path d="M3 -5.8 V5.8 M5.5 -5.6 V5.6" stroke="#041c2b" stroke-width=".8" opacity=".55"/>
+    <path d="M7 -3.2 L42 -2.4" stroke="#ffffff" stroke-width="1.2" stroke-linecap="round" opacity=".55"/>
+  </g>
+  </g>
+</svg>
