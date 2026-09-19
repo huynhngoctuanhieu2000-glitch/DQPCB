@@ -5,18 +5,51 @@
  */
 
 import logoUrl from '../../assets/quotation/logo-thien-lam-full.png'
+import { CaptureSettings } from '../settings/CaptureSettings'
 
 /**
- * Logo Thiên Lâm in mờ phía sau bo làm dấu bản quyền. Ảnh gửi cho khách hay bị chuyển
- * tiếp đi nơi khác; logo chìm cho biết ảnh dựng từ đâu mà không che mất bo.
+ * Logo Thiên Lâm in mờ giữa ảnh, đè lên mép trong của hai mặt bo, làm dấu bản quyền.
+ * Ảnh gửi cho khách hay bị chuyển tiếp đi nơi khác; logo nằm sau bo thì cắt nền đi là
+ * mất dấu, đè lên trên thì không gỡ được. Độ đậm chỉnh trong Cài đặt → Ảnh chụp.
  */
-const WATERMARK_ALPHA = 0.12
-let logoPromise: Promise<HTMLImageElement | null> | null = null
+let logoPromise: Promise<HTMLCanvasElement | null> | null = null
+
+/**
+ * Cắt bỏ viền trong suốt quanh logo. File PNG 800×800 mà hình chỉ chiếm 722×441 —
+ * co theo khung ảnh gốc thì logo thật bé đi gần một nửa, nhất là với bo dài dẹt.
+ */
+const trimTransparent = (img: HTMLImageElement): HTMLCanvasElement | null => {
+  const src = document.createElement('canvas')
+  src.width = img.naturalWidth
+  src.height = img.naturalHeight
+  const g = src.getContext('2d')
+  if (!g) return null
+  g.drawImage(img, 0, 0)
+  const { data } = g.getImageData(0, 0, src.width, src.height)
+  let x0 = src.width, y0 = src.height, x1 = -1, y1 = -1
+  for (let y = 0; y < src.height; y++) {
+    for (let x = 0; x < src.width; x++) {
+      if (data[(y * src.width + x) * 4 + 3] > 10) {
+        if (x < x0) x0 = x
+        if (x > x1) x1 = x
+        if (y < y0) y0 = y
+        if (y > y1) y1 = y
+      }
+    }
+  }
+  if (x1 < 0) return null
+  const out = document.createElement('canvas')
+  out.width = x1 - x0 + 1
+  out.height = y1 - y0 + 1
+  out.getContext('2d')?.drawImage(src, x0, y0, out.width, out.height, 0, 0, out.width, out.height)
+  return out
+}
+
 const loadLogo = () => {
   if (!logoPromise) {
     logoPromise = new Promise((resolve) => {
       const img = new Image()
-      img.onload = () => resolve(img)
+      img.onload = () => resolve(trimTransparent(img))
       img.onerror = () => resolve(null) // thiếu logo thì vẫn chụp, chỉ không có dấu
       img.src = logoUrl
     })
@@ -86,28 +119,6 @@ const contentBox = (c: HTMLCanvasElement, background: string): [number, number, 
 }
 
 /**
- * Bản sao của khung với nền canvas làm trong suốt, để logo chìm phía sau lộ ra ở chỗ
- * không có bo. Khung WebGL vẽ nền đặc (#eeeeee) nên dán thẳng là che mất logo.
- */
-const withTransparentBackground = (c: HTMLCanvasElement, background: string): HTMLCanvasElement => {
-  const out = document.createElement('canvas')
-  out.width = c.width
-  out.height = c.height
-  const g = out.getContext('2d')
-  if (!g) return c
-  g.drawImage(c, 0, 0)
-  const bg = parseInt(background.replace('#', ''), 16)
-  const br = (bg >> 16) & 255, bgg = (bg >> 8) & 255, bb = bg & 255
-  const img = g.getImageData(0, 0, out.width, out.height)
-  const d = img.data
-  for (let i = 0; i < d.length; i += 4) {
-    if (Math.abs(d[i] - br) + Math.abs(d[i + 1] - bgg) + Math.abs(d[i + 2] - bb) <= 18) d[i + 3] = 0
-  }
-  g.putImageData(img, 0, 0)
-  return out
-}
-
-/**
  * Ghép hai khung thành một canvas, CẮT SÁT phần có bo. Khung xem cao hết cột giữa nên
  * chụp nguyên khung ra một dải dài ngoằng với hai bo bé tí ở giữa; người nhận cần ảnh
  * vừa khít bo. Hai mặt cắt cùng một dải dọc để vẫn thẳng hàng nhau.
@@ -124,7 +135,7 @@ export const composeTwoSides = async (input: TwoSideCaptureInput): Promise<HTMLC
   // Lề đều quanh bo. Nhãn kích thước nằm trong một DẢI RIÊNG dưới bo, không đè lên
   // bo — panel cao kín khung thì nhãn đặt chồng sẽ che mất rãnh dưới cùng.
   const padX = 24 * s, padTop = 24 * s, padBottom = 24 * s
-  const bandH = 64 * s
+  const bandH = 92 * s
   const y0 = Math.max(0, Math.min(bt[1], bb[1]) - padTop)
   const y1 = Math.min(Math.max(top.height, bottom.height), Math.max(bt[3], bb[3]) + padBottom)
   const cut = (c: HTMLCanvasElement, box: number[]) => ({
@@ -145,27 +156,26 @@ export const composeTwoSides = async (input: TwoSideCaptureInput): Promise<HTMLC
   g.fillStyle = background
   g.fillRect(0, 0, W, H)
 
-  // Logo mờ ở giữa, sau bo: cao bằng ~70% chiều cao ảnh, không phóng quá bề ngang.
+  g.drawImage(top, ct.x, y0, ct.w, boardsH, 0, 0, ct.w, boardsH)
+  g.drawImage(bottom, cb.x, y0, cb.w, boardsH, ct.w + gap, 0, cb.w, boardsH)
+
+  // Một logo mờ ở GIỮA ẢNH, vẽ sau bo nên đè lên mép trong của hai mặt — đủ để không
+  // gỡ được, mà không phủ kín mạch như đặt giữa từng bo.
   const logo = await loadLogo()
   if (logo) {
-    const lh = Math.min(H * 0.7, (W * 0.6 * logo.height) / logo.width)
+    const lh = Math.min(boardsH * 0.9, (W * 0.5 * logo.height) / logo.width)
     const lw = (lh * logo.width) / logo.height
-    g.globalAlpha = WATERMARK_ALPHA
+    g.globalAlpha = CaptureSettings.get().watermarkPercent / 100
     g.drawImage(logo, (W - lw) / 2, (boardsH - lh) / 2, lw, lh)
     g.globalAlpha = 1
   }
 
-  const topT = withTransparentBackground(top, background)
-  const bottomT = withTransparentBackground(bottom, background)
-  g.drawImage(topT, ct.x, y0, ct.w, boardsH, 0, 0, ct.w, boardsH)
-  g.drawImage(bottomT, cb.x, y0, cb.w, boardsH, ct.w + gap, 0, cb.w, boardsH)
-
   // Không in nhãn TOP/BOT lên ảnh — ảnh gửi khách chỉ cần hai mặt bo và kích thước.
 
   // Nhãn kích thước: chữ to, căn giữa dải riêng ở đáy.
-  const size = `${input.layerCount} lớp   |   ${input.widthMM.toFixed(2)} × ${input.heightMM.toFixed(2)} mm`
-  const font = 20, padY = 9
-  drawTag(g, size, W / 2, boardsH + (bandH - (font + padY * 2) * s) / 2, s, { radius: 999, padX: 22, padY, font, center: true })
+  const size = `Bo mạch ${input.layerCount} lớp   |   ${input.widthMM.toFixed(2)} x ${input.heightMM.toFixed(2)} mm`
+  const font = 32, padY = 12
+  drawTag(g, size, W / 2, boardsH + (bandH - (font + padY * 2) * s) / 2, s, { radius: 999, padX: 30, padY, font, center: true })
   return c
 }
 

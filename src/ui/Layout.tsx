@@ -51,9 +51,10 @@ export const Layout: React.FC = () => {
     if (!boardState.bounds || capturing) return
     setCapturing(true)
     try {
-      // Mỗi mặt cỡ ~1000 px theo cạnh dài, bất kể bo 20 mm hay panel 300 mm.
+      // Mỗi mặt cỡ ~2000 px theo cạnh dài, bất kể bo 20 mm hay panel 300 mm — ảnh gửi
+      // khách phóng to ra xem chân linh kiện, 1000 px bị vỡ.
       const { widthMM, heightMM } = boardState.bounds
-      const pxPerMm = 1000 / (Math.max(widthMM, heightMM) + 12)
+      const pxPerMm = 2000 / (Math.max(widthMM, heightMM) + 12)
       const scale = Math.max(1, pxPerMm / 5) // cỡ nhãn/lề theo độ phóng
       const top = captureTopRef.current?.(pxPerMm)
       const bottom = captureBotRef.current?.(pxPerMm)
@@ -1085,12 +1086,14 @@ const BoardBadge: React.FC<{
         display: 'flex',
         alignItems: 'center',
         gap: '10px',
-        padding: '6px 14px',
+        padding: '8px 20px',
         borderRadius: 999,
         backgroundColor: 'rgba(15,23,42,0.9)',
         border: '1px solid #334155',
         boxShadow: '0 2px 10px rgba(0,0,0,0.35)',
-        fontSize: '12px',
+        // To bằng nhãn trong ảnh copy trên màn rộng; cửa sổ hẹp thì co lại cho khỏi tràn
+        // ra ngoài khung xem.
+        fontSize: 'clamp(11px, 1.15vw, 16px)',
         fontWeight: 600,
         color: '#e2e8f0',
         whiteSpace: 'nowrap',
@@ -1098,10 +1101,11 @@ const BoardBadge: React.FC<{
         zIndex: 6,
       }}
     >
-      <span>{layerCount} lớp</span>
+      {/* Cùng chữ với nhãn trong ảnh copy (captureBoard.ts) — nhìn sao chụp ra vậy. */}
+      <span>Bo mạch {layerCount} lớp</span>
       <span style={{ color: '#475569' }}>|</span>
       <span>
-        {bounds.widthMM.toFixed(2)} × {bounds.heightMM.toFixed(2)} mm
+        {bounds.widthMM.toFixed(2)} x {bounds.heightMM.toFixed(2)} mm
       </span>
     </div>
   )

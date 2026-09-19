@@ -1,5 +1,5 @@
 /**
- * Cài đặt — hiện chỉ có một mục: Công thức tính tiền.
+ * Cài đặt — công thức tính tiền (PCB, Stencil) và ảnh chụp (độ đậm logo).
  *
  * Mọi con số của sheet giá nằm ở đây, không nằm trong code. Sửa xong bấm Lưu thì
  * PricingStore ghi vào localStorage và thẻ tính giá đổi theo ngay.
@@ -10,6 +10,7 @@
  */
 import React, { useMemo, useState } from 'react'
 import { PricingStore } from '../pricing/PricingStore'
+import { CaptureSettings, DEFAULT_CAPTURE_SETTINGS, type CaptureSettingsData } from './CaptureSettings'
 import {
   DEFAULT_CONFIG,
   priceFromFormula,
@@ -42,7 +43,8 @@ export const SettingsPanel: React.FC<{ onClose: () => void }> = ({ onClose }) =>
   )
   const [saved, setSaved] = useState(false)
   /** Hai trang giá tách riêng: mạch in và stencil là hai bảng giá không liên quan nhau. */
-  const [page, setPage] = useState<'pcb' | 'stencil'>('pcb')
+  const [page, setPage] = useState<'pcb' | 'stencil' | 'capture'>('pcb')
+  const [capture, setCapture] = useState<CaptureSettingsData>(() => CaptureSettings.get())
 
   /** Sửa sâu trong cây cấu hình mà không phải viết spread lồng bốn tầng ở mỗi ô. */
   const edit = (fn: (draft: PricingConfig) => void) => {
@@ -79,12 +81,13 @@ export const SettingsPanel: React.FC<{ onClose: () => void }> = ({ onClose }) =>
       <div style={S.modal} onClick={(e) => e.stopPropagation()}>
         <div style={S.header}>
           <span style={S.headerTitle}>⚙ Cài đặt</span>
-          <span style={S.headerSub}>Công thức tính tiền</span>
+          <span style={S.headerSub}>{page === 'capture' ? 'Ảnh chụp' : 'Công thức tính tiền'}</span>
           <div style={S.tabs}>
             {(
               [
                 ['pcb', 'PCB'],
                 ['stencil', 'Stencil'],
+                ['capture', 'Ảnh chụp'],
               ] as const
             ).map(([key, label]) => (
               <button
@@ -102,7 +105,23 @@ export const SettingsPanel: React.FC<{ onClose: () => void }> = ({ onClose }) =>
         </div>
 
         <div style={S.body}>
-          {page === 'stencil' ? (
+          {page === 'capture' ? (
+            <Section
+              title="Copy ảnh 2 mặt"
+              note="Logo Thiên Lâm in mờ giữa ảnh, đè lên mép trong của hai mặt bo. 0% là không in logo; 8% là mức đã chốt."
+            >
+              <div style={S.rowWrap}>
+                <NumField
+                  label="Độ đậm logo (%)"
+                  value={capture.watermarkPercent}
+                  onChange={(v) => {
+                    setCapture({ watermarkPercent: Math.min(100, Math.max(0, v)) })
+                    setSaved(false)
+                  }}
+                />
+              </div>
+            </Section>
+          ) : page === 'stencil' ? (
             <StencilSection cfg={cfg} edit={edit} />
           ) : (
           <>
@@ -504,7 +523,8 @@ export const SettingsPanel: React.FC<{ onClose: () => void }> = ({ onClose }) =>
           <button
             style={S.btnGhost}
             onClick={() => {
-              setCfg(JSON.parse(JSON.stringify(DEFAULT_CONFIG)))
+              if (page === 'capture') setCapture({ ...DEFAULT_CAPTURE_SETTINGS })
+              else setCfg(JSON.parse(JSON.stringify(DEFAULT_CONFIG)))
               setSaved(false)
             }}
           >
@@ -517,6 +537,7 @@ export const SettingsPanel: React.FC<{ onClose: () => void }> = ({ onClose }) =>
             style={S.btnPrimary}
             onClick={() => {
               PricingStore.setConfig(cfg)
+              CaptureSettings.set(capture)
               setSaved(true)
             }}
           >
