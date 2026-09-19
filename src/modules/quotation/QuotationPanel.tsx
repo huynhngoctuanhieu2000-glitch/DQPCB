@@ -29,7 +29,7 @@ import {
 } from './QuotationModel'
 import type { Quotation, QuotationItem } from './QuotationModel'
 import { exportQuotationToPdf, revealInFolder } from './exportPdf'
-import { canShareFiles, shareQuotationImage } from './exportImage'
+import { canShareFiles, shareQuotationPdf } from './exportImage'
 import { computePrice, pickStencil, type PriceBasis, type StencilTier } from '../pricing/PricingModel'
 import { PricingStore } from '../pricing/PricingStore'
 import { QuotationPreview } from './QuotationPreview'
@@ -247,16 +247,16 @@ export const QuotationPanel: React.FC<{
   )
 
   /**
-   * Web (nhất là điện thoại): báo giá thành ảnh PNG rồi mở bảng chia sẻ → Zalo,
-   * Messenger, Lưu ảnh. Máy không có bảng chia sẻ thì tải ảnh về.
+   * Web (nhất là điện thoại): dựng PDF trong trình duyệt rồi mở bảng chia sẻ → Zalo,
+   * Messenger, Lưu vào Tệp. Máy không có bảng chia sẻ thì tải PDF về.
    */
   const handleShare = async () => {
     setBusy(true)
     setStatus(null)
     try {
-      const how = await shareQuotationImage(q)
-      if (how === 'shared') setStatus({ kind: 'ok', text: 'Đã gửi ảnh báo giá.' })
-      else if (how === 'downloaded') setStatus({ kind: 'ok', text: 'Đã tải ảnh báo giá về máy.' })
+      const how = await shareQuotationPdf(q)
+      if (how === 'shared') setStatus({ kind: 'ok', text: 'Đã gửi file PDF.' })
+      else if (how === 'downloaded') setStatus({ kind: 'ok', text: 'Đã tải PDF về máy.' })
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
       setStatus({ kind: 'err', text: `Không chia sẻ được: ${message}` })
@@ -750,16 +750,17 @@ export const QuotationPanel: React.FC<{
           <button onClick={onClose} style={S.secondaryBtn}>
             Đóng
           </button>
-          {/* Trên web: gửi ảnh là cách chính (Zalo nhận ảnh), in/PDF là phụ.
-              Trong app Electron: vẫn in ra file PDF cạnh file gerber. */}
+          {/* Trên web: PDF dựng trong trình duyệt là cách chính (điện thoại chia sẻ
+              thẳng sang Zalo), hộp in của trình duyệt là phụ. Trong app Electron: vẫn
+              in ra file PDF cạnh file gerber. */}
           {!window.ipcRenderer && (
             <button
               onClick={handleShare}
               disabled={busy}
               style={{ ...S.primaryBtn, ...(busy ? S.disabled : null) }}
-              title={canShareFiles() ? 'Mở bảng chia sẻ: Zalo, Messenger, Lưu ảnh…' : 'Tải ảnh PNG báo giá về máy'}
+              title={canShareFiles() ? 'Mở bảng chia sẻ: Zalo, Messenger, Lưu vào Tệp…' : 'Tải file PDF về máy'}
             >
-              {busy ? 'Đang tạo ảnh…' : canShareFiles() ? '📤 Chia sẻ ảnh' : '🖼 Tải ảnh'}
+              {busy ? 'Đang tạo PDF…' : canShareFiles() ? '📤 Chia sẻ PDF' : '⬇ Tải PDF'}
             </button>
           )}
           <button
@@ -774,7 +775,7 @@ export const QuotationPanel: React.FC<{
                 : 'Mở hộp in của trình duyệt, chọn "Lưu thành PDF"'
             }
           >
-            {busy ? 'Đang xuất…' : window.ipcRenderer ? '⬇ Xuất PDF' : '🖨 In / PDF'}
+            {busy ? 'Đang xuất…' : window.ipcRenderer ? '⬇ Xuất PDF' : '🖨 In'}
           </button>
         </div>
       </div>
