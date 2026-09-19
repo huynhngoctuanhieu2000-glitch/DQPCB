@@ -12,6 +12,8 @@ import {
   withPanelNote,
   createQuotation,
   emptyItem,
+  discountItem,
+  insertItems,
   itemFromBoard,
   itemFromStencil,
   sameStencil,
@@ -146,11 +148,21 @@ export const QuotationPanel: React.FC<{
   const removeItem = (id: string) =>
     setQ((prev) => ({
       ...prev,
-      // Luôn chừa lại một dòng để bảng không rỗng hẳn.
-      items: prev.items.length > 1 ? prev.items.filter((it) => it.id !== id) : prev.items,
+      // Luôn chừa lại một dòng hàng để bảng không rỗng hẳn (dòng giảm giá không tính).
+      items:
+        prev.items.find((it) => it.id === id)?.discount ||
+        prev.items.filter((it) => !it.discount).length > 1
+          ? prev.items.filter((it) => it.id !== id)
+          : prev.items,
     }))
 
-  const addItem = () => setQ((prev) => ({ ...prev, items: [...prev.items, emptyItem()] }))
+  const addItem = () => setQ((prev) => ({ ...prev, items: insertItems(prev.items, [emptyItem()]) }))
+  const addDiscount = () =>
+    setQ((prev) =>
+      prev.items.some((it) => it.discount)
+        ? prev
+        : { ...prev, items: [...prev.items, discountItem()] },
+    )
 
   /**
    * Dòng lấy từ bo bám theo thẻ tính giá: đổi kích thước, loại bo hay cách ghép panel
@@ -202,21 +214,20 @@ export const QuotationPanel: React.FC<{
   const addStencil = (tier: StencilTier) => {
     setQ((prev) => ({
       ...prev,
-      items: [
-        ...prev.items,
+      items: insertItems(prev.items, [
         itemFromStencil(
           tier,
           board.isLoaded ? board.projectName : undefined,
           stencilSideFromBoard(board.isLoaded ? board : undefined),
         ),
-      ],
+      ]),
     }))
     setStencilMenu(false)
   }
 
   const addBoards = (list: Board[]) => {
     if (list.length === 0) return
-    setQ((prev) => ({ ...prev, items: [...prev.items, ...list.map(itemWithPrice)] }))
+    setQ((prev) => ({ ...prev, items: insertItems(prev.items, list.map(itemWithPrice)) }))
     setBoardMenu(false)
   }
 
@@ -441,6 +452,14 @@ export const QuotationPanel: React.FC<{
             <button onClick={addItem} style={S.smallBtn}>
               + Thêm dòng trống
             </button>
+            <button
+              onClick={addDiscount}
+              disabled={q.items.some((it) => it.discount)}
+              style={{ ...S.smallBtn, ...(q.items.some((it) => it.discount) ? S.disabled : null) }}
+              title="Thêm dòng giảm giá ở cuối bảng, số tiền giảm được trừ vào tổng"
+            >
+              + Thêm giảm giá
+            </button>
           </div>
 
           <table style={S.table}>
@@ -459,6 +478,43 @@ export const QuotationPanel: React.FC<{
               {q.items.map((it, i) => {
                 const unit =
                   it.quantity && it.amount !== null ? Math.round(it.amount / it.quantity) : null
+                const canRemove = it.discount || q.items.filter((x) => !x.discount).length > 1
+                if (it.discount) {
+                  // Dòng giảm giá: chỉ có tên, số tiền giảm và ghi chú.
+                  return (
+                    <tr key={it.id}>
+                      <td style={{ ...S.td, textAlign: 'center', color: '#64748b' }}>{i + 1}</td>
+                      <td style={S.td} colSpan={5}>
+                        <input
+                          style={S.cellInput}
+                          value={it.name}
+                          onChange={(e) => patchItem(it.id, { name: e.target.value })}
+                        />
+                      </td>
+                      <td style={S.td}>
+                        <input
+                          style={{ ...S.cellInput, width: '112px', textAlign: 'right', color: '#f87171' }}
+                          inputMode="numeric"
+                          placeholder="Số tiền giảm"
+                          value={it.amount === null ? '' : money(-it.amount)}
+                          onChange={(e) => {
+                            const v = parseDigits(e.target.value)
+                            patchItem(it.id, { amount: v === null ? null : -v })
+                          }}
+                        />
+                      </td>
+                      <td style={S.td} />
+                      <td style={S.td}>
+                        <NoteCell value={it.note} onChange={(note) => patchItem(it.id, { note })} />
+                      </td>
+                      <td style={S.td}>
+                        <button onClick={() => removeItem(it.id)} style={S.removeBtn} title="Xoá dòng">
+                          ✕
+                        </button>
+                      </td>
+                    </tr>
+                  )
+                }
                 return (
                   <tr key={it.id}>
                     <td style={{ ...S.td, textAlign: 'center', color: '#64748b' }}>{i + 1}</td>
@@ -545,8 +601,8 @@ export const QuotationPanel: React.FC<{
                     <td style={S.td}>
                       <button
                         onClick={() => removeItem(it.id)}
-                        disabled={q.items.length === 1}
-                        style={{ ...S.removeBtn, ...(q.items.length === 1 ? S.disabled : null) }}
+                        disabled={!canRemove}
+                        style={{ ...S.removeBtn, ...(!canRemove ? S.disabled : null) }}
                         title="Xoá dòng"
                       >
                         ✕

@@ -40,6 +40,11 @@ export interface QuotationItem {
   priceBasis?: PriceBasis
   /** Bo nguồn của dòng này — để dòng bám theo thẻ tính giá khi bên đó đổi. */
   sourceBoardId?: string
+  /**
+   * Dòng giảm giá. `amount` lưu SỐ ÂM nên tổng cộng tự trừ đi; luôn nằm cuối bảng
+   * (xem `insertItems`).
+   */
+  discount?: boolean
 }
 
 export interface QuotationCustomer {
@@ -91,6 +96,23 @@ export const emptyItem = (): QuotationItem => ({
   amount: null,
   note: '',
 })
+
+/** Dòng giảm giá — người lập chỉ nhập số tiền giảm (dương), lưu thành số âm. */
+export const discountItem = (): QuotationItem => ({
+  ...emptyItem(),
+  name: 'Giảm giá',
+  discount: true,
+})
+
+/**
+ * Thêm dòng mới vào bảng nhưng chừa dòng giảm giá ở cuối: giảm giá là bước sau cùng
+ * trước dòng tổng, thêm bo hay stencil sau đó không được đẩy nó lên giữa bảng.
+ */
+export const insertItems = (items: QuotationItem[], added: QuotationItem[]): QuotationItem[] => [
+  ...items.filter((it) => !it.discount),
+  ...added,
+  ...items.filter((it) => it.discount),
+]
 
 /** dd/MM/yyyy — đúng dạng ghi trong form mẫu. */
 export const formatDate = (d: Date): string => {

@@ -10,12 +10,12 @@ import type { Quotation } from './QuotationModel'
 import { grandTotal, subtotal, vatAmount } from './QuotationModel'
 import { brandingFor } from './branding'
 
-/** Bề rộng cột trong exportExcel.ts, quy ra phần trăm. */
-const COL_WIDTHS = [7.9, 80, 10.7, 18.4, 14, 7.4, 16.7, 16.7, 88.7]
+/** Bề rộng tương đối của 9 cột (quy ra phần trăm); đủ rộng để tiêu đề bảng không xuống hàng. */
+const COL_WIDTHS = [7.9, 55, 17, 27, 20, 7.4, 26, 19, 60]
 const TOTAL_W = COL_WIDTHS.reduce((a, b) => a + b, 0)
 
 /** Số dòng trống có sẵn viền dưới bảng — phải khớp SPARE_ROWS của exportExcel.ts. */
-const SPARE_ROWS = 2
+const SPARE_ROWS = 1
 
 const HEADER_BG = '#3B618E'
 const TITLE_BG = '#95B3D7'
@@ -33,12 +33,14 @@ const cell: React.CSSProperties = {
 }
 /** Dòng thông tin khách + lời mở đầu: không kẻ ô, chỉ có khung ngoài như file mẫu. */
 const info: React.CSSProperties = { padding: '3px 5px', textAlign: 'left', verticalAlign: 'middle', fontSize: '12px' }
+const tag: React.CSSProperties = { display: 'inline-block', padding: '2px 8px', whiteSpace: 'nowrap' }
 const plain: React.CSSProperties = { padding: '2px 5px', fontSize: '11px', verticalAlign: 'middle' }
 
 export const QuotationPreview: React.FC<{ q: Quotation }> = ({ q }) => {
   const totals = { sub: subtotal(q), vat: vatAmount(q), total: grandTotal(q) }
   const branding = brandingFor(q.hasVat)
-  const spare = Array.from({ length: SPARE_ROWS })
+  // Có dòng giảm giá thì đã có một dòng "thừa" sẵn ở cuối bảng, không chừa thêm dòng trống nữa.
+  const spare = Array.from({ length: q.items.some((it) => it.discount) ? 0 : SPARE_ROWS })
   const noteRows = Math.max(q.notes.length, q.defaultSpecs.length)
 
   return (
@@ -59,8 +61,10 @@ export const QuotationPreview: React.FC<{ q: Quotation }> = ({ q }) => {
                 style={{ maxHeight: '84px', maxWidth: '96%', objectFit: 'contain' }}
               />
             </td>
-            <td style={{ ...cell, fontSize: '13px', fontWeight: 700, whiteSpace: 'pre-line' }} colSpan={6}>
-              {[q.company.name, q.company.address, q.company.contact].join('\n')}
+            <td style={{ ...cell, fontSize: '14px', fontWeight: 700, lineHeight: 1.35 }} colSpan={6}>
+              <div style={{ fontSize: '20px', color: '#C00000', marginBottom: '2px' }}>{q.company.name}</div>
+              <div>{q.company.address}</div>
+              <div>{q.company.contact}</div>
             </td>
           </tr>
 
@@ -131,7 +135,7 @@ export const QuotationPreview: React.FC<{ q: Quotation }> = ({ q }) => {
             ].map((h) => (
               <td
                 key={h}
-                style={{ ...cell, backgroundColor: HEADER_BG, color: '#fff', fontWeight: 700, fontSize: '11px' }}
+                style={{ ...cell, backgroundColor: HEADER_BG, color: '#fff', fontWeight: 700, fontSize: '11px', whiteSpace: 'nowrap', height: '32px' }}
               >
                 {h}
               </td>
@@ -139,7 +143,18 @@ export const QuotationPreview: React.FC<{ q: Quotation }> = ({ q }) => {
           </tr>
 
           {/* Dòng hàng */}
-          {q.items.map((it, i) => (
+          {q.items.map((it, i) =>
+            it.discount ? (
+              // Dòng giảm giá: gộp STT → SL (6 cột) thành một ô, cùng bề rộng với ô "TỔNG CỘNG" bên dưới.
+              <tr key={it.id}>
+                <td style={{ ...cell, fontWeight: 700 }} colSpan={6}>
+                  {it.name}
+                </td>
+                <td style={{ ...cell, color: '#FF0000' }}>{money(it.amount)}</td>
+                <td style={cell} />
+                <td style={{ ...cell, whiteSpace: 'pre-line' }}>{it.note}</td>
+              </tr>
+            ) : (
             <tr key={it.id}>
               <td style={cell}>{i + 1}</td>
               <td style={{ ...cell, fontSize: '13px' }}>{it.name}</td>
@@ -153,7 +168,8 @@ export const QuotationPreview: React.FC<{ q: Quotation }> = ({ q }) => {
               </td>
               <td style={{ ...cell, whiteSpace: 'pre-line' }}>{it.note}</td>
             </tr>
-          ))}
+            ),
+          )}
           {/* Dòng trống có sẵn viền, để gõ thêm trong Excel mà tổng vẫn đúng */}
           {spare.map((_, i) => (
             <tr key={`spare-${i}`}>
@@ -187,19 +203,22 @@ export const QuotationPreview: React.FC<{ q: Quotation }> = ({ q }) => {
           {/* Ghi chú + thông số mặc định */}
           <tr>
             <td style={plain} />
-            <td style={{ ...plain, backgroundColor: NOTE_BG, fontWeight: 700, fontSize: '14px' }}>
-              Ghi chú:
+            {/* Nền màu chỉ ôm vừa chữ, không kéo dài hết cột. */}
+            <td style={plain} colSpan={5}>
+              <span style={{ ...tag, backgroundColor: NOTE_BG, fontWeight: 700, fontSize: '14px' }}>Ghi chú:</span>
             </td>
-            <td style={plain} colSpan={4} />
-            <td style={{ ...plain, backgroundColor: SPEC_BG, fontSize: '12px' }} colSpan={3}>
-              THÔNG SỐ MẶC ĐỊNH: (nếu không ghi chú)
+            <td style={plain} colSpan={3}>
+              <span style={{ ...tag, backgroundColor: SPEC_BG, fontSize: '12px' }}>
+                THÔNG SỐ MẶC ĐỊNH: (nếu không ghi chú)
+              </span>
             </td>
           </tr>
           {Array.from({ length: noteRows }).map((_, i) => (
             <tr key={`note-${i}`}>
               <td style={plain} />
-              <td style={plain}>{q.notes[i] ?? ''}</td>
-              <td style={plain} colSpan={4} />
+              <td style={plain} colSpan={5}>
+                {q.notes[i] ?? ''}
+              </td>
               <td style={plain} colSpan={3}>
                 {q.defaultSpecs[i] ?? ''}
               </td>
@@ -222,11 +241,10 @@ export const QuotationPreview: React.FC<{ q: Quotation }> = ({ q }) => {
             <td style={plain} />
             <td style={{ ...plain, fontSize: '14px' }}>{q.bank.holder}</td>
             <td style={plain} colSpan={4} />
-            <td style={{ ...plain, fontSize: '14px', fontWeight: 700, textAlign: 'center' }}>
+            <td style={{ ...plain, fontSize: '14px', fontWeight: 700, textAlign: 'center', whiteSpace: 'nowrap' }} colSpan={2}>
               Khách hàng
             </td>
-            <td style={plain} />
-            <td style={{ ...plain, fontSize: '14px', fontWeight: 700, textAlign: 'center' }}>
+            <td style={{ ...plain, fontSize: '14px', fontWeight: 700, textAlign: 'center', whiteSpace: 'nowrap' }}>
               Người lập
             </td>
           </tr>
@@ -244,9 +262,10 @@ export const QuotationPreview: React.FC<{ q: Quotation }> = ({ q }) => {
                       display: 'flex',
                       flexDirection: 'column',
                       gap: '4px',
-                      // Không có dòng này thì flex kéo giãn ảnh ra bằng bề ngang cột,
-                      // mà chiều cao lại cố định -> mã QR bị bẹp.
-                      alignItems: 'flex-start',
+                      // Không đặt alignItems thì flex kéo giãn ảnh ra bằng bề ngang cột,
+                      // mà chiều cao lại cố định -> mã QR bị bẹp. Căn giữa để mã QR
+                      // nằm đúng dưới số tài khoản của nó.
+                      alignItems: 'center',
                     }}
                   >
                     <span style={{ fontSize: '14px', whiteSpace: 'nowrap' }}>{line}</span>
@@ -261,22 +280,29 @@ export const QuotationPreview: React.FC<{ q: Quotation }> = ({ q }) => {
                 ))}
               </div>
             </td>
-            <td style={plain} colSpan={7} />
-          </tr>
-
-          {/* Chừa chỗ ký. Bên dưới đã có khối mã QR khá cao rồi thì chừa ít thôi,
-              không thì hai chữ ký bị đẩy xuống tận đáy trang. */}
-          <tr style={{ height: branding.qr.length > 0 ? '14px' : '54px' }}>
-            <td colSpan={9} />
-          </tr>
-          <tr>
-            <td style={plain} colSpan={6} />
-            <td style={{ ...plain, fontSize: '13px', textAlign: 'center' }}>(Kí và ghi rõ họ tên)</td>
-            <td style={plain} />
-            <td style={{ ...plain, fontSize: '13px', fontWeight: 700, color: '#FF0000', textAlign: 'center' }}>
+            <td style={plain} colSpan={4} />
+            {/* Chữ ký và tên người lập nằm cùng hàng với mã QR, sát đáy mã. */}
+            <td
+              style={{ ...plain, fontSize: '13px', textAlign: 'center', verticalAlign: 'bottom', whiteSpace: 'nowrap' }}
+              colSpan={2}
+            >
+              (Kí và ghi rõ họ tên)
+            </td>
+            <td
+              style={{
+                ...plain,
+                fontSize: '13px',
+                fontWeight: 700,
+                color: '#FF0000',
+                textAlign: 'center',
+                verticalAlign: 'bottom',
+                whiteSpace: 'nowrap',
+              }}
+            >
               {q.preparedBy}
             </td>
           </tr>
+
         </tbody>
       </table>
     </div>
