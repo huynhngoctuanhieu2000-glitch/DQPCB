@@ -519,6 +519,12 @@ export const SettingsPanel: React.FC<{ onClose: () => void }> = ({ onClose }) =>
         </div>
 
         <div style={S.footer}>
+          <span style={S.version} title={`Build ${new Date(__BUILD_TIME__).toLocaleString('vi-VN')}`}>
+            v{__APP_VERSION__}
+            {__APP_COMMIT__ && ` · ${__APP_COMMIT__}`}
+            {' · '}
+            {new Date(__BUILD_TIME__).toLocaleDateString('vi-VN')}
+          </span>
           {saved && <span style={S.savedTag}>Đã lưu</span>}
           <button
             style={S.btnGhost}
@@ -743,6 +749,7 @@ const S: Record<string, React.CSSProperties> = {
     fontSize: 14,
   },
   body: { padding: 14, overflowY: 'auto', flex: 1 },
+  version: { marginRight: 'auto', fontSize: 11, color: '#64748b', fontVariantNumeric: 'tabular-nums' },
   footer: {
     display: 'flex',
     alignItems: 'center',

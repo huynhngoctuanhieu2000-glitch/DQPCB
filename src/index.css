@@ -38,6 +38,5 @@ html, body, #root {
 }
 
 html { touch-action: manipulation; -webkit-text-size-adjust: 100%; }
-@media (max-width: 768px) {
-  input, select, textarea { font-size: 16px !important; }
-}
+/* Ô nhập/chọn không tự kế thừa font của trang — select trên điện thoại hiện font hệ thống lệch hẳn. */
+button, input, select, textarea { font-family: inherit; }
