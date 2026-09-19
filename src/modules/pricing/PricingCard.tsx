@@ -680,7 +680,8 @@ const S: Record<string, React.CSSProperties> = {
     padding: '2px 8px',
     borderRadius: 999,
     border: '1px solid transparent',
-    background: 'none',
+    // backgroundColor, không phải shorthand: badgeFormula đè bằng backgroundColor.
+    backgroundColor: 'transparent',
     color: '#64748b',
     cursor: 'pointer',
   },

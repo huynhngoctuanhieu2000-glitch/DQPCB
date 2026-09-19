@@ -9,19 +9,7 @@ import { QuotationPanel } from '../modules/quotation/QuotationPanel'
 import type { QuotationSeed } from '../modules/quotation/QuotationPanel'
 import { PricingCard } from '../modules/pricing/PricingCard'
 import { SettingsPanel } from '../modules/settings/SettingsPanel'
-
-/** Màn hẹp (điện thoại): hai cột bên thành ngăn kéo, thanh công cụ gọn lại. */
-const MOBILE_QUERY = '(max-width: 768px)'
-function useIsMobile(): boolean {
-  const [m, setM] = useState(() => window.matchMedia(MOBILE_QUERY).matches)
-  useEffect(() => {
-    const mq = window.matchMedia(MOBILE_QUERY)
-    const on = () => setM(mq.matches)
-    mq.addEventListener('change', on)
-    return () => mq.removeEventListener('change', on)
-  }, [])
-  return m
-}
+import { useIsMobile } from './useIsMobile'
 
 export const Layout: React.FC = () => {
   const isMobile = useIsMobile()
@@ -445,25 +433,29 @@ export const Layout: React.FC = () => {
             CAM ⇄ 2 Mặt (bản vẽ phẳng) và 2D ⇄ 3D (ảnh thật). Bấm nhóm đang sáng thì
             gạt sang lựa chọn kia; bấm nhóm đang tắt thì chuyển sang nhóm đó ở lựa chọn đầu. */}
         {isMobile ? (
-          <select
-            value={boardState.activeView}
-            onChange={(e) => BoardDataModel.setActiveView(e.target.value as BoardState['activeView'])}
-            style={{
-              flexShrink: 0,
-              backgroundColor: '#0f172a',
-              color: '#e2e8f0',
-              border: '1px solid #3b82f6',
-              borderRadius: '14px',
-              padding: '4px 8px',
-              fontSize: '13px',
-              fontWeight: 600,
-            }}
-          >
-            <option value="CAM">CAM</option>
-            <option value="Both">2 Mặt</option>
-            <option value="Real">2D</option>
-            <option value="3D">3D</option>
-          </select>
+          // Ô chọn vẽ giống hệt nút bên cạnh: tắt kiểu mặc định của iOS (to, đậm, mũi tên
+          // riêng) rồi tự vẽ mũi tên nhỏ — không thì nó lạc tông cả thanh.
+          <span style={{ position: 'relative', flexShrink: 0 }}>
+            <select
+              value={boardState.activeView}
+              onChange={(e) => BoardDataModel.setActiveView(e.target.value as BoardState['activeView'])}
+              style={{
+                ...drawerBtn(true),
+                appearance: 'none',
+                WebkitAppearance: 'none',
+                paddingRight: '24px',
+                lineHeight: 1.2,
+              }}
+            >
+              <option value="CAM">CAM</option>
+              <option value="Both">2 Mặt</option>
+              <option value="Real">2D</option>
+              <option value="3D">3D</option>
+            </select>
+            <span style={{ position: 'absolute', right: 9, top: '50%', transform: 'translateY(-55%)', pointerEvents: 'none', fontSize: 10, color: '#ffffff' }}>
+              ▼
+            </span>
+          </span>
         ) : (() => {
           const v = boardState.activeView
           const groups = [

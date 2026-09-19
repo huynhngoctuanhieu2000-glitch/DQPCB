@@ -32,6 +32,7 @@ import { exportQuotationToPdf, revealInFolder } from './exportPdf'
 import { computePrice, pickStencil, type PriceBasis, type StencilTier } from '../pricing/PricingModel'
 import { PricingStore } from '../pricing/PricingStore'
 import { QuotationPreview } from './QuotationPreview'
+import { useIsMobile } from '../../ui/useIsMobile'
 
 const money = (n: number) => n.toLocaleString('vi-VN')
 
@@ -129,6 +130,7 @@ export const QuotationPanel: React.FC<{
     return { ...base, items: [itemWithPrice(board), ...base.items.slice(1)] }
   })
   const [tab, setTab] = useState<'form' | 'preview'>('form')
+  const isMobile = useIsMobile()
   const [status, setStatus] = useState<{
     kind: 'ok' | 'err'
     text: string
@@ -268,14 +270,14 @@ export const QuotationPanel: React.FC<{
 
   return (
     <div style={S.backdrop} onClick={onClose}>
-      <div style={S.modal} onClick={(e) => e.stopPropagation()}>
+      <div style={{ ...S.modal, ...(isMobile ? S.modalMobile : null) }} onClick={(e) => e.stopPropagation()}>
         {/* Thanh tiêu đề */}
         <div style={S.header}>
           <span style={{ fontWeight: 600, fontSize: '14px' }}>Xuất báo giá</span>
           <div style={{ marginLeft: 'auto', display: 'flex', gap: '4px' }}>
             {[
-              { label: 'Khách lẻ (không VAT)', vat: false },
-              { label: 'Công ty (VAT)', vat: true },
+              { label: isMobile ? 'Khách lẻ' : 'Khách lẻ (không VAT)', vat: false },
+              { label: isMobile ? 'Công ty' : 'Công ty (VAT)', vat: true },
             ].map((opt) => (
               <button
                 key={String(opt.vat)}
@@ -304,12 +306,16 @@ export const QuotationPanel: React.FC<{
               {t.label}
             </button>
           ))}
-          <span style={S.tabHint}>
-            Xem trước dựng đúng bố cục sẽ in ra PDF.
-          </span>
+          {!isMobile && (
+            <span style={S.tabHint}>
+              Xem trước dựng đúng bố cục sẽ in ra PDF.
+            </span>
+          )}
         </div>
 
-        <div style={S.body}>
+        {/* Tab xem trước: ZoomBox tự cuộn và zoom, nên thân hộp không cuộn và bỏ lề
+            trên điện thoại để trang xem trước dùng hết bề ngang. */}
+        <div style={tab === 'preview' ? { ...S.bodyPreview, padding: isMobile ? 0 : '12px' } : S.body}>
           {tab === 'preview' ? (
             <QuotationPreview q={q} />
           ) : (
@@ -469,6 +475,8 @@ export const QuotationPanel: React.FC<{
             </button>
           </div>
 
+          {/* Bảng dòng hàng rộng hơn màn điện thoại: cuộn ngang trong khung riêng. */}
+          <div style={{ overflowX: 'auto' }}>
           <table style={S.table}>
             <thead>
               <tr>
@@ -620,6 +628,7 @@ export const QuotationPanel: React.FC<{
               })}
             </tbody>
           </table>
+          </div>
           <datalist id="mask-color-labels">
             {MASK_COLORS.map((c) => (
               <option key={c.hex} value={c.label} />
@@ -857,15 +866,20 @@ const S: Record<string, React.CSSProperties> = {
   header: {
     display: 'flex',
     alignItems: 'center',
-    gap: '12px',
+    flexWrap: 'wrap',
+    gap: '8px 12px',
     padding: '10px 12px',
     backgroundColor: '#14161b',
     borderBottom: '1px solid #282b34',
   },
   body: { padding: '12px', overflowY: 'auto', flex: 1 },
+  bodyPreview: { flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' },
+  /** Điện thoại: hộp thoại chiếm trọn màn hình, không viền không bo góc. */
+  modalMobile: { width: '100vw', height: '100dvh', maxHeight: 'none', borderRadius: 0, border: 'none' },
   footer: {
     display: 'flex',
     alignItems: 'center',
+    flexWrap: 'wrap',
     gap: '8px',
     padding: '10px 12px',
     backgroundColor: '#14161b',

@@ -9,10 +9,14 @@ import React from 'react'
 import type { Quotation } from './QuotationModel'
 import { grandTotal, subtotal, vatAmount } from './QuotationModel'
 import { brandingFor } from './branding'
+import { ZoomBox } from '../../ui/ZoomBox'
 
 /** Bề rộng tương đối của 9 cột (quy ra phần trăm); đủ rộng để tiêu đề bảng không xuống hàng. */
 const COL_WIDTHS = [7.9, 55, 17, 27, 20, 7.4, 26, 19, 60]
 const TOTAL_W = COL_WIDTHS.reduce((a, b) => a + b, 0)
+
+/** Bề rộng dựng bản xem trước (px): bảng 900 như khổ A4 ngang + lề trắng hai bên. */
+const PREVIEW_W = 900 + 2 * 14
 
 /** Số dòng trống có sẵn viền dưới bảng — phải khớp SPARE_ROWS của exportExcel.ts. */
 const SPARE_ROWS = 1
@@ -43,7 +47,10 @@ export const QuotationPreview: React.FC<{ q: Quotation }> = ({ q }) => {
   const spare = Array.from({ length: q.items.some((it) => it.discount) ? 0 : SPARE_ROWS })
   const noteRows = Math.max(q.notes.length, q.defaultSpecs.length)
 
+  // Xem trước luôn dựng đúng 928 px như bản in; ZoomBox co cho vừa khung (điện thoại
+  // cũng thấy nguyên trang) rồi người xem phóng to chỗ cần đọc.
   return (
+    <ZoomBox contentWidth={PREVIEW_W}>
     <div style={wrap}>
       <table style={table}>
         <colgroup>
@@ -306,6 +313,7 @@ export const QuotationPreview: React.FC<{ q: Quotation }> = ({ q }) => {
         </tbody>
       </table>
     </div>
+    </ZoomBox>
   )
 }
 
@@ -329,13 +337,13 @@ const wrap: React.CSSProperties = {
   backgroundColor: '#ffffff',
   padding: '14px',
   borderRadius: '4px',
-  overflowX: 'auto',
+  width: PREVIEW_W,
+  boxSizing: 'border-box',
 }
 
 const table: React.CSSProperties = {
   // Co vừa khung như lúc in: file mẫu cũng ép cả 9 cột vào một trang A4 ngang.
   width: '100%',
-  minWidth: '900px',
   borderCollapse: 'collapse',
   border: '1px solid #000',
   tableLayout: 'fixed',
