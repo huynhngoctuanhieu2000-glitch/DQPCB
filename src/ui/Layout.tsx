@@ -55,7 +55,9 @@ export const Layout: React.FC = () => {
       // khách phóng to ra xem chân linh kiện, 1000 px bị vỡ.
       const { widthMM, heightMM } = boardState.bounds
       const pxPerMm = 2000 / (Math.max(widthMM, heightMM) + 12)
-      const scale = Math.max(1, pxPerMm / 5) // cỡ nhãn/lề theo độ phóng
+      // Ảnh bo nào cũng ~2000 px mỗi mặt nên nhãn/lề cũng cố định một cỡ. Tính theo
+      // pxPerMm thì bo càng to nhãn càng bé (bo 350 mm chỉ còn một nửa bo 184 mm).
+      const scale = 2
       const top = captureTopRef.current?.(pxPerMm)
       const bottom = captureBotRef.current?.(pxPerMm)
       if (!top || !bottom) throw new Error('Khung chưa dựng xong, thử lại sau một chút')
