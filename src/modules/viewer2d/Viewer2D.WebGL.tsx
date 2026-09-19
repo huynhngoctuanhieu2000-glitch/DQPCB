@@ -1122,7 +1122,7 @@ export const Viewer2DWebGL: React.FC<Viewer2DWebGLProps> = ({
         ⤢ Fit
       </button>
       {hideBadge ? (
-        <div style={faceTag}>{fromBelow ? 'BOT — nhìn từ dưới' : 'TOP — nhìn từ trên'}</div>
+        <div style={faceTag} title={fromBelow ? 'Mặt Bot, nhìn từ dưới lên (đã lật gương)' : 'Mặt Top, nhìn từ trên xuống'}>{fromBelow ? 'BOT' : 'TOP'}</div>
       ) : (
         <div style={badge}>
           {/* Chỉ ba điều người lập cần soát: viền lấy từ file nào, khoan từ file nào,

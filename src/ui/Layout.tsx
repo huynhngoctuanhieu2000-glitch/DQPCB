@@ -940,9 +940,11 @@ export const Layout: React.FC = () => {
                     top: 10,
                     right: 10,
                     zIndex: 6,
-                    padding: '5px 12px',
-                    fontSize: 12,
-                    fontWeight: 600,
+                    width: 34,
+                    height: 30,
+                    padding: 0,
+                    fontSize: 16,
+                    lineHeight: 1,
                     borderRadius: 6,
                     cursor: capturing ? 'wait' : 'pointer',
                     color: '#e2e8f0',
@@ -950,7 +952,7 @@ export const Layout: React.FC = () => {
                     border: '1px solid #334155',
                   }}
                 >
-                  {capturing ? 'Đang chụp…' : copied ? '✓ Đã copy' : '📋 Copy ảnh 2 mặt'}
+                  {capturing ? '⏳' : copied ? '✓' : '📷'}
                 </button>
 
                 {/* Nhãn kích thước nổi giữa hai khung, sát bo — thanh chạy hết chiều
