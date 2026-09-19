@@ -79,7 +79,9 @@ export const QuotationSheet: React.FC<{ q: Quotation }> = ({ q }) => {
               />
             </td>
             <td style={{ ...cell, fontSize: '14px', fontWeight: 700, lineHeight: 1.35 }} colSpan={6}>
-              <div style={{ fontSize: '20px', color: '#C00000', marginBottom: '2px' }}>{q.company.name}</div>
+              {/* Không xuống dòng: trên iPhone font Times rộng hơn Times New Roman một chút,
+                  20px là chữ "PCB" rớt xuống hàng dưới trong file PDF. */}
+              <div style={{ fontSize: '18px', color: '#C00000', marginBottom: '2px', whiteSpace: 'nowrap' }}>{q.company.name}</div>
               <div>{q.company.address}</div>
               <div>{q.company.contact}</div>
             </td>
