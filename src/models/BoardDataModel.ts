@@ -29,6 +29,8 @@ export interface Board {
    * Dùng để đoán tên khách và để mặc định chỗ lưu báo giá về đúng thư mục đó.
    */
   sourceDir: string
+  /** Thời gian đọc bộ file (giải nén + nhận diện + plot), ms. 0 nếu không đo. */
+  parseMs: number
 }
 
 /**
@@ -62,6 +64,7 @@ const emptyBoard = (): Board => ({
   ignoredFiles: [],
   failedFiles: [],
   sourceDir: '',
+  parseMs: 0,
 })
 
 let boards: Board[] = []
@@ -101,7 +104,7 @@ const updateActive = (fn: (board: Board) => Board) => {
   commit()
 }
 
-const toBoard = (data: BoardParsedData, sourceDir = ''): Board => ({
+const toBoard = (data: BoardParsedData, sourceDir = '', parseMs = 0): Board => ({
   id: nextBoardId(),
   projectName: data.projectName,
   layers: data.layers,
@@ -115,6 +118,7 @@ const toBoard = (data: BoardParsedData, sourceDir = ''): Board => ({
   ignoredFiles: data.ignoredFiles ?? [],
   failedFiles: data.failedFiles ?? [],
   sourceDir,
+  parseMs,
 })
 
 export const BoardDataModel = {
@@ -127,9 +131,9 @@ export const BoardDataModel = {
    * Bo mới mở LUÔN hiện ở chế độ CAM: đó là chỗ soát từng lớp trước khi báo giá. Đang
    * xem bo khác ở 2D/3D/2 Mặt mà mở thêm file thì cũng quay về CAM.
    */
-  addBoards: (list: BoardParsedData[], sourceDirs: string[] = []) => {
+  addBoards: (list: BoardParsedData[], sourceDirs: string[] = [], parseMs = 0) => {
     if (list.length === 0) return
-    const added = list.map((data, i) => toBoard(data, sourceDirs[i] ?? ''))
+    const added = list.map((data, i) => toBoard(data, sourceDirs[i] ?? '', parseMs))
     boards = [...boards, ...added]
     activeBoardId = added[added.length - 1].id
     activeView = 'CAM'

@@ -236,6 +236,12 @@ export interface Viewer2DWebGLProps {
 /** Sự kiện trên window, `detail` = id bo vừa dựng xong và đã hiện lên khung. */
 export const BOARD_RENDERED_EVENT = 'dqpcb:board-rendered'
 
+/**
+ * Lần dựng ĐẦU TIÊN của từng bo (ms), theo id bo. Các lần sau lấy từ cache chỉ vài ms —
+ * ghi số đó ra badge thì "Load: 2 ms" trong khi người lập vừa chờ mấy giây.
+ */
+const firstBuildMs = new Map<string, number>()
+
 /** Chụp bo fit sát khung, `pxPerMm` quyết định cỡ ảnh theo kích thước bo. */
 export type CaptureFn = (pxPerMm?: number) => HTMLCanvasElement | null
 
@@ -1013,6 +1019,7 @@ export const Viewer2DWebGL: React.FC<Viewer2DWebGLProps> = ({
     }
 
     const totalMs = Math.round(performance.now() - t0)
+    if (board.activeBoardId && !firstBuildMs.has(board.activeBoardId)) firstBuildMs.set(board.activeBoardId, totalMs)
     setTotalMs(totalMs)
     // Khung chia đôi ẩn badge, nên ghi ra console để còn đo được tốc độ dựng.
     const mode = camMode ? 'CAM' : threeDMode ? '3D' : 'Real'
@@ -1021,8 +1028,11 @@ export const Viewer2DWebGL: React.FC<Viewer2DWebGLProps> = ({
     // Báo cho khung ngoài biết bo nào vừa hiện lên màn hình — màn chờ mở file chỉ tắt
     // khi đúng bo mới đã dựng xong, không tắt lúc còn đang hiện bo cũ.
     window.dispatchEvent(new CustomEvent(BOARD_RENDERED_EVENT, { detail: board.activeBoardId }))
+    // Badge chỉ ghi file khoan đã dùng và số lỗ; số lớp/cache đã có trong console.info ở trên.
     setStatus(
-      `Đã dựng ${ok} lớp${cacheHits ? ` (${cacheHits} từ cache)` : ''} · khoan ${drillHoles} lỗ (${drillPlan.map((d) => d.name.split(/[\\/]/).pop()).join(', ') || 'không có'})`
+      drillPlan.length
+        ? `${drillPlan.map((d) => d.name.split(/[\\/]/).pop()).join(', ')} · ${drillHoles} lỗ`
+        : 'không có'
     )
 
     return () => {
@@ -1082,6 +1092,11 @@ export const Viewer2DWebGL: React.FC<Viewer2DWebGLProps> = ({
     )
   }
 
+  const outlineLayer = board.layers.find((l) => l.type === 'outline')
+  const outlineFile = outlineLayer ? outlineLayer.filename.split(/[\\/]/).pop() : 'không có'
+  // Thời gian mở bo thật: đọc file + lần dựng đầu (không phải lần dựng lại từ cache).
+  const loadMs = board.parseMs + ((board.activeBoardId && firstBuildMs.get(board.activeBoardId)) || totalMs || 0)
+
   return (
     <div style={{ position: 'relative', width: '100%', height: '100%', backgroundColor: '#0b0d10' }}>
       <div ref={containerRef} style={{ width: '100%', height: '100%' }} />
@@ -1110,9 +1125,11 @@ export const Viewer2DWebGL: React.FC<Viewer2DWebGLProps> = ({
         <div style={faceTag}>{fromBelow ? 'BOT — nhìn từ dưới' : 'TOP — nhìn từ trên'}</div>
       ) : (
         <div style={badge}>
-          <div><b>WebGL (web-gerber)</b> · assemblyPCBToThreeJS</div>
-          <div>{status}</div>
-          {totalMs !== null && <div>Parse + Render: {totalMs} ms</div>}
+          {/* Chỉ ba điều người lập cần soát: viền lấy từ file nào, khoan từ file nào,
+              dựng mất bao lâu. */}
+          <div>Viền: {outlineFile}</div>
+          <div>Khoan: {status}</div>
+          {totalMs !== null && <div>Load: {loadMs} ms</div>}
           {threeDMode && (
             <div style={{ color: '#93c5fd', marginTop: 4 }}>
               Kéo chuột để xoay (kéo lên để lật xem mặt Bot) · lăn để zoom

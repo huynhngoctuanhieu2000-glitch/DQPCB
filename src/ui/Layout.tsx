@@ -141,7 +141,9 @@ export const Layout: React.FC = () => {
     let added = 0
 
     try {
+      const t0 = performance.now()
       const parsedBoards = await GerberParser.parseInputFiles(files)
+      const parseMs = Math.round(performance.now() - t0)
       // Ghép lại thư mục thật của từng bo: parser báo bo đến từ archive nào, còn
       // đường dẫn thì chỉ Electron mới cho biết (từ bản 32 `File.path` đã bị bỏ).
       const dirByFile = new Map<string, string>(knownDirs)
@@ -159,7 +161,7 @@ export const Layout: React.FC = () => {
       const sourceDirs = parsedBoards.map(
         (b) => dirByFile.get(b.sourceFile ?? '') ?? fallbackDir
       )
-      BoardDataModel.addBoards(parsedBoards, sourceDirs)
+      BoardDataModel.addBoards(parsedBoards, sourceDirs, parseMs)
       added = parsedBoards.length
     } catch (err: any) {
       console.error('Failed to parse Gerber files:', err)
