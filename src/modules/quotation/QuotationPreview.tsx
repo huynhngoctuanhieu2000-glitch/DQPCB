@@ -31,6 +31,8 @@ const cell: React.CSSProperties = {
   verticalAlign: 'middle',
   fontSize: '12px',
 }
+/** Dòng thông tin khách + lời mở đầu: không kẻ ô, chỉ có khung ngoài như file mẫu. */
+const info: React.CSSProperties = { padding: '3px 5px', textAlign: 'left', verticalAlign: 'middle', fontSize: '12px' }
 const plain: React.CSSProperties = { padding: '2px 5px', fontSize: '11px', verticalAlign: 'middle' }
 
 export const QuotationPreview: React.FC<{ q: Quotation }> = ({ q }) => {
@@ -71,37 +73,37 @@ export const QuotationPreview: React.FC<{ q: Quotation }> = ({ q }) => {
 
           {/* Thông tin khách */}
           <tr>
-            <td style={{ ...cell, textAlign: 'left', fontSize: '14px', fontWeight: 700 }} colSpan={9}>
+            <td style={{ ...info, fontSize: '14px', fontWeight: 700 }} colSpan={9}>
               {`   Ngày báo giá: ${q.date}`}
             </td>
           </tr>
           <tr>
-            <td style={{ ...cell, textAlign: 'left', fontSize: '14px', fontWeight: 700 }} colSpan={6}>
+            <td style={{ ...info, fontSize: '14px', fontWeight: 700 }} colSpan={6}>
               {`   Kính gửi: ${q.customer.name}`}
             </td>
-            <td style={{ ...cell, textAlign: 'left', fontSize: '14px', fontWeight: 700 }} colSpan={3}>
+            <td style={{ ...info, fontSize: '14px', fontWeight: 700 }} colSpan={3}>
               {q.hasVat ? `MST: ${q.customer.taxCode}` : ''}
             </td>
           </tr>
           {q.hasVat ? (
             <tr>
-              <td style={{ ...cell, textAlign: 'left', fontSize: '14px', fontWeight: 700 }} colSpan={2}>
+              <td style={{ ...info, fontSize: '14px', fontWeight: 700 }} colSpan={2}>
                 {`   Email: ${q.customer.email}`}
               </td>
-              <td style={cell} />
-              <td style={cell} />
-              <td style={cell} />
-              <td style={cell} />
-              <td style={{ ...cell, textAlign: 'left', fontSize: '14px', fontWeight: 700 }} colSpan={3}>
+              <td style={plain} />
+              <td style={plain} />
+              <td style={plain} />
+              <td style={plain} />
+              <td style={{ ...info, fontSize: '14px', fontWeight: 700 }} colSpan={3}>
                 {`Địa chỉ: ${q.customer.address}`}
               </td>
             </tr>
           ) : (
             <tr>
-              <td style={{ ...cell, textAlign: 'left', fontSize: '14px', fontWeight: 700 }} colSpan={3}>
+              <td style={{ ...info, fontSize: '14px', fontWeight: 700 }} colSpan={3}>
                 {`   SĐT: ${q.customer.phone}`}
               </td>
-              <td style={{ ...cell, textAlign: 'left', fontSize: '14px', fontWeight: 700 }} colSpan={6}>
+              <td style={{ ...info, fontSize: '14px', fontWeight: 700 }} colSpan={6}>
                 {`          Địa chỉ: ${q.customer.address}`}
               </td>
             </tr>
@@ -109,7 +111,7 @@ export const QuotationPreview: React.FC<{ q: Quotation }> = ({ q }) => {
 
           {/* Lời mở đầu */}
           <tr style={{ height: '45px' }}>
-            <td style={{ ...cell, textAlign: 'left' }} colSpan={9}>
+            <td style={{ ...info, fontStyle: 'italic' }} colSpan={9}>
               {q.intro}
             </td>
           </tr>
@@ -205,7 +207,7 @@ export const QuotationPreview: React.FC<{ q: Quotation }> = ({ q }) => {
           ))}
 
           <tr style={{ height: '20px' }}>
-            <td colSpan={9} />
+            <td colSpan={9} style={{ borderBottom: '1px solid #000' }} />
           </tr>
 
           {/* Tài khoản + chữ ký */}
@@ -309,6 +311,7 @@ const table: React.CSSProperties = {
   width: '100%',
   minWidth: '900px',
   borderCollapse: 'collapse',
+  border: '1px solid #000',
   tableLayout: 'fixed',
   fontFamily: '"Times New Roman", Times, serif',
   color: '#000000',
