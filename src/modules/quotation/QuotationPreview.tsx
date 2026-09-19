@@ -16,7 +16,7 @@ const COL_WIDTHS = [7.9, 55, 17, 27, 20, 7.4, 26, 19, 60]
 const TOTAL_W = COL_WIDTHS.reduce((a, b) => a + b, 0)
 
 /** Bề rộng dựng bản xem trước (px): bảng 900 như khổ A4 ngang + lề trắng hai bên. */
-const PREVIEW_W = 900 + 2 * 14
+export const PREVIEW_W = 900 + 2 * 14
 
 /** Số dòng trống có sẵn viền dưới bảng — phải khớp SPARE_ROWS của exportExcel.ts. */
 const SPARE_ROWS = 1
@@ -40,17 +40,27 @@ const info: React.CSSProperties = { padding: '3px 5px', textAlign: 'left', verti
 const tag: React.CSSProperties = { display: 'inline-block', padding: '2px 8px', whiteSpace: 'nowrap' }
 const plain: React.CSSProperties = { padding: '2px 5px', fontSize: '11px', verticalAlign: 'middle' }
 
-export const QuotationPreview: React.FC<{ q: Quotation }> = ({ q }) => {
+/** Tab Xem trước trong app: tờ báo giá đặt trong khung co vừa + zoom. */
+export const QuotationPreview: React.FC<{ q: Quotation }> = ({ q }) => (
+  // Xem trước luôn dựng đúng 928 px như bản in; ZoomBox co cho vừa khung (điện thoại
+  // cũng thấy nguyên trang) rồi người xem phóng to chỗ cần đọc.
+  <ZoomBox contentWidth={PREVIEW_W}>
+    <QuotationSheet q={q} />
+  </ZoomBox>
+)
+
+/**
+ * Tờ báo giá thuần (bảng 928 px, nền trắng) — dùng cho cả xem trước, in PDF và
+ * xuất ảnh, nên KHÔNG được có nút bấm hay thứ gì chỉ có ý nghĩa trên màn hình.
+ */
+export const QuotationSheet: React.FC<{ q: Quotation }> = ({ q }) => {
   const totals = { sub: subtotal(q), vat: vatAmount(q), total: grandTotal(q) }
   const branding = brandingFor(q.hasVat)
   // Có dòng giảm giá thì đã có một dòng "thừa" sẵn ở cuối bảng, không chừa thêm dòng trống nữa.
   const spare = Array.from({ length: q.items.some((it) => it.discount) ? 0 : SPARE_ROWS })
   const noteRows = Math.max(q.notes.length, q.defaultSpecs.length)
 
-  // Xem trước luôn dựng đúng 928 px như bản in; ZoomBox co cho vừa khung (điện thoại
-  // cũng thấy nguyên trang) rồi người xem phóng to chỗ cần đọc.
   return (
-    <ZoomBox contentWidth={PREVIEW_W}>
     <div style={wrap}>
       <table style={table}>
         <colgroup>
@@ -313,7 +323,6 @@ export const QuotationPreview: React.FC<{ q: Quotation }> = ({ q }) => {
         </tbody>
       </table>
     </div>
-    </ZoomBox>
   )
 }
 

@@ -29,6 +29,7 @@ import {
 } from './QuotationModel'
 import type { Quotation, QuotationItem } from './QuotationModel'
 import { exportQuotationToPdf, revealInFolder } from './exportPdf'
+import { canShareFiles, shareQuotationImage } from './exportImage'
 import { computePrice, pickStencil, type PriceBasis, type StencilTier } from '../pricing/PricingModel'
 import { PricingStore } from '../pricing/PricingStore'
 import { QuotationPreview } from './QuotationPreview'
@@ -244,6 +245,25 @@ export const QuotationPanel: React.FC<{
     () => ({ sub: subtotal(q), vat: vatAmount(q), total: grandTotal(q) }),
     [q]
   )
+
+  /**
+   * Web (nhất là điện thoại): báo giá thành ảnh PNG rồi mở bảng chia sẻ → Zalo,
+   * Messenger, Lưu ảnh. Máy không có bảng chia sẻ thì tải ảnh về.
+   */
+  const handleShare = async () => {
+    setBusy(true)
+    setStatus(null)
+    try {
+      const how = await shareQuotationImage(q)
+      if (how === 'shared') setStatus({ kind: 'ok', text: 'Đã gửi ảnh báo giá.' })
+      else if (how === 'downloaded') setStatus({ kind: 'ok', text: 'Đã tải ảnh báo giá về máy.' })
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      setStatus({ kind: 'err', text: `Không chia sẻ được: ${message}` })
+    } finally {
+      setBusy(false)
+    }
+  }
 
   const handleExport = async () => {
     setBusy(true)
@@ -730,13 +750,31 @@ export const QuotationPanel: React.FC<{
           <button onClick={onClose} style={S.secondaryBtn}>
             Đóng
           </button>
+          {/* Trên web: gửi ảnh là cách chính (Zalo nhận ảnh), in/PDF là phụ.
+              Trong app Electron: vẫn in ra file PDF cạnh file gerber. */}
+          {!window.ipcRenderer && (
+            <button
+              onClick={handleShare}
+              disabled={busy}
+              style={{ ...S.primaryBtn, ...(busy ? S.disabled : null) }}
+              title={canShareFiles() ? 'Mở bảng chia sẻ: Zalo, Messenger, Lưu ảnh…' : 'Tải ảnh PNG báo giá về máy'}
+            >
+              {busy ? 'Đang tạo ảnh…' : canShareFiles() ? '📤 Chia sẻ ảnh' : '🖼 Tải ảnh'}
+            </button>
+          )}
           <button
             onClick={handleExport}
             disabled={busy}
-            style={{ ...S.primaryBtn, ...(busy ? S.disabled : null) }}
-            title={board.sourceDir ? `Lưu vào ${board.sourceDir}` : 'Chọn chỗ lưu ở hộp thoại'}
+            style={{ ...(window.ipcRenderer ? S.primaryBtn : S.secondaryBtn), ...(busy ? S.disabled : null) }}
+            title={
+              window.ipcRenderer
+                ? board.sourceDir
+                  ? `Lưu vào ${board.sourceDir}`
+                  : 'Chọn chỗ lưu ở hộp thoại'
+                : 'Mở hộp in của trình duyệt, chọn "Lưu thành PDF"'
+            }
           >
-            {busy ? 'Đang xuất…' : '⬇ Xuất PDF'}
+            {busy ? 'Đang xuất…' : window.ipcRenderer ? '⬇ Xuất PDF' : '🖨 In / PDF'}
           </button>
         </div>
       </div>

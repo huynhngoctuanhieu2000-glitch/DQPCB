@@ -13,7 +13,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { createElement } from 'react'
 import type { Quotation } from './QuotationModel'
 import { suggestedFileName } from './QuotationModel'
-import { QuotationPreview } from './QuotationPreview'
+import { QuotationSheet } from './QuotationPreview'
 
 interface IpcBridge {
   invoke(channel: string, ...args: unknown[]): Promise<unknown>
@@ -32,7 +32,7 @@ export interface PdfSaveResult {
 
 /** Bản Xem trước → một trang HTML tự chứa, in ra là ra đúng cái đang nhìn. */
 export const quotationToHtml = (q: Quotation): string => {
-  const body = renderToStaticMarkup(createElement(QuotationPreview, { q }))
+  const body = renderToStaticMarkup(createElement(QuotationSheet, { q }))
   return `<!doctype html>
 <html lang="vi">
 <head>
