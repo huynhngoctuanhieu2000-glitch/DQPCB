@@ -839,7 +839,9 @@ const S: Record<string, React.CSSProperties> = {
   },
   segment: { display: 'flex', backgroundColor: '#0f1115', borderRadius: 4, padding: 1 },
   segBtn: {
-    background: 'none',
+    // backgroundColor (không phải shorthand background): segBtnOn đè bằng backgroundColor,
+    // trộn hai kiểu trên cùng phần tử là React cảnh báo.
+    backgroundColor: 'transparent',
     border: 'none',
     borderRadius: 3,
     color: '#64748b',

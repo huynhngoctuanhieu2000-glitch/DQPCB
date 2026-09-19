@@ -727,7 +727,8 @@ const S: Record<string, React.CSSProperties> = {
     padding: 2,
   },
   tab: {
-    background: 'none',
+    // backgroundColor thay vì background: tabOn đè bằng backgroundColor, trộn hai kiểu là React cảnh báo.
+    backgroundColor: 'transparent',
     border: 'none',
     borderRadius: 12,
     color: '#94a3b8',
