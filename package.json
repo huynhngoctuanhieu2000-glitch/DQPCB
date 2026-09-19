@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@types/three": "^0.185.4",
+    "html2canvas": "^1.4.1",
     "jszip": "^3.10.1",
     "node-unrar-js": "^2.0.2",
     "pdf-lib": "^1.17.1",
