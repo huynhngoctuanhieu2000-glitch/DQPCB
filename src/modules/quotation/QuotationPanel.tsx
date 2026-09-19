@@ -13,6 +13,8 @@ import {
   createQuotation,
   emptyItem,
   discountItem,
+  dateToInput,
+  dateFromInput,
   insertItems,
   itemFromBoard,
   itemFromStencil,
@@ -316,11 +318,16 @@ export const QuotationPanel: React.FC<{
           <div style={S.sectionTitle}>Thông tin khách hàng</div>
           <div style={S.grid}>
             <Field label="Ngày báo giá">
+              {/* Chọn theo lịch; ô trả yyyy-MM-dd, báo giá vẫn lưu dd/MM/yyyy. Xoá trắng
+                  thì giữ ngày cũ chứ không để báo giá mất ngày. */}
               <input
-                style={S.input}
-                value={q.date}
-                onChange={(e) => patch({ date: e.target.value })}
-                placeholder="dd/mm/yyyy"
+                type="date"
+                style={{ ...S.input, colorScheme: 'dark' }}
+                value={dateToInput(q.date)}
+                onChange={(e) => {
+                  const d = dateFromInput(e.target.value)
+                  if (d) patch({ date: d })
+                }}
               />
             </Field>
             <Field label="Kính gửi">

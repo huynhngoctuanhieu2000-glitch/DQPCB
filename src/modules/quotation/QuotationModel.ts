@@ -120,6 +120,18 @@ export const formatDate = (d: Date): string => {
   return `${p(d.getDate())}/${p(d.getMonth() + 1)}/${d.getFullYear()}`
 }
 
+/** dd/MM/yyyy -> yyyy-MM-dd cho ô chọn ngày; không đúng dạng thì trả rỗng. */
+export const dateToInput = (s: string): string => {
+  const m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(s.trim())
+  return m ? `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}` : ''
+}
+
+/** yyyy-MM-dd (từ ô chọn ngày) -> dd/MM/yyyy. */
+export const dateFromInput = (s: string): string => {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s)
+  return m ? `${m[3]}/${m[2]}/${m[1]}` : ''
+}
+
 /**
  * Lấy 4 trong 9 cột từ bo đang mở. Số lượng / thành tiền / ghi chú vẫn nhập tay.
  * Kích thước làm tròn về mm nguyên như trong form mẫu ("56*58mm").
