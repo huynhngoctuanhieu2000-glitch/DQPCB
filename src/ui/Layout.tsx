@@ -5,7 +5,6 @@ import { composeTwoSides, copyPng } from '../modules/viewer2d/captureBoard'
 import { BoardDataModel } from '../models/BoardDataModel'
 import type { BoardState } from '../models/BoardDataModel'
 import { GerberParser } from '../lib/gerber-reader'
-import { MASK_COLORS } from '../models/MaskColors'
 import { QuotationPanel } from '../modules/quotation/QuotationPanel'
 import type { QuotationSeed } from '../modules/quotation/QuotationPanel'
 import { PricingCard } from '../modules/pricing/PricingCard'
@@ -374,7 +373,7 @@ export const Layout: React.FC = () => {
               fontWeight: 500,
             }}
           >
-            CAM 2D
+            CAM
           </button>
           <button
             onClick={() => BoardDataModel.setActiveView('Real')}
@@ -389,7 +388,7 @@ export const Layout: React.FC = () => {
               fontWeight: 500,
             }}
           >
-            Real 2D
+            2D
           </button>
           <button
             onClick={() => BoardDataModel.setActiveView('3D')}
@@ -404,7 +403,7 @@ export const Layout: React.FC = () => {
               fontWeight: 500,
             }}
           >
-            3D View
+            3D
           </button>
           <button
             onClick={() => BoardDataModel.setActiveView('Both')}
@@ -475,33 +474,6 @@ export const Layout: React.FC = () => {
           </div>
         )}
 
-        {/* Màu phủ bo — dùng chung cho Real 2D, 3D và 2 Mặt */}
-        {boardState.isLoaded && (
-          <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <span style={{ fontSize: '11px', color: '#94a3b8' }}>Màu bo</span>
-            {MASK_COLORS.map((c) => (
-              <button
-                key={c.hex}
-                title={c.label}
-                onClick={() => BoardDataModel.setMaskColor(c.hex)}
-                style={{
-                  width: '16px',
-                  height: '16px',
-                  borderRadius: '3px',
-                  // Chấm dùng màu thương hiệu JLC; bo dựng bằng c.hex tối hơn, bảy
-                  // chấm tô bằng nó sẽ tối gần như nhau, khó bấm đúng.
-                  backgroundColor: c.dot,
-                  cursor: 'pointer',
-                  padding: 0,
-                  border:
-                    boardState.maskColor === c.hex
-                      ? '2px solid #60a5fa'
-                      : '1px solid rgba(255,255,255,0.25)',
-                }}
-              />
-            ))}
-          </div>
-        )}
       </div>
 
       {/* 3. MAIN WORKSPACE: 3-COLUMN SPLIT */}

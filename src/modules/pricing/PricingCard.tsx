@@ -10,7 +10,8 @@
  * trong phần xổ ra, chỉ bung khi bo lớn hoặc khi người lập cần.
  */
 import React, { useEffect, useMemo, useState } from 'react'
-import type { BoardState } from '../../models/BoardDataModel'
+import { BoardDataModel, type BoardState } from '../../models/BoardDataModel'
+import { MASK_COLORS } from '../../models/MaskColors'
 import type { QuotationSeed } from '../quotation/QuotationPanel'
 import { PricingStore } from './PricingStore'
 import {
@@ -349,6 +350,29 @@ export const PricingCard: React.FC<{
         </div>
       )}
 
+      {/* Màu phủ bo — dùng chung cho Real 2D, 3D và 2 Mặt. Đặt cạnh loại bo vì cùng là
+          thông số đặt hàng, trước nằm lẻ trên thanh tab. */}
+      {board.isLoaded && (
+        <InfoRow label="Màu bo">
+          <div style={S.swatches}>
+            {MASK_COLORS.map((c) => (
+              <button
+                key={c.hex}
+                title={c.label}
+                onClick={() => BoardDataModel.setMaskColor(c.hex)}
+                style={{
+                  ...S.swatch,
+                  // Chấm dùng màu thương hiệu JLC; bo dựng bằng c.hex tối hơn, bảy
+                  // chấm tô bằng nó sẽ tối gần như nhau, khó bấm đúng.
+                  backgroundColor: c.dot,
+                  border: board.maskColor === c.hex ? '2px solid #60a5fa' : '1px solid rgba(255,255,255,0.25)',
+                }}
+              />
+            ))}
+          </div>
+        </InfoRow>
+      )}
+
       <InfoRow label="File khoan">{board.isLoaded ? `${board.drillCount}` : '--'}</InfoRow>
       <InfoRow label="Tổng lớp đọc được">{board.isLoaded ? `${board.layers.length}` : '--'}</InfoRow>
       {/* Thư mục là nguồn để đoán tên khách và chọn chỗ lưu báo giá. Chỉ có khi chạy
@@ -605,6 +629,8 @@ const inputBase: React.CSSProperties = {
 }
 
 const S: Record<string, React.CSSProperties> = {
+  swatches: { display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', justifyContent: 'flex-end' },
+  swatch: { width: '16px', height: '16px', borderRadius: '3px', cursor: 'pointer', padding: 0 },
   infoRow: {
     display: 'flex',
     alignItems: 'center',
