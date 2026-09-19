@@ -10,7 +10,22 @@ import type { QuotationSeed } from '../modules/quotation/QuotationPanel'
 import { PricingCard } from '../modules/pricing/PricingCard'
 import { SettingsPanel } from '../modules/settings/SettingsPanel'
 
+/** Màn hẹp (điện thoại): hai cột bên thành ngăn kéo, thanh công cụ gọn lại. */
+const MOBILE_QUERY = '(max-width: 768px)'
+function useIsMobile(): boolean {
+  const [m, setM] = useState(() => window.matchMedia(MOBILE_QUERY).matches)
+  useEffect(() => {
+    const mq = window.matchMedia(MOBILE_QUERY)
+    const on = () => setM(mq.matches)
+    mq.addEventListener('change', on)
+    return () => mq.removeEventListener('change', on)
+  }, [])
+  return m
+}
+
 export const Layout: React.FC = () => {
+  const isMobile = useIsMobile()
+  const [drawer, setDrawer] = useState<'layers' | 'info' | null>(null)
   const [boardState, setBoardState] = useState(BoardDataModel.getState())
   const [isDraggingOver, setIsDraggingOver] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
@@ -230,7 +245,7 @@ export const Layout: React.FC = () => {
       style={{
         display: 'flex',
         flexDirection: 'column',
-        height: '100vh',
+        height: '100dvh',
         width: '100vw',
         backgroundColor: '#121316',
         color: '#e2e8f0',
@@ -264,16 +279,16 @@ export const Layout: React.FC = () => {
         style={{
           display: 'flex',
           alignItems: 'center',
-          height: '32px',
+          height: isMobile ? '40px' : '32px',
           backgroundColor: '#1a1c22',
           borderBottom: '1px solid #282b34',
           padding: '0 8px',
           fontSize: '13px',
-          gap: '12px',
+          gap: isMobile ? '6px' : '12px',
+          flexShrink: 0,
         }}
       >
         <div style={{ display: 'flex', gap: '8px', color: '#94a3b8', alignItems: 'center' }}>
-          <span style={{ fontWeight: 600, color: '#e2e8f0' }}>DQPCB</span>
           <div style={{ position: 'relative' }}>
             <span
               style={{
@@ -330,6 +345,16 @@ export const Layout: React.FC = () => {
               </>
             )}
           </div>
+          <span
+            onClick={() => setShowSettings(true)}
+            title="Cài đặt — công thức tính tiền"
+            style={{ cursor: 'pointer', padding: '2px 6px', borderRadius: '3px' }}
+          >
+            {isMobile ? '⚙' : 'Cài đặt'}
+          </span>
+        </div>
+
+        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: isMobile ? '6px' : '8px' }}>
           <button
             onClick={() => setShowQuotation(true)}
             title="Lập báo giá Excel từ bo đang mở"
@@ -344,50 +369,7 @@ export const Layout: React.FC = () => {
               fontWeight: 600,
             }}
           >
-            📄 Báo giá
-          </button>
-        </div>
-
-        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <button
-            onClick={() => {
-              if (boardState.activeView === '3D') {
-                BoardDataModel.setActiveView('CAM')
-              } else {
-                BoardDataModel.setActiveView('3D')
-              }
-            }}
-            style={{
-              backgroundColor: boardState.activeView === '3D' ? '#2563eb' : '#334155',
-              color: '#ffffff',
-              border: boardState.activeView === '3D' ? '1px solid #60a5fa' : 'none',
-              borderRadius: '4px',
-              padding: '3px 12px',
-              fontSize: '12px',
-              cursor: 'pointer',
-              fontWeight: 600,
-              display: 'flex',
-              alignItems: 'center',
-              gap: '4px',
-            }}
-          >
-            {boardState.activeView === '3D' ? '🕶️ 2D View' : '🧊 3D View'}
-          </button>
-          <button
-            onClick={() => setShowSettings(true)}
-            title="Cài đặt — công thức tính tiền"
-            style={{
-              backgroundColor: '#334155',
-              color: '#ffffff',
-              border: 'none',
-              borderRadius: '4px',
-              padding: '3px 10px',
-              fontSize: '12px',
-              cursor: 'pointer',
-              fontWeight: 500,
-            }}
-          >
-            ⚙ Cài đặt
+            {isMobile ? '📄' : '📄 Báo giá'}
           </button>
           <button
             onClick={() => openPicker(false)}
@@ -402,7 +384,7 @@ export const Layout: React.FC = () => {
               fontWeight: 600,
             }}
           >
-            + Open Gerber ZIP
+            {isMobile ? '+ Mở' : '+ Open Gerber ZIP'}
           </button>
         </div>
       </div>
@@ -417,85 +399,67 @@ export const Layout: React.FC = () => {
           borderBottom: '1px solid #282b34',
           padding: '0 12px',
           gap: '12px',
+          flexShrink: 0,
+          overflowX: isMobile ? 'auto' : undefined,
         }}
       >
-        {/* View Mode Buttons */}
-        <div
-          style={{
-            display: 'flex',
-            backgroundColor: '#0f172a',
-            borderRadius: '14px',
-            padding: '2px',
-            border: '1px solid #334155',
-          }}
-        >
+        {isMobile && (
           <button
-            onClick={() => BoardDataModel.setActiveView('CAM')}
-            style={{
-              backgroundColor: boardState.activeView === 'CAM' ? '#3b82f6' : 'transparent',
-              color: boardState.activeView === 'CAM' ? '#ffffff' : '#94a3b8',
-              border: 'none',
-              borderRadius: '12px',
-              padding: '2px 10px',
-              fontSize: '12px',
-              cursor: 'pointer',
-              fontWeight: 500,
-            }}
+            onClick={() => setDrawer((d) => (d === 'layers' ? null : 'layers'))}
+            style={drawerBtn(drawer === 'layers')}
           >
-            CAM
+            ☰ Layers
           </button>
-          <button
-            onClick={() => BoardDataModel.setActiveView('Real')}
-            style={{
-              backgroundColor: boardState.activeView === 'Real' ? '#3b82f6' : 'transparent',
-              color: boardState.activeView === 'Real' ? '#ffffff' : '#94a3b8',
-              border: 'none',
-              borderRadius: '12px',
-              padding: '2px 10px',
-              fontSize: '12px',
-              cursor: 'pointer',
-              fontWeight: 500,
-            }}
-          >
-            2D
-          </button>
-          <button
-            onClick={() => BoardDataModel.setActiveView('3D')}
-            style={{
-              backgroundColor: boardState.activeView === '3D' ? '#3b82f6' : 'transparent',
-              color: boardState.activeView === '3D' ? '#ffffff' : '#94a3b8',
-              border: 'none',
-              borderRadius: '12px',
-              padding: '2px 10px',
-              fontSize: '12px',
-              cursor: 'pointer',
-              fontWeight: 500,
-            }}
-          >
-            3D
-          </button>
-          <button
-            onClick={() => BoardDataModel.setActiveView('Both')}
-            style={{
-              backgroundColor: boardState.activeView === 'Both' ? '#3b82f6' : 'transparent',
-              color: boardState.activeView === 'Both' ? '#ffffff' : '#94a3b8',
-              border: 'none',
-              borderRadius: '12px',
-              padding: '2px 10px',
-              fontSize: '12px',
-              cursor: 'pointer',
-              fontWeight: 500,
-              whiteSpace: 'nowrap',
-            }}
-            title="Xem đồng thời mặt Top và mặt Bot (mặt Bot đã lật gương)"
-          >
-            2 Mặt
-          </button>
-        </div>
+        )}
+        {/* Chế độ xem: hai công tắc, mỗi lần chỉ một nhóm sáng.
+            CAM ⇄ 2 Mặt (bản vẽ phẳng) và 2D ⇄ 3D (ảnh thật). Bấm nhóm đang sáng thì
+            gạt sang lựa chọn kia; bấm nhóm đang tắt thì chuyển sang nhóm đó ở lựa chọn đầu. */}
+        {(() => {
+          const v = boardState.activeView
+          const groups = [
+            { a: 'CAM', b: 'Both', aLabel: 'CAM', bLabel: '2 Mặt', tip: 'CAM ⇄ 2 Mặt (Top + Bot đã lật gương)' },
+            { a: 'Real', b: '3D', aLabel: '2D', bLabel: '3D', tip: '2D ⇄ 3D' },
+          ] as const
+          return (
+            <div style={{ display: 'flex', gap: '8px', flexShrink: 0 }}>
+              {groups.map((g) => {
+                const on = v === g.a || v === g.b
+                const chip = (lit: boolean): React.CSSProperties => ({
+                  padding: '2px 10px',
+                  borderRadius: '12px',
+                  fontSize: '12px',
+                  fontWeight: 500,
+                  whiteSpace: 'nowrap',
+                  backgroundColor: lit ? '#3b82f6' : 'transparent',
+                  color: lit ? '#ffffff' : '#94a3b8',
+                })
+                return (
+                  <button
+                    key={g.a}
+                    title={g.tip}
+                    onClick={() => BoardDataModel.setActiveView(!on ? g.a : v === g.a ? g.b : g.a)}
+                    style={{
+                      display: 'flex',
+                      backgroundColor: '#0f172a',
+                      borderRadius: '14px',
+                      padding: '2px',
+                      border: `1px solid ${on ? '#3b82f6' : '#334155'}`,
+                      cursor: 'pointer',
+                      opacity: on ? 1 : 0.75,
+                    }}
+                  >
+                    <span style={chip(v === g.a)}>{g.aLabel}</span>
+                    <span style={chip(v === g.b)}>{g.bLabel}</span>
+                  </button>
+                )
+              })}
+            </div>
+          )
+        })()}
 
         {/* Tab các bo đang mở — thả nhiều ZIP thì mỗi ZIP một bo */}
         {boardState.boards.length > 0 && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: '4px', overflowX: 'auto' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '4px', overflowX: isMobile ? 'visible' : 'auto', flexShrink: 0 }}>
             {boardState.boards.map((b) => {
               const isActive = b.id === boardState.activeBoardId
               return (
@@ -544,6 +508,14 @@ export const Layout: React.FC = () => {
           </div>
         )}
 
+        {isMobile && (
+          <button
+            onClick={() => setDrawer((d) => (d === 'info' ? null : 'info'))}
+            style={{ ...drawerBtn(drawer === 'info'), marginLeft: 'auto' }}
+          >
+            ℹ Thông tin
+          </button>
+        )}
       </div>
 
       {/* 3. MAIN WORKSPACE: 3-COLUMN SPLIT */}
@@ -552,12 +524,13 @@ export const Layout: React.FC = () => {
         {/* ================= COLUMN 1: LEFT LAYERS PANEL ================= */}
         <div
           style={{
-            width: '240px',
+            width: isMobile ? 'min(300px, 85vw)' : '240px',
             backgroundColor: '#181a20',
             borderRight: '1px solid #282b34',
-            display: 'flex',
+            display: isMobile && drawer !== 'layers' ? 'none' : 'flex',
             flexDirection: 'column',
             overflow: 'hidden',
+            ...(isMobile ? { position: 'absolute', top: 0, bottom: 0, left: 0, zIndex: 40, boxShadow: '4px 0 16px rgba(0,0,0,0.5)' } : null),
           }}
         >
           {/* Layers header & tabs */}
@@ -833,8 +806,10 @@ export const Layout: React.FC = () => {
 
         {/* ================= COLUMN 2: CENTER CANVAS VIEW ================= */}
         <div
+          onClick={() => drawer && setDrawer(null)}
           style={{
             flex: 1,
+            minWidth: 0,
             position: 'relative',
             backgroundColor: '#000000',
             display: 'flex',
@@ -851,7 +826,9 @@ export const Layout: React.FC = () => {
                 alignItems: 'center',
                 justifyContent: 'center',
                 border: isDraggingOver ? '2px dashed #38bdf8' : '2px dashed #282b34',
-                margin: '16px',
+                margin: isMobile ? '8px' : '16px',
+                padding: isMobile ? '0 12px' : undefined,
+                textAlign: 'center',
                 borderRadius: '8px',
                 backgroundColor: isDraggingOver ? 'rgba(56, 189, 248, 0.05)' : '#0d0e12',
                 cursor: 'pointer',
@@ -988,12 +965,13 @@ export const Layout: React.FC = () => {
         {/* ================= COLUMN 3: RIGHT PCB ANALYSIS PANEL ================= */}
         <div
           style={{
-            width: '280px',
+            width: isMobile ? 'min(340px, 92vw)' : '280px',
             backgroundColor: '#181a20',
             borderLeft: '1px solid #282b34',
-            display: 'flex',
+            display: isMobile && drawer !== 'info' ? 'none' : 'flex',
             flexDirection: 'column',
             overflow: 'hidden',
+            ...(isMobile ? { position: 'absolute', top: 0, bottom: 0, right: 0, zIndex: 40, boxShadow: '-4px 0 16px rgba(0,0,0,0.5)' } : null),
           }}
         >
           {/* Tab Header */}
@@ -1062,6 +1040,19 @@ export const Layout: React.FC = () => {
     </div>
   )
 }
+
+const drawerBtn = (on: boolean): React.CSSProperties => ({
+  flexShrink: 0,
+  backgroundColor: on ? '#2563eb' : '#1e293b',
+  color: on ? '#ffffff' : '#cbd5e1',
+  border: '1px solid #334155',
+  borderRadius: '14px',
+  padding: '4px 10px',
+  fontSize: '12px',
+  fontWeight: 500,
+  cursor: 'pointer',
+  whiteSpace: 'nowrap',
+})
 
 const S_MENU: Record<string, React.CSSProperties> = {
   panel: {
