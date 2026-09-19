@@ -201,7 +201,9 @@ export const Layout: React.FC = () => {
     try {
       const res = (await ipc.invoke('files:open', { folder })) as {
         canceled: boolean
-        files: { name: string; path: string; data: Uint8Array }[]
+        // Buffer qua IPC luôn nằm trên ArrayBuffer thường; khai rõ để File() nhận (TS 5.7+
+        // tách Uint8Array<ArrayBufferLike> khỏi BlobPart).
+        files: { name: string; path: string; data: Uint8Array<ArrayBuffer> }[]
       }
       if (res.canceled || res.files.length === 0) return
       const files = res.files.map((f) => new File([f.data], f.name))
