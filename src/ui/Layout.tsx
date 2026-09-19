@@ -249,6 +249,10 @@ export const Layout: React.FC = () => {
         flexDirection: 'column',
         height: '100dvh',
         width: '100vw',
+        // Web app chạy toàn màn hình trên iPhone: nền tràn dưới thanh trạng thái, nhưng
+        // nội dung phải lùi xuống, không thì hàng nút đầu tiên nằm dưới đồng hồ, bấm không được.
+        paddingTop: 'env(safe-area-inset-top)',
+        paddingBottom: 'env(safe-area-inset-bottom)',
         backgroundColor: '#121316',
         color: '#e2e8f0',
         fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
@@ -402,7 +406,7 @@ export const Layout: React.FC = () => {
           padding: '0 12px',
           gap: '12px',
           flexShrink: 0,
-          overflowX: isMobile ? 'auto' : undefined,
+          ...(isMobile ? { padding: '0 8px', gap: '8px' } : null),
         }}
       >
         {isMobile && (
@@ -416,7 +420,27 @@ export const Layout: React.FC = () => {
         {/* Chế độ xem: hai công tắc, mỗi lần chỉ một nhóm sáng.
             CAM ⇄ 2 Mặt (bản vẽ phẳng) và 2D ⇄ 3D (ảnh thật). Bấm nhóm đang sáng thì
             gạt sang lựa chọn kia; bấm nhóm đang tắt thì chuyển sang nhóm đó ở lựa chọn đầu. */}
-        {(() => {
+        {isMobile ? (
+          <select
+            value={boardState.activeView}
+            onChange={(e) => BoardDataModel.setActiveView(e.target.value as BoardState['activeView'])}
+            style={{
+              flexShrink: 0,
+              backgroundColor: '#0f172a',
+              color: '#e2e8f0',
+              border: '1px solid #3b82f6',
+              borderRadius: '14px',
+              padding: '4px 8px',
+              fontSize: '13px',
+              fontWeight: 600,
+            }}
+          >
+            <option value="CAM">CAM</option>
+            <option value="Both">2 Mặt</option>
+            <option value="Real">2D</option>
+            <option value="3D">3D</option>
+          </select>
+        ) : (() => {
           const v = boardState.activeView
           const groups = [
             { a: 'CAM', b: 'Both', aLabel: 'CAM', bLabel: '2 Mặt', tip: 'CAM ⇄ 2 Mặt (Top + Bot đã lật gương)' },
@@ -461,7 +485,7 @@ export const Layout: React.FC = () => {
 
         {/* Tab các bo đang mở — thả nhiều ZIP thì mỗi ZIP một bo */}
         {boardState.boards.length > 0 && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: '4px', overflowX: isMobile ? 'visible' : 'auto', flexShrink: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '4px', overflowX: 'auto', ...(isMobile ? { flex: 1, minWidth: 0 } : { flexShrink: 0 }) }}>
             {boardState.boards.map((b) => {
               const isActive = b.id === boardState.activeBoardId
               return (
