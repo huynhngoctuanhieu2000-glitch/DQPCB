@@ -195,6 +195,60 @@ ipcMain.handle('shell:showInFolder', (_event, filePath: string) => {
   return true
 })
 
+// Mở file Gerber bằng hộp chọn file GỐC của Windows, mở sẵn ở thư mục vừa dùng.
+//
+// Hộp chọn của <input type=file> trong Electron không nhớ thư mục cuối — mỗi lần mở lại
+// rơi vào một thư mục cũ trong lịch sử, người lập phải bấm lại đường dẫn. Thư mục cuối
+// lưu ra userData nên tắt app mở lại vẫn nhớ; kéo thả file cũng cập nhật nó.
+const statePath = () => path.join(app.getPath('userData'), 'dqpcb-state.json')
+const readState = async (): Promise<{ lastOpenDir?: string }> => {
+  try {
+    return JSON.parse(await fs.readFile(statePath(), 'utf8'))
+  } catch {
+    return {}
+  }
+}
+const rememberDir = async (dir: string) => {
+  if (typeof dir !== 'string' || dir === '') return
+  const state = await readState()
+  state.lastOpenDir = dir
+  await fs.writeFile(statePath(), JSON.stringify(state)).catch(() => {})
+}
+
+ipcMain.handle('files:rememberDir', (_event, dir: string) => rememberDir(dir))
+
+ipcMain.handle('files:open', async (_event, opts: { folder?: boolean } = {}) => {
+  const { lastOpenDir } = await readState()
+  const defaultPath = lastOpenDir && (await fs.stat(lastOpenDir).catch(() => null))?.isDirectory() ? lastOpenDir : undefined
+  const options: Electron.OpenDialogOptions = opts.folder
+    ? { title: 'Mở thư mục Gerber', defaultPath, properties: ['openDirectory'] }
+    : {
+        title: 'Mở file Gerber',
+        defaultPath,
+        properties: ['openFile', 'multiSelections'],
+        filters: [
+          { name: 'Gerber (ZIP, RAR, file lẻ)', extensions: ['zip', 'rar', 'gtl', 'gbl', 'gts', 'gbs', 'gto', 'gbo', 'gtp', 'gbp', 'gko', 'gm1', 'gbr', 'gbx', 'drl', 'xln', 'txt', 'nc'] },
+          { name: 'Tất cả file', extensions: ['*'] },
+        ],
+      }
+  const picked = win ? await dialog.showOpenDialog(win, options) : await dialog.showOpenDialog(options)
+  if (picked.canceled || picked.filePaths.length === 0) return { canceled: true, files: [] }
+
+  // Thư mục: lấy các file nằm ngay trong đó (bộ Gerber chưa nén, hoặc vài file ZIP).
+  let paths = picked.filePaths
+  if (opts.folder) {
+    const dir = picked.filePaths[0]
+    const entries = await fs.readdir(dir, { withFileTypes: true })
+    paths = entries.filter((e) => e.isFile()).map((e) => path.join(dir, e.name))
+  }
+  await rememberDir(opts.folder ? picked.filePaths[0] : path.dirname(picked.filePaths[0]))
+
+  const files = await Promise.all(
+    paths.map(async (p) => ({ name: path.basename(p), path: p, data: new Uint8Array(await fs.readFile(p)) }))
+  )
+  return { canceled: false, files }
+})
+
 app.whenReady().then(() => {
   Menu.setApplicationMenu(null)
   createWindow()

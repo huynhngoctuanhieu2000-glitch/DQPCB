@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
-import { Viewer2DWebGL } from '../modules/viewer2d/Viewer2D.WebGL'
+import { BOARD_RENDERED_EVENT, Viewer2DWebGL } from '../modules/viewer2d/Viewer2D.WebGL'
 import type { CaptureFn } from '../modules/viewer2d/Viewer2D.WebGL'
 import { composeTwoSides, copyPng } from '../modules/viewer2d/captureBoard'
 import { BoardDataModel } from '../models/BoardDataModel'
@@ -9,12 +9,17 @@ import { QuotationPanel } from '../modules/quotation/QuotationPanel'
 import type { QuotationSeed } from '../modules/quotation/QuotationPanel'
 import { PricingCard } from '../modules/pricing/PricingCard'
 import { SettingsPanel } from '../modules/settings/SettingsPanel'
-import JSZip from 'jszip'
 
 export const Layout: React.FC = () => {
   const [boardState, setBoardState] = useState(BoardDataModel.getState())
   const [isDraggingOver, setIsDraggingOver] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
+  /**
+   * Màn chờ mở file. Tắt khi viewer báo ĐÚNG bo mới đã dựng xong (BOARD_RENDERED_EVENT),
+   * không phải lúc đọc file xong: giữa hai mốc đó khung xem vẫn còn bo cũ trong khi
+   * cột bên đã là thông tin bo mới — đang mở nhiều bo là dễ đọc nhầm bo này ra bo kia.
+   */
+  const [opening, setOpening] = useState<{ name: string; waitFor: string | null } | null>(null)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [showQuotation, setShowQuotation] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
@@ -37,6 +42,9 @@ export const Layout: React.FC = () => {
     })
   }, [])
   const fileInputRef = useRef<HTMLInputElement>(null)
+  /** Chọn cả thư mục (webkitdirectory) — bộ Gerber chưa nén, file lẻ nằm chung một chỗ. */
+  const folderInputRef = useRef<HTMLInputElement>(null)
+  const [fileMenuOpen, setFileMenuOpen] = useState(false)
   // Kích thước khung chia đôi — nhãn kích thước cần biết để bám sát mép bo
   const splitRef = useRef<HTMLDivElement>(null)
   const [splitSize, setSplitSize] = useState<{ w: number; h: number } | null>(null)
@@ -67,6 +75,7 @@ export const Layout: React.FC = () => {
         scale,
         gapPx: SPLIT_GAP_PX,
         background: '#eeeeee',
+        name: boardState.projectName ?? '',
         layerCount: boardState.layerCount,
         widthMM: boardState.bounds.widthMM,
         heightMM: boardState.bounds.heightMM,
@@ -100,20 +109,50 @@ export const Layout: React.FC = () => {
     // chia đôi chưa tồn tại, ref còn null nên observer không gắn được.
   }, [boardState.activeView, boardState.isLoaded])
 
-  const processFiles = async (files: File[]) => {
+  /** Bo vừa nạp → chờ viewer dựng xong nó; không nạp được bo nào thì tắt màn chờ luôn. */
+  const awaitRender = (added: number) => {
+    const s = BoardDataModel.getState()
+    if (added === 0 || !s.activeBoardId || s.layers.length === 0) setOpening(null)
+    else setOpening((o) => (o ? { ...o, waitFor: s.activeBoardId } : null))
+  }
+
+  // Viewer dựng xong đúng bo đang chờ thì tắt màn chờ.
+  useEffect(() => {
+    const onRendered = (e: Event) => {
+      const id = (e as CustomEvent<string | null>).detail
+      setOpening((o) => (o && o.waitFor && o.waitFor === id ? null : o))
+    }
+    window.addEventListener(BOARD_RENDERED_EVENT, onRendered)
+    return () => window.removeEventListener(BOARD_RENDERED_EVENT, onRendered)
+  }, [])
+
+  // Dự phòng: bo dựng lỗi thì viewer không báo — đừng để màn chờ kẹt mãi.
+  useEffect(() => {
+    if (!opening?.waitFor) return
+    const t = window.setTimeout(() => setOpening(null), 30000)
+    return () => window.clearTimeout(t)
+  }, [opening?.waitFor])
+
+  const processFiles = async (files: File[], knownDirs?: Map<string, string>) => {
     if (!files || files.length === 0) return
     setIsLoading(true)
+    setOpening({ name: files.map((f) => f.name).join(', '), waitFor: null })
     setErrorMessage(null)
+    let added = 0
 
     try {
       const parsedBoards = await GerberParser.parseInputFiles(files)
       // Ghép lại thư mục thật của từng bo: parser báo bo đến từ archive nào, còn
       // đường dẫn thì chỉ Electron mới cho biết (từ bản 32 `File.path` đã bị bỏ).
-      const dirByFile = new Map<string, string>()
+      const dirByFile = new Map<string, string>(knownDirs)
       for (const file of files) {
+        if (dirByFile.has(file.name)) continue
         const full = window.electronFiles?.getPathForFile(file) ?? ''
         if (full) dirByFile.set(file.name, full.replace(/[\\/][^\\/]*$/, ''))
       }
+      // Kéo thả cũng tính là "vừa mở ở đây": lần sau hộp chọn file mở đúng thư mục này.
+      const firstDir = [...dirByFile.values()][0]
+      if (firstDir && !knownDirs) window.ipcRenderer?.invoke('files:rememberDir', firstDir).catch(() => {})
       // Gói file gerber rời không có archive nguồn (sourceFile rỗng) nên tra không ra;
       // mà thả cùng lượt thì chúng ở chung một thư mục, lấy tạm cái đầu tiên.
       const fallbackDir = [...dirByFile.values()][0] ?? ''
@@ -121,58 +160,38 @@ export const Layout: React.FC = () => {
         (b) => dirByFile.get(b.sourceFile ?? '') ?? fallbackDir
       )
       BoardDataModel.addBoards(parsedBoards, sourceDirs)
+      added = parsedBoards.length
     } catch (err: any) {
       console.error('Failed to parse Gerber files:', err)
       setErrorMessage(err?.message || 'Failed to read files. Please ensure it is a valid Gerber ZIP.')
     } finally {
       setIsLoading(false)
+      awaitRender(added)
     }
   }
 
-  const loadDemoBoard = async () => {
-    setIsLoading(true)
-    setErrorMessage(null)
+  /**
+   * Mở hộp chọn file. Trong app (Electron) dùng hộp chọn GỐC của Windows qua main — nó
+   * mở sẵn ở thư mục vừa dùng; hộp của <input type=file> thì không nhớ. Trên trình
+   * duyệt không có main nên dùng input như cũ.
+   */
+  const openPicker = async (folder: boolean) => {
+    const ipc = window.ipcRenderer
+    if (!ipc) {
+      ;(folder ? folderInputRef : fileInputRef).current?.click()
+      return
+    }
     try {
-      const zip = new JSZip()
-      // 1. Outline (GKO)
-      zip.file(
-        'demo_board.GKO',
-        '%FSLAX24Y24*%\n%MOMM*%\n%ADD10C,0.2000*%\nD10*\nX0Y0D02*\nX1200000Y0D01*\nX1200000Y800000D01*\nX0Y800000D01*\nX0Y0D01*\nM02*'
-      )
-      // 2. Top Copper (GTL)
-      zip.file(
-        'demo_board.GTL',
-        '%FSLAX24Y24*%\n%MOMM*%\n%ADD10C,0.3500*%\n%ADD11R,1.8000X1.2000*%\n%ADD12C,2.0000*%\nD10*\nX150000Y150000D02*\nX1050000Y150000D01*\nX1050000Y650000D01*\nX150000Y650000D01*\nD11*\nX300000Y400000D03*\nX400000Y400000D03*\nX500000Y400000D03*\nX600000Y400000D03*\nX700000Y400000D03*\nX800000Y400000D03*\nX900000Y400000D03*\nD12*\nX200000Y200000D03*\nX1000000Y200000D03*\nX200000Y600000D03*\nX1000000Y600000D03*\nM02*'
-      )
-      // 3. Bot Copper (GBL)
-      zip.file(
-        'demo_board.GBL',
-        '%FSLAX24Y24*%\n%MOMM*%\n%ADD10C,0.5000*%\n%ADD12C,2.0000*%\nD10*\nX200000Y200000D02*\nX600000Y400000D01*\nX1000000Y600000D01*\nD12*\nX200000Y200000D03*\nX1000000Y200000D03*\nX200000Y600000D03*\nX1000000Y600000D03*\nM02*'
-      )
-      // 4. Drill (DRL)
-      zip.file(
-        'demo_board.DRL',
-        'M48\nMETRIC,TZ\nT01C1.000\nT02C3.200\n%\nT01\nX20000Y20000\nX100000Y20000\nX20000Y60000\nX100000Y60000\nT02\nX60000Y40000\nM30'
-      )
-      // 5. Top Silk (GTO)
-      zip.file(
-        'demo_board.GTO',
-        '%FSLAX24Y24*%\n%MOMM*%\n%ADD10C,0.1500*%\nD10*\nX100000Y700000D02*\nX500000Y700000D01*\nX100000Y100000D02*\nX1100000Y100000D01*\nM02*'
-      )
-
-      const buffer = await zip.generateAsync({ type: 'arraybuffer' })
-      const mockFile = {
-        name: 'Demo_PCB_120x80.zip',
-        arrayBuffer: async () => buffer,
-        text: async () => '',
-      } as any
-
-      const parsedBoards = await GerberParser.parseInputFiles([mockFile])
-      BoardDataModel.addBoards(parsedBoards)
+      const res = (await ipc.invoke('files:open', { folder })) as {
+        canceled: boolean
+        files: { name: string; path: string; data: Uint8Array }[]
+      }
+      if (res.canceled || res.files.length === 0) return
+      const files = res.files.map((f) => new File([f.data], f.name))
+      const dirs = new Map(res.files.map((f) => [f.name, f.path.replace(/[\/][^\/]*$/, '')]))
+      processFiles(files, dirs)
     } catch (err: any) {
-      setErrorMessage(err?.message || 'Failed to load demo board')
-    } finally {
-      setIsLoading(false)
+      setErrorMessage(err?.message || 'Không mở được hộp chọn file')
     }
   }
 
@@ -200,6 +219,8 @@ export const Layout: React.FC = () => {
       const files = Array.from(e.target.files)
       processFiles(files)
     }
+    // Xoá lựa chọn, để mở lại đúng file vừa đóng vẫn kích hoạt được onChange.
+    e.target.value = ''
   }
 
   return (
@@ -227,6 +248,14 @@ export const Layout: React.FC = () => {
         accept=".zip,.rar,.gtl,.gbl,.gts,.gbs,.gto,.gbo,.gko,.gm1,.drl,.txt,.*"
         style={{ display: 'none' }}
       />
+      <input
+        type="file"
+        ref={folderInputRef}
+        onChange={handleFileInputChange}
+        // @ts-expect-error — thuộc tính chuẩn-thực-tế của Chromium, React chưa khai kiểu
+        webkitdirectory=""
+        style={{ display: 'none' }}
+      />
 
       {/* 1. TOP MENU BAR */}
       <div
@@ -243,30 +272,81 @@ export const Layout: React.FC = () => {
       >
         <div style={{ display: 'flex', gap: '8px', color: '#94a3b8', alignItems: 'center' }}>
           <span style={{ fontWeight: 600, color: '#e2e8f0' }}>DQPCB</span>
-          <span
-            style={{ cursor: 'pointer', padding: '2px 6px', borderRadius: '3px' }}
-            onClick={() => fileInputRef.current?.click()}
-          >
-            File
-          </span>
-        </div>
-
-        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <div style={{ position: 'relative' }}>
+            <span
+              style={{
+                cursor: 'pointer',
+                padding: '2px 6px',
+                borderRadius: '3px',
+                backgroundColor: fileMenuOpen ? '#334155' : 'transparent',
+                color: fileMenuOpen ? '#e2e8f0' : undefined,
+              }}
+              onClick={() => setFileMenuOpen((v) => !v)}
+            >
+              File
+            </span>
+            {fileMenuOpen && (
+              <>
+                {/* Bấm ra ngoài là đóng menu */}
+                <div style={{ position: 'fixed', inset: 0, zIndex: 90 }} onClick={() => setFileMenuOpen(false)} />
+                <div style={S_MENU.panel}>
+                  <MenuItem
+                    label="📂 Mở file Gerber…"
+                    hint="ZIP, RAR hoặc file lẻ"
+                    onClick={() => {
+                      setFileMenuOpen(false)
+                      openPicker(false)
+                    }}
+                  />
+                  <MenuItem
+                    label="🗂 Mở thư mục…"
+                    hint="Cả thư mục Gerber chưa nén"
+                    onClick={() => {
+                      setFileMenuOpen(false)
+                      openPicker(true)
+                    }}
+                  />
+                  <div style={S_MENU.sep} />
+                  <MenuItem
+                    label="✕ Đóng bo đang xem"
+                    disabled={!boardState.activeBoardId}
+                    onClick={() => {
+                      setFileMenuOpen(false)
+                      if (boardState.activeBoardId) BoardDataModel.closeBoard(boardState.activeBoardId)
+                    }}
+                  />
+                  <MenuItem
+                    label="✕ Đóng tất cả bo"
+                    hint={boardState.boards.length ? `${boardState.boards.length} bo đang mở` : undefined}
+                    disabled={boardState.boards.length === 0}
+                    onClick={() => {
+                      setFileMenuOpen(false)
+                      BoardDataModel.reset()
+                    }}
+                  />
+                </div>
+              </>
+            )}
+          </div>
           <button
-            onClick={loadDemoBoard}
+            onClick={() => setShowQuotation(true)}
+            title="Lập báo giá Excel từ bo đang mở"
             style={{
-              backgroundColor: '#475569',
+              backgroundColor: '#0ea5e9',
               color: '#ffffff',
               border: 'none',
               borderRadius: '4px',
-              padding: '3px 10px',
+              padding: '3px 12px',
               fontSize: '12px',
               cursor: 'pointer',
-              fontWeight: 500,
+              fontWeight: 600,
             }}
           >
-            ⚡ Load Demo
+            📄 Báo giá
           </button>
+        </div>
+
+        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '8px' }}>
           <button
             onClick={() => {
               if (boardState.activeView === '3D') {
@@ -308,23 +388,7 @@ export const Layout: React.FC = () => {
             ⚙ Cài đặt
           </button>
           <button
-            onClick={() => setShowQuotation(true)}
-            title="Lập báo giá Excel từ bo đang mở"
-            style={{
-              backgroundColor: '#0ea5e9',
-              color: '#ffffff',
-              border: 'none',
-              borderRadius: '4px',
-              padding: '3px 12px',
-              fontSize: '12px',
-              cursor: 'pointer',
-              fontWeight: 600,
-            }}
-          >
-            📄 Báo giá
-          </button>
-          <button
-            onClick={() => fileInputRef.current?.click()}
+            onClick={() => openPicker(false)}
             style={{
               backgroundColor: '#10b981',
               color: '#ffffff',
@@ -419,6 +483,7 @@ export const Layout: React.FC = () => {
               fontSize: '12px',
               cursor: 'pointer',
               fontWeight: 500,
+              whiteSpace: 'nowrap',
             }}
             title="Xem đồng thời mặt Top và mặt Bot (mặt Bot đã lật gương)"
           >
@@ -480,7 +545,8 @@ export const Layout: React.FC = () => {
       </div>
 
       {/* 3. MAIN WORKSPACE: 3-COLUMN SPLIT */}
-      <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
+      <div style={{ display: 'flex', flex: 1, overflow: 'hidden', position: 'relative' }}>
+        {opening && <OpeningSkeleton name={opening.name} />}
         {/* ================= COLUMN 1: LEFT LAYERS PANEL ================= */}
         <div
           style={{
@@ -586,22 +652,6 @@ export const Layout: React.FC = () => {
             {boardState.layers.length === 0 ? (
               <div style={{ padding: '20px 10px', textAlign: 'center', color: '#64748b', fontSize: '12px' }}>
                 No layers loaded yet.
-                <br />
-                <br />
-                <button
-                  onClick={loadDemoBoard}
-                  style={{
-                    backgroundColor: '#1e293b',
-                    color: '#38bdf8',
-                    border: '1px solid #38bdf8',
-                    padding: '4px 10px',
-                    borderRadius: '4px',
-                    fontSize: '11px',
-                    cursor: 'pointer',
-                  }}
-                >
-                  Load Demo Board
-                </button>
               </div>
             ) : (
               boardState.layers.map((layer, index) => {
@@ -789,27 +839,6 @@ export const Layout: React.FC = () => {
             flexDirection: 'column',
           }}
         >
-          {/* If loading indicator */}
-          {isLoading && (
-            <div
-              style={{
-                position: 'absolute',
-                inset: 0,
-                backgroundColor: 'rgba(0,0,0,0.75)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                zIndex: 50,
-                color: '#38bdf8',
-                fontSize: '16px',
-                fontWeight: 600,
-                backdropFilter: 'blur(2px)',
-              }}
-            >
-              ⏳ Parsing Gerber ZIP files...
-            </div>
-          )}
-
           {/* Empty State / Drop Zone Prompt */}
           {!boardState.isLoaded && !isLoading && (
             <div
@@ -825,7 +854,7 @@ export const Layout: React.FC = () => {
                 backgroundColor: isDraggingOver ? 'rgba(56, 189, 248, 0.05)' : '#0d0e12',
                 cursor: 'pointer',
               }}
-              onClick={() => fileInputRef.current?.click()}
+              onClick={() => openPicker(false)}
             >
               <div style={{ fontSize: '48px', marginBottom: '12px' }}>📁</div>
               <h2 style={{ margin: '0 0 8px 0', fontSize: '18px', color: '#f1f5f9' }}>
@@ -838,7 +867,7 @@ export const Layout: React.FC = () => {
                 <button
                   onClick={(e) => {
                     e.stopPropagation()
-                    fileInputRef.current?.click()
+                    openPicker(false)
                   }}
                   style={{
                     backgroundColor: '#2563eb',
@@ -852,24 +881,6 @@ export const Layout: React.FC = () => {
                   }}
                 >
                   Browse Files
-                </button>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    loadDemoBoard()
-                  }}
-                  style={{
-                    backgroundColor: '#10b981',
-                    color: '#ffffff',
-                    border: 'none',
-                    borderRadius: '6px',
-                    padding: '8px 18px',
-                    fontSize: '13px',
-                    fontWeight: 600,
-                    cursor: 'pointer',
-                  }}
-                >
-                  Load Demo Board
                 </button>
               </div>
             </div>
@@ -941,6 +952,7 @@ export const Layout: React.FC = () => {
                     ngang ở đáy trông rời rạc khi chụp màn hình. */}
                 <BoardBadge
                   bounds={boardState.bounds}
+                  name={boardState.projectName ?? ''}
                   layerCount={boardState.layerCount}
                   panel={splitSize}
                 />
@@ -1049,6 +1061,100 @@ export const Layout: React.FC = () => {
   )
 }
 
+const S_MENU: Record<string, React.CSSProperties> = {
+  panel: {
+    position: 'absolute',
+    top: 'calc(100% + 4px)',
+    left: 0,
+    zIndex: 91,
+    minWidth: 240,
+    padding: 4,
+    backgroundColor: '#1e2129',
+    border: '1px solid #334155',
+    borderRadius: 6,
+    boxShadow: '0 8px 24px rgba(0,0,0,0.45)',
+  },
+  sep: { height: 1, margin: '4px 6px', backgroundColor: '#334155' },
+}
+
+const MenuItem: React.FC<{ label: string; hint?: string; disabled?: boolean; onClick: () => void }> = ({
+  label,
+  hint,
+  disabled,
+  onClick,
+}) => {
+  const [hover, setHover] = useState(false)
+  return (
+    <div
+      onClick={disabled ? undefined : onClick}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      style={{
+        display: 'flex',
+        alignItems: 'baseline',
+        justifyContent: 'space-between',
+        gap: 16,
+        padding: '6px 10px',
+        borderRadius: 4,
+        fontSize: 13,
+        cursor: disabled ? 'default' : 'pointer',
+        color: disabled ? '#475569' : '#e2e8f0',
+        backgroundColor: hover && !disabled ? '#2563eb' : 'transparent',
+        whiteSpace: 'nowrap',
+      }}
+    >
+      <span>{label}</span>
+      {hint && <span style={{ fontSize: 11, color: hover && !disabled ? '#dbeafe' : '#64748b' }}>{hint}</span>}
+    </div>
+  )
+}
+
+/**
+ * Màn chờ khi mở file: phủ ĐỤC cả ba cột (danh sách lớp, khung xem, thông tin bo) bằng
+ * khung xương nhấp nháy và tên file đang mở. Phủ mờ như trước thì bo cũ vẫn lộ ra sau.
+ */
+const OpeningSkeleton: React.FC<{ name: string }> = ({ name }) => {
+  const bar = (w: string, h = 12): React.CSSProperties => ({
+    width: w,
+    height: h,
+    borderRadius: 4,
+    background: '#262a34',
+    animation: 'dqpcb-pulse 1.2s ease-in-out infinite',
+  })
+  const column = (width: number | string, rows: number): React.ReactNode => (
+    <div style={{ width, padding: 14, display: 'flex', flexDirection: 'column', gap: 12, borderRight: '1px solid #282b34' }}>
+      <div style={bar('55%', 16)} />
+      {Array.from({ length: rows }, (_, i) => (
+        <div key={i} style={bar(`${70 + ((i * 37) % 30)}%`)} />
+      ))}
+    </div>
+  )
+  return (
+    <div style={{ position: 'absolute', inset: 0, zIndex: 60, display: 'flex', background: '#181a20' }}>
+      <style>{'@keyframes dqpcb-pulse { 0%, 100% { opacity: .45 } 50% { opacity: 1 } }'}</style>
+      {column(240, 12)}
+      <div style={{ flex: 1, position: 'relative', background: '#0d0e12', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <div style={{ ...bar('60%', 0), height: '55%', borderRadius: 10 }} />
+        <div
+          style={{
+            position: 'absolute',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            gap: 6,
+            maxWidth: '80%',
+            textAlign: 'center',
+          }}
+        >
+          <span style={{ color: '#38bdf8', fontSize: 16, fontWeight: 600 }}>⏳ Đang mở file…</span>
+          <span style={{ color: '#e2e8f0', fontSize: 13, wordBreak: 'break-all' }}>{name}</span>
+        </div>
+      </div>
+      <div style={{ width: 280, borderLeft: '1px solid #282b34' }}>{column('100%', 10)}</div>
+    </div>
+  )
+}
+
 // Lề khi fit bo trong khung chia đôi — dùng chung cho viewer và nhãn kích thước
 // để hai bên tính ra cùng một vị trí mép bo.
 const SPLIT_FIT_PADDING = 1.4
@@ -1064,9 +1170,10 @@ const SPLIT_GAP_PX = 28
  */
 const BoardBadge: React.FC<{
   bounds: BoardState['bounds']
+  name: string
   layerCount: number
   panel: { w: number; h: number } | null
-}> = ({ bounds, layerCount, panel }) => {
+}> = ({ bounds, name, layerCount, panel }) => {
   if (!bounds) return null
 
   let top = '88%'
@@ -1104,7 +1211,13 @@ const BoardBadge: React.FC<{
       }}
     >
       {/* Cùng chữ với nhãn trong ảnh copy (captureBoard.ts) — nhìn sao chụp ra vậy. */}
-      <span>Bo mạch {layerCount} lớp</span>
+      {name && (
+        <>
+          <span style={{ maxWidth: '22vw', overflow: 'hidden', textOverflow: 'ellipsis' }}>{name}</span>
+          <span style={{ color: '#475569' }}>|</span>
+        </>
+      )}
+      <span>{layerCount} lớp</span>
       <span style={{ color: '#475569' }}>|</span>
       <span>
         {bounds.widthMM.toFixed(2)} x {bounds.heightMM.toFixed(2)} mm

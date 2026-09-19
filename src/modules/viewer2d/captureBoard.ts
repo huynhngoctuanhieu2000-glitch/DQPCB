@@ -65,6 +65,8 @@ export interface TwoSideCaptureInput {
   /** Khoảng trắng giữa hai khung, tính bằng px màn hình (trùng `gap` của khung chia đôi). */
   gapPx: number
   background: string
+  /** Tên bo (tên file/thư mục Gerber) — đứng đầu nhãn. */
+  name: string
   layerCount: number
   widthMM: number
   heightMM: number
@@ -173,7 +175,12 @@ export const composeTwoSides = async (input: TwoSideCaptureInput): Promise<HTMLC
   // Không in nhãn TOP/BOT lên ảnh — ảnh gửi khách chỉ cần hai mặt bo và kích thước.
 
   // Nhãn kích thước: chữ to, căn giữa dải riêng ở đáy.
-  const size = `Bo mạch ${input.layerCount} lớp   |   ${input.widthMM.toFixed(2)} x ${input.heightMM.toFixed(2)} mm`
+  // Tên file dài (bộ Gerber hay kèm mã đơn, ngày tháng) thì cắt bớt cho nhãn khỏi tràn ảnh.
+  const MAX_NAME = 40
+  const name = input.name.length > MAX_NAME ? `${input.name.slice(0, MAX_NAME - 2).trimEnd()}…` : input.name
+  const size = [name, `${input.layerCount} lớp`, `${input.widthMM.toFixed(2)} x ${input.heightMM.toFixed(2)} mm`]
+    .filter(Boolean)
+    .join('   |   ')
   const font = 32, padY = 12
   drawTag(g, size, W / 2, boardsH + (bandH - (font + padY * 2) * s) / 2, s, { radius: 999, padX: 30, padY, font, center: true })
   return c

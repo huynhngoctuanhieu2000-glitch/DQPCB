@@ -233,6 +233,9 @@ export interface Viewer2DWebGLProps {
   captureRef?: React.MutableRefObject<CaptureFn | null>
 }
 
+/** Sự kiện trên window, `detail` = id bo vừa dựng xong và đã hiện lên khung. */
+export const BOARD_RENDERED_EVENT = 'dqpcb:board-rendered'
+
 /** Chụp bo fit sát khung, `pxPerMm` quyết định cỡ ảnh theo kích thước bo. */
 export type CaptureFn = (pxPerMm?: number) => HTMLCanvasElement | null
 
@@ -1015,6 +1018,9 @@ export const Viewer2DWebGL: React.FC<Viewer2DWebGLProps> = ({
     const mode = camMode ? 'CAM' : threeDMode ? '3D' : 'Real'
     console.info(`[WebGL] dựng ${fromBelow ? 'bottom' : 'top'}/${mode}: ${totalMs} ms, ${ok} lớp, ${cacheHits} từ cache`)
     setFailed(bad)
+    // Báo cho khung ngoài biết bo nào vừa hiện lên màn hình — màn chờ mở file chỉ tắt
+    // khi đúng bo mới đã dựng xong, không tắt lúc còn đang hiện bo cũ.
+    window.dispatchEvent(new CustomEvent(BOARD_RENDERED_EVENT, { detail: board.activeBoardId }))
     setStatus(
       `Đã dựng ${ok} lớp${cacheHits ? ` (${cacheHits} từ cache)` : ''} · khoan ${drillHoles} lỗ (${drillPlan.map((d) => d.name.split(/[\\/]/).pop()).join(', ') || 'không có'})`
     )

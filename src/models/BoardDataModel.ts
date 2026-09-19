@@ -123,12 +123,16 @@ export const BoardDataModel = {
   /**
    * Mở thêm bo (không đóng bo cũ) và chuyển sang bo cuối cùng vừa mở.
    * `sourceDirs` xếp cùng thứ tự với `list`, rỗng nếu không biết đường dẫn.
+   *
+   * Bo mới mở LUÔN hiện ở chế độ CAM: đó là chỗ soát từng lớp trước khi báo giá. Đang
+   * xem bo khác ở 2D/3D/2 Mặt mà mở thêm file thì cũng quay về CAM.
    */
   addBoards: (list: BoardParsedData[], sourceDirs: string[] = []) => {
     if (list.length === 0) return
     const added = list.map((data, i) => toBoard(data, sourceDirs[i] ?? ''))
     boards = [...boards, ...added]
     activeBoardId = added[added.length - 1].id
+    activeView = 'CAM'
     commit()
   },
 
