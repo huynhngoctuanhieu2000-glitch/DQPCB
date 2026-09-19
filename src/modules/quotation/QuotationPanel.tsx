@@ -939,7 +939,10 @@ const S: Record<string, React.CSSProperties> = {
   toggle: {
     backgroundColor: '#1e293b',
     color: '#94a3b8',
-    border: '1px solid #334155',
+    // Viết dạng dài: toggleOn chỉ đổi borderColor, trộn với `border` viết tắt là React cảnh báo.
+    borderWidth: '1px',
+    borderStyle: 'solid',
+    borderColor: '#334155',
     borderRadius: '4px',
     padding: '4px 10px',
     fontSize: '12px',
