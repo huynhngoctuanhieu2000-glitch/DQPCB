@@ -10,6 +10,7 @@
  */
 import React, { useMemo, useState } from 'react'
 import { PricingStore } from '../pricing/PricingStore'
+import { useIsMobile } from '../../ui/useIsMobile'
 import { CaptureSettings, DEFAULT_CAPTURE_SETTINGS, type CaptureSettingsData } from './CaptureSettings'
 import {
   DEFAULT_CONFIG,
@@ -76,12 +77,17 @@ export const SettingsPanel: React.FC<{ onClose: () => void }> = ({ onClose }) =>
   const F = cfg.formula
   const T = F.tiered
 
+  const isMobile = useIsMobile()
+
   return (
     <div style={S.backdrop} onClick={onClose}>
-      <div style={S.modal} onClick={(e) => e.stopPropagation()}>
+      <div style={{ ...S.modal, ...(isMobile ? S.modalMobile : null) }} onClick={(e) => e.stopPropagation()}>
+        {/* Điện thoại: bỏ phụ đề, tiêu đề không xuống dòng — chừa chỗ cho ba tab. */}
         <div style={S.header}>
-          <span style={S.headerTitle}>⚙ Cài đặt</span>
-          <span style={S.headerSub}>{page === 'capture' ? 'Ảnh chụp' : 'Công thức tính tiền'}</span>
+          <span style={{ ...S.headerTitle, whiteSpace: 'nowrap' }}>⚙ Cài đặt</span>
+          {!isMobile && (
+            <span style={S.headerSub}>{page === 'capture' ? 'Ảnh chụp' : 'Công thức tính tiền'}</span>
+          )}
           <div style={S.tabs}>
             {(
               [
@@ -157,7 +163,7 @@ export const SettingsPanel: React.FC<{ onClose: () => void }> = ({ onClose }) =>
               </div>
             </div>
 
-            <table style={S.table}>
+            <div style={S.tableWrap}><table style={S.table}>
               <thead>
                 <tr>
                   <th style={S.th}>Số lượng (pcs)</th>
@@ -207,7 +213,7 @@ export const SettingsPanel: React.FC<{ onClose: () => void }> = ({ onClose }) =>
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </table></div>
             <button
               style={S.addRow}
               onClick={() =>
@@ -355,7 +361,7 @@ export const SettingsPanel: React.FC<{ onClose: () => void }> = ({ onClose }) =>
               />
             </div>
 
-            <table style={S.table}>
+            <div style={S.tableWrap}><table style={S.table}>
               <thead>
                 <tr>
                   <th style={S.th}>Đơn dưới (đ)</th>
@@ -395,7 +401,7 @@ export const SettingsPanel: React.FC<{ onClose: () => void }> = ({ onClose }) =>
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </table></div>
           </Section>
 
           {/* ── Bảng phương án ─────────────────────────── */}
@@ -403,7 +409,7 @@ export const SettingsPanel: React.FC<{ onClose: () => void }> = ({ onClose }) =>
             title="Phương án giá"
             note="Nhánh <50 pcs tính theo diện tích thuần. Nhánh ≥50 pcs thêm phí khuôn theo diện tích panel và đơn giá diện tích rẻ hơn."
           >
-            <table style={S.table}>
+            <div style={S.tableWrap}><table style={S.table}>
               <thead>
                 <tr>
                   <th style={S.th}>Phương án</th>
@@ -466,7 +472,7 @@ export const SettingsPanel: React.FC<{ onClose: () => void }> = ({ onClose }) =>
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </table></div>
           </Section>
 
           {/* ── Đối chiếu sheet ────────────────────────── */}
@@ -479,7 +485,7 @@ export const SettingsPanel: React.FC<{ onClose: () => void }> = ({ onClose }) =>
                 ? '✓ Cả 7 ca khớp sheet'
                 : `⚠ ${drift}/7 ca lệch so với sheet — cấu hình đang khác bản giá gốc`}
             </div>
-            <table style={S.table}>
+            <div style={S.tableWrap}><table style={S.table}>
               <thead>
                 <tr>
                   <th style={S.th}>#</th>
@@ -512,7 +518,7 @@ export const SettingsPanel: React.FC<{ onClose: () => void }> = ({ onClose }) =>
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </table></div>
           </Section>
           </>
           )}
@@ -534,7 +540,7 @@ export const SettingsPanel: React.FC<{ onClose: () => void }> = ({ onClose }) =>
               setSaved(false)
             }}
           >
-            Về mặc định
+            {isMobile ? 'Mặc định' : 'Về mặc định'}
           </button>
           <button style={S.btnGhost} onClick={onClose}>
             Đóng
@@ -580,7 +586,7 @@ const StencilSection: React.FC<{
       title="Bảng giá stencil khung nhôm"
       note="Giá một tấm theo cỡ khung. Vùng mạch là bo lớn nhất đặt vừa khung đó (xoay 90° vẫn tính). Kích thước tính bằng cm."
     >
-      <table style={S.table}>
+      <div style={S.tableWrap}><table style={S.table}>
         <thead>
           <tr>
             <th style={S.th}>#</th>
@@ -649,7 +655,7 @@ const StencilSection: React.FC<{
             </tr>
           ))}
         </tbody>
-      </table>
+      </table></div>
       <button
         style={S.addRow}
         onClick={() =>
@@ -697,6 +703,10 @@ const S: Record<string, React.CSSProperties> = {
     justifyContent: 'center',
     zIndex: 110,
   },
+  /** Điện thoại: hộp thoại chiếm trọn màn hình. */
+  modalMobile: { width: '100vw', height: '100dvh', maxHeight: 'none', borderRadius: 0, border: 'none' },
+  /** Bảng rộng hơn màn điện thoại thì cuộn ngang ngay tại chỗ, không kéo cả thân hộp. */
+  tableWrap: { overflowX: 'auto', maxWidth: '100%' },
   modal: {
     width: 'min(880px, 94vw)',
     maxHeight: '92vh',
