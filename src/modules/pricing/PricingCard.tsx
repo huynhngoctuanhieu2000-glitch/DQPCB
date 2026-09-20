@@ -15,6 +15,17 @@ import { MASK_COLORS } from '../../models/MaskColors'
 import type { QuotationSeed } from '../quotation/QuotationPanel'
 import { PricingStore } from './PricingStore'
 import {
+  COPPER_CHOICES,
+  FINISHES,
+  LAYER_CHOICES,
+  MATERIALS,
+  THICKNESS_CHOICES,
+  defaultSpec,
+  optionForSpec,
+  specSummary,
+  type BoardSpec,
+} from './BoardSpec'
+import {
   computePrice,
   fitsTable,
   usesTable,
@@ -38,23 +49,11 @@ const parseDigits = (raw: string): number | null => {
   return s === '' ? null : Number(s)
 }
 
-/**
- * Số lớp đồng đọc được từ Gerber → phương án giá mặc định.
- *
- * Chỉ suy ra được số lớp, không suy ra được bề mặt hay độ dày đồng — bo mạ vàng hay
- * 2oz nhìn từ Gerber vẫn là 2 lớp. Nên đây là điểm khởi đầu, người lập vẫn phải đổi
- * tay khi khách đặt loại khác.
- */
-// Mỗi số lớp một phương án riêng (L1, L2, L4, L6…). Trước đây mọi bo từ 4 lớp trở lên
-// gộp vào L4 — bo 6 lớp bị báo theo giá 4 lớp, thấp hơn thật mà không ai hay. Giờ số
-// lớp chưa có đơn giá thì phương án không tồn tại, thẻ báo rõ và không ra giá.
-const optionFromLayers = (layerCount: number): string => `L${Math.max(1, layerCount)}`
-
 /** Những gì người lập đã nhập trên thẻ cho một bo. */
 interface CardInputs {
   qty: number | null
-  option: string
-  optionTouched: boolean
+  spec: BoardSpec
+  specTouched: boolean
   mode: PriceMode | null
   panelX: number
   panelY: number
@@ -88,7 +87,7 @@ export const PricingCard: React.FC<{
   useEffect(() => PricingStore.subscribe(setCfg), [])
 
   const [qty, setQty] = useState<number | null>(5)
-  const [option, setOption] = useState('L2')
+  const [spec, setSpec] = useState<BoardSpec>(() => defaultSpec(2))
   const [mode, setMode] = useState<PriceMode | null>(null)
   const [panelX, setPanelX] = useState(1)
   const [panelY, setPanelY] = useState(1)
@@ -97,13 +96,21 @@ export const PricingCard: React.FC<{
   const [extraFeeCny, setExtraFeeCny] = useState(0)
   const [forceFormula, setForceFormula] = useState(false)
   const [advanced, setAdvanced] = useState(false)
+  /** Khối thông số bo mở hay thu gọn. Thu gọn chỉ hiện một dòng tóm tắt — mở bo xong
+   *  phần lớn lần chỉ cần liếc qua, không phải sửa. */
+  const [specOpen, setSpecOpen] = useState(false)
   /** Thành tiền gõ tay — chỉ dùng khi số lượng rơi ngoài bảng giá nhà máy. */
   const [manualAmount, setManualAmount] = useState<number | null>(null)
   /** Kích thước gõ tay, cm. null = bám theo bo đang mở. */
   const [sizeOverride, setSizeOverride] = useState<{ w: number; h: number } | null>(null)
 
-  /** Người lập đã tự chọn phương án chưa — chọn rồi thì đổi bo mới được đạp lên. */
-  const [optionTouched, setOptionTouched] = useState(false)
+  /** Người lập đã tự sửa thông số chưa — sửa rồi thì đổi bo mới được đạp lên. */
+  const [specTouched, setSpecTouched] = useState(false)
+  /** Sửa một ô thông số; mọi ô đều tính là "đã sửa tay". */
+  const editSpec = (patch: Partial<BoardSpec>) => {
+    setSpec((prev) => ({ ...prev, ...patch }))
+    setSpecTouched(true)
+  }
 
   // Đổi bo thì cất lại những gì đang nhập cho bo cũ và lấy ra bản đã nhập của bo mới —
   // mở hai bo, tính bo 1 xong sang bo 2 rồi quay lại bo 1 phải thấy đúng số lượng đã
@@ -118,7 +125,7 @@ export const PricingCard: React.FC<{
   if (board.activeBoardId !== seenBoardId) {
     if (seenBoardId) {
       cardMemory.set(seenBoardId, {
-        qty, option, optionTouched, mode, panelX, panelY, railX, railY,
+        qty, spec, specTouched, mode, panelX, panelY, railX, railY,
         extraFeeCny, forceFormula, manualAmount, sizeOverride,
       })
     }
@@ -126,8 +133,8 @@ export const PricingCard: React.FC<{
     const saved = board.activeBoardId ? cardMemory.get(board.activeBoardId) : undefined
     if (saved) {
       setQty(saved.qty)
-      setOption(saved.option)
-      setOptionTouched(saved.optionTouched)
+      setSpec(saved.spec)
+      setSpecTouched(saved.specTouched)
       setMode(saved.mode)
       setPanelX(saved.panelX)
       setPanelY(saved.panelY)
@@ -140,10 +147,15 @@ export const PricingCard: React.FC<{
     } else {
       setSizeOverride(null)
       setManualAmount(null)
-      setOptionTouched(false)
-      if (board.isLoaded) setOption(optionFromLayers(board.layerCount))
+      setSpecTouched(false)
+      if (board.isLoaded) setSpec(defaultSpec(board.layerCount))
     }
   }
+
+  // Thông số đặt hàng → phương án trong bảng giá. Không có thì để rỗng: computePrice sẽ
+  // báo lỗi "không có phương án", đúng ý không lấy giá loại khác thay vào.
+  const optionKeys = useMemo(() => cfg.options.map((o) => o.key), [cfg])
+  const option = useMemo(() => optionForSpec(spec, optionKeys), [spec, optionKeys])
 
   // Phải memo theo GIÁ TRỊ kích thước, không theo object bounds: object mới mỗi lượt
   // render sẽ kéo basis → effect báo giá → Layout setState → render lại, lặp vô hạn.
@@ -159,7 +171,9 @@ export const PricingCard: React.FC<{
   // đổi SL trên form thì form tra lại từ đúng cơ sở này.
   const basis = useMemo(
     (): PriceBasis | null =>
-      size
+      // Chưa có phương án cho thông số đang chọn thì KHÔNG tính: ô đỏ phía trên đã nói
+      // rõ vì sao, khỏi kèm thêm dòng lỗi thô của computePrice.
+      size && option
         ? {
             boardW: size.w,
             boardH: size.h,
@@ -205,7 +219,7 @@ export const PricingCard: React.FC<{
     size && fitsTable(size.w * 10, size.h * 10, cfg.table)
       ? panelX > 1 || panelY > 1
         ? 'đã ghép panel'
-        : option !== cfg.table.coversOption
+        : option && option !== cfg.table.coversOption
           ? `loại "${cfg.options.find((o) => o.key === option)?.label ?? option}" không nằm trong bảng giá nhà máy (bảng chỉ có ${cfg.options.find((o) => o.key === cfg.table.coversOption)?.label ?? cfg.table.coversOption})`
           : null // người lập tự gạt sang Công thức thì không cần giải thích
       : null
@@ -214,6 +228,8 @@ export const PricingCard: React.FC<{
   // cho bấm "Bảng tra" hay không, và nói được vì sao không.
   const tableUnavailable = !size
     ? 'chưa có kích thước bo'
+    : !option
+      ? 'chưa có công thức cho thông số đang chọn'
     : !fitsTable(size.w * 10, size.h * 10, cfg.table)
       ? 'bo lớn hơn khổ bảng giá nhà máy'
       : panelX > 1 || panelY > 1
@@ -297,80 +313,80 @@ export const PricingCard: React.FC<{
         </div>
       )}
 
-      {/* Loại bo = số lớp đồng + bề mặt/độ dày đồng. Gerber chỉ cho biết số lớp, nên
-          mặc định suy từ đó; mạ vàng, 2oz, mạch dẻo thì người lập chọn tay. */}
-      <InfoRow label="Loại bo">
-        <select
-          style={S.select}
-          value={option}
-          onChange={(e) => {
-            setOption(e.target.value)
-            setOptionTouched(true)
-          }}
-        >
-          {!cfg.options.some((o) => o.key === option) && (
-            <option value={option} disabled>
-              {option.replace(/^L/, '')} lớp — chưa có đơn giá
-            </option>
-          )}
-          {cfg.options.map((o) => (
-            <option key={o.key} value={o.key}>
-              {o.label}
-            </option>
-          ))}
-        </select>
-      </InfoRow>
-      {!cfg.options.some((o) => o.key === option) && (
+      {/* Thông số đặt hàng, chọn kiểu JLC. Gerber chỉ cho biết số lớp nên chỉ số lớp là
+          tự điền; bề mặt, độ dày bo, độ dày đồng do người lập chọn theo yêu cầu khách.
+          Gấp lại khi không sửa: năm hàng ô chọn đẩy phần giá xuống quá sâu. */}
+      <button style={S.specHead} onClick={() => setSpecOpen((v) => !v)}>
+        {/* Thu gọn: chỉ một dòng thông số, không lặp lại nhãn cho đỡ chật cột 280px. */}
+        <span style={S.specHeadArrow}>{specOpen ? '▾' : '▸'}</span>
+        <span style={specOpen ? S.specHeadLabel : S.specHeadValue}>
+          {specOpen ? 'Thông số bo' : specSummary(spec)}
+        </span>
+      </button>
+      {specOpen && (
+        <>
+          <SpecRow label="Vật liệu">
+            {MATERIALS.map((m) => (
+              <Chip key={m.key} on={spec.material === m.key} onClick={() => editSpec({ material: m.key })}>
+                {m.label}
+              </Chip>
+            ))}
+          </SpecRow>
+          <SpecRow label="Số lớp">
+            {LAYER_CHOICES.map((n) => (
+              <Chip key={n} on={spec.layers === n} onClick={() => editSpec({ layers: n })}>
+                {n}
+              </Chip>
+            ))}
+          </SpecRow>
+          <SpecRow label="Bề mặt">
+            {FINISHES.map((f) => (
+              <Chip key={f.key} on={spec.finish === f.key} onClick={() => editSpec({ finish: f.key })}>
+                {f.label}
+              </Chip>
+            ))}
+          </SpecRow>
+          <SpecRow label="Độ dày bo (mm)">
+            {THICKNESS_CHOICES.map((t) => (
+              <Chip key={t} on={spec.thicknessMm === t} onClick={() => editSpec({ thicknessMm: t })}>
+                {t.toFixed(1)}
+              </Chip>
+            ))}
+          </SpecRow>
+          <SpecRow label="Độ dày đồng (oz)">
+            {COPPER_CHOICES.map((c) => (
+              <Chip key={c} on={spec.copperOz === c} onClick={() => editSpec({ copperOz: c })}>
+                {c}
+              </Chip>
+            ))}
+          </SpecRow>
+        </>
+      )}
+      {!option && (
         <div style={S.noRate}>
-          Chưa có đơn giá cho bo {option.replace(/^L/, '')} lớp — app không lấy giá loại khác
-          thay vào. Thêm phương án {option} trong pricing-rules.json, hoặc chọn loại bo khác
-          nếu khách đồng ý.
+          Chưa có công thức giá cho: {specSummary(spec)}. App không lấy giá loại khác thay
+          vào — thêm phương án trong pricing-rules.json, hoặc đổi thông số nếu khách đồng ý.
         </div>
       )}
-      {board.isLoaded && (
+      {board.isLoaded && specOpen && (
         <div style={S.originLine}>
-          {optionTouched ? (
+          {specTouched ? (
             <>
               <span style={S.originManual}>đã sửa tay</span>
-              {option !== optionFromLayers(board.layerCount) && (
-                <button
-                  style={S.linkInline}
-                  onClick={() => {
-                    setOption(optionFromLayers(board.layerCount))
-                    setOptionTouched(false)
-                  }}
-                >
-                  ↺ về {board.layerCount} lớp theo Gerber
-                </button>
-              )}
+              <button
+                style={S.linkInline}
+                onClick={() => {
+                  setSpec(defaultSpec(board.layerCount))
+                  setSpecTouched(false)
+                }}
+              >
+                ↺ về {board.layerCount} lớp theo Gerber
+              </button>
             </>
           ) : (
             <span>theo Gerber: {board.layerCount} lớp đồng</span>
           )}
         </div>
-      )}
-
-      {/* Màu phủ bo — dùng chung cho Real 2D, 3D và 2 Mặt. Đặt cạnh loại bo vì cùng là
-          thông số đặt hàng, trước nằm lẻ trên thanh tab. */}
-      {board.isLoaded && (
-        <InfoRow label="Màu bo">
-          <div style={S.swatches}>
-            {MASK_COLORS.map((c) => (
-              <button
-                key={c.hex}
-                title={c.label}
-                onClick={() => BoardDataModel.setMaskColor(c.hex)}
-                style={{
-                  ...S.swatch,
-                  // Chấm dùng màu thương hiệu JLC; bo dựng bằng c.hex tối hơn, bảy
-                  // chấm tô bằng nó sẽ tối gần như nhau, khó bấm đúng.
-                  backgroundColor: c.dot,
-                  border: board.maskColor === c.hex ? '2px solid #60a5fa' : '1px solid rgba(255,255,255,0.25)',
-                }}
-              />
-            ))}
-          </div>
-        </InfoRow>
       )}
 
       <InfoRow label="File khoan">{board.isLoaded ? `${board.drillCount}` : '--'}</InfoRow>
@@ -603,6 +619,24 @@ export const PricingCard: React.FC<{
 }
 
 /** Một dòng thông tin bo — cùng kiểu với bảng thông tin cũ: nhãn trái, giá trị phải. */
+/** Một dòng thông số: nhãn ở trên, các ô chọn xuống dòng bên dưới — cột chỉ rộng 280px. */
+const SpecRow: React.FC<{ label: string; children: React.ReactNode }> = ({ label, children }) => (
+  <div style={S.specRow}>
+    <span style={S.specLabel}>{label}</span>
+    <div style={S.chips}>{children}</div>
+  </div>
+)
+
+const Chip: React.FC<{ on: boolean; onClick: () => void; children: React.ReactNode }> = ({
+  on,
+  onClick,
+  children,
+}) => (
+  <button onClick={onClick} style={{ ...S.chip, ...(on ? S.chipOn : null) }}>
+    {children}
+  </button>
+)
+
 const InfoRow: React.FC<{ label: string; children: React.ReactNode }> = ({ label, children }) => (
   <div style={S.infoRow}>
     <span style={S.infoLabel}>{label}</span>
@@ -629,6 +663,34 @@ const inputBase: React.CSSProperties = {
 }
 
 const S: Record<string, React.CSSProperties> = {
+  specHead: {
+    width: '100%',
+    display: 'flex',
+    alignItems: 'baseline',
+    gap: 6,
+    padding: '8px 0',
+    background: 'transparent',
+    border: 'none',
+    borderBottom: '1px solid #1f2430',
+    cursor: 'pointer',
+    textAlign: 'left',
+  },
+  specHeadArrow: { fontSize: 11, color: '#64748b' },
+  specHeadLabel: { fontSize: 12, color: '#94a3b8' },
+  specHeadValue: { fontSize: 12, color: '#e2e8f0', fontWeight: 600, flex: 1, minWidth: 0 },
+  specRow: { padding: '6px 0', display: 'flex', flexDirection: 'column', gap: 6 },
+  specLabel: { fontSize: 11, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.4 },
+  chips: { display: 'flex', flexWrap: 'wrap', gap: 6 },
+  chip: {
+    padding: '4px 10px',
+    fontSize: 12,
+    borderRadius: 6,
+    cursor: 'pointer',
+    backgroundColor: 'transparent',
+    color: '#cbd5e1',
+    border: '1px solid #334155',
+  },
+  chipOn: { backgroundColor: '#2563eb', color: '#ffffff', borderColor: '#60a5fa', fontWeight: 600 },
   swatches: { display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', justifyContent: 'flex-end' },
   swatch: { width: '16px', height: '16px', borderRadius: '3px', cursor: 'pointer', padding: 0 },
   infoRow: {
