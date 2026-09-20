@@ -232,7 +232,7 @@ export const Layout: React.FC = () => {
 
   /** Đầu bảng trượt trên điện thoại: hai tab Lớp / Thông tin, cả hai ngăn dùng chung. */
   const sheetTabs = (
-    <div style={{ display: 'flex', borderBottom: '1px solid #282b34', backgroundColor: '#14161b', flexShrink: 0 }}>
+    <div style={{ display: 'flex', alignItems: 'stretch', borderBottom: '1px solid #282b34', backgroundColor: '#14161b', flexShrink: 0 }}>
       {(
         [
           ['layers', `Lớp (${boardState.layers.length})`],
@@ -259,6 +259,23 @@ export const Layout: React.FC = () => {
           </div>
         )
       })}
+      {/* Đóng ngay trên bảng: nút "✕ Đóng" ở thanh trên cùng xa ngón tay khi bảng đang
+          chiếm nửa dưới màn hình. Giữ cả hai. */}
+      <button
+        onClick={() => setDrawer(null)}
+        title="Đóng bảng"
+        style={{
+          padding: '10px 14px',
+          background: 'transparent',
+          border: 'none',
+          borderLeft: '1px solid #282b34',
+          color: '#94a3b8',
+          fontSize: '15px',
+          cursor: 'pointer',
+        }}
+      >
+        ✕
+      </button>
     </div>
   )
 
@@ -499,8 +516,56 @@ export const Layout: React.FC = () => {
           )
         })()}
 
+        {/* Điện thoại mở từ hai bo trở lên: chọn bo bằng dropdown. Dải tab ngang phải
+            vuốt mới thấy bo sau, mà thanh này đã chật vì còn nút chế độ xem. */}
+        {isMobile && boardState.boards.length > 1 && (
+          <span style={{ position: 'relative', flex: 1, minWidth: 0, display: 'flex' }}>
+            <select
+              value={boardState.activeBoardId ?? ''}
+              onChange={(e) => BoardDataModel.setActiveBoard(e.target.value)}
+              style={{
+                ...drawerBtn(false),
+                flex: 1,
+                minWidth: 0,
+                appearance: 'none',
+                WebkitAppearance: 'none',
+                paddingRight: '40px',
+                lineHeight: 1.2,
+                textOverflow: 'ellipsis',
+              }}
+            >
+              {boardState.boards.map((b) => (
+                <option key={b.id} value={b.id}>
+                  📁 {b.projectName}
+                </option>
+              ))}
+            </select>
+            <span style={{ position: 'absolute', right: 26, top: '50%', transform: 'translateY(-55%)', pointerEvents: 'none', fontSize: 10, color: '#94a3b8' }}>
+              ▼
+            </span>
+            <button
+              onClick={() => boardState.activeBoardId && BoardDataModel.closeBoard(boardState.activeBoardId)}
+              title="Đóng bo đang xem"
+              style={{
+                position: 'absolute',
+                right: 4,
+                top: '50%',
+                transform: 'translateY(-50%)',
+                background: 'transparent',
+                border: 'none',
+                color: '#94a3b8',
+                fontSize: '12px',
+                padding: '2px 4px',
+                cursor: 'pointer',
+              }}
+            >
+              ✕
+            </button>
+          </span>
+        )}
+
         {/* Tab các bo đang mở — thả nhiều ZIP thì mỗi ZIP một bo */}
-        {boardState.boards.length > 0 && (
+        {!(isMobile && boardState.boards.length > 1) && boardState.boards.length > 0 && (
           <div style={{ display: 'flex', alignItems: 'center', gap: '4px', overflowX: 'auto', ...(isMobile ? { flex: 1, minWidth: 0 } : { flexShrink: 0 }) }}>
             {boardState.boards.map((b) => {
               const isActive = b.id === boardState.activeBoardId
