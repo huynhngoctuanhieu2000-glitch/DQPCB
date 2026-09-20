@@ -362,6 +362,28 @@ export const PricingCard: React.FC<{
           </SpecRow>
         </>
       )}
+      {/* Màu phủ bo — dùng chung cho Real 2D, 3D và 2 Mặt. Đặt cạnh thông số vì cùng là
+          thứ đặt hàng, trước nằm lẻ trên thanh tab. */}
+      {board.isLoaded && (
+        <InfoRow label="Màu bo">
+          <div style={S.swatches}>
+            {MASK_COLORS.map((c) => (
+              <button
+                key={c.hex}
+                title={c.label}
+                onClick={() => BoardDataModel.setMaskColor(c.hex)}
+                style={{
+                  ...S.swatch,
+                  // Chấm dùng màu thương hiệu JLC; bo dựng bằng c.hex tối hơn, bảy
+                  // chấm tô bằng nó sẽ tối gần như nhau, khó bấm đúng.
+                  backgroundColor: c.dot,
+                  border: board.maskColor === c.hex ? '2px solid #60a5fa' : '1px solid rgba(255,255,255,0.25)',
+                }}
+              />
+            ))}
+          </div>
+        </InfoRow>
+      )}
       {!option && (
         <div style={S.noRate}>
           Chưa có công thức giá cho: {specSummary(spec)}. App không lấy giá loại khác thay
@@ -680,17 +702,6 @@ const S: Record<string, React.CSSProperties> = {
   specHeadValue: { fontSize: 12, color: '#e2e8f0', fontWeight: 600, flex: 1, minWidth: 0 },
   specRow: { padding: '6px 0', display: 'flex', flexDirection: 'column', gap: 6 },
   specLabel: { fontSize: 11, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.4 },
-  chips: { display: 'flex', flexWrap: 'wrap', gap: 6 },
-  chip: {
-    padding: '4px 10px',
-    fontSize: 12,
-    borderRadius: 6,
-    cursor: 'pointer',
-    backgroundColor: 'transparent',
-    color: '#cbd5e1',
-    border: '1px solid #334155',
-  },
-  chipOn: { backgroundColor: '#2563eb', color: '#ffffff', borderColor: '#60a5fa', fontWeight: 600 },
   swatches: { display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', justifyContent: 'flex-end' },
   swatch: { width: '16px', height: '16px', borderRadius: '3px', cursor: 'pointer', padding: 0 },
   infoRow: {
