@@ -120,20 +120,34 @@ export const splitOutlineLoops = (
     let best = -1
     for (let j = 0; j < parts.length; j++) {
       if (j === i || areas[j] <= areas[i]) continue
-      if (!boxInside(boxes[i], boxes[j], 0.01)) continue
+      // Không đòi nằm TRỌN: khấc ở mép bo hay được vẽ lấn ra ngoài cạnh vài phần trăm mm
+      // (bo "AC_Board_Mon22_2": khấc lấn 0.025–0.037 mm) mà vẫn là lỗ. Đòi tâm nằm trong
+      // vòng chứa và ít nhất nửa ô bao chồng lên nó; rail thì tâm nằm ngoài bo.
+      if (overlapRatio(boxes[i], boxes[j]) < 0.5) continue
       const c = [(boxes[i][0] + boxes[i][2]) / 2, (boxes[i][1] + boxes[i][3]) / 2]
       // Tâm ô bao của lỗ tròn/chữ nhật nằm trong chính nó; lỗ hình chữ C thì tâm có thể
       // rơi ra ngoài lỗ nhưng vẫn trong vòng chứa — đúng thứ cần biết ở đây.
-      if (!pointInPolygon(c, polys[j]) && !pointInPolygon(polys[i][0], polys[j])) continue
+      if (!pointInPolygon(c, polys[j])) continue
       if (best === -1 || areas[j] < areas[best]) best = j
     }
     return best
   }
 
+  // Ô bao cả lớp viền — để nhận ra rail: dải chạy gần hết một cạnh của tấm.
+  const all = bbox(polys.flat())
+  const railLike = (i: number) => {
+    const [x0, y0, x1, y1] = boxes[i]
+    return x1 - x0 >= (all[2] - all[0]) * 0.5 || y1 - y0 >= (all[3] - all[1]) * 0.5
+  }
+
   const isCutout = (i: number): boolean => {
+    const small = areas[i] / biggest < OUTLINE_CUTOUT_MAX_RATIO
     const host = containerOf(i)
-    if (host === -1) return false
-    if (areas[i] / areas[host] < OUTLINE_CUTOUT_MAX_RATIO) return true
+    // Không nằm trong vòng nào: rail thì là thân bo; vòng nhỏ khác vẫn là lỗ như trước
+    // (lỗ mouse-bite ở tab giữa các bo không nằm trong bo nào — hồi quy "Dual USB
+    // Switch-Panel" mất hơn 30 lỗ khi coi mọi vòng lẻ là thân bo).
+    if (host === -1) return small && !railLike(i)
+    if (small) return true
     const poly = polys[i]
     if (poly.length < 3) return false
     let inside = 0
@@ -146,11 +160,19 @@ export const splitOutlineLoops = (
   // Nét HỞ nằm trong một vòng khác là đường phay/rãnh cắt vẽ bằng một nét (bo
   // "Slaver_Ceiling": đường gấp khúc tách cụm đầu nối). Tô nó thì hai đầu hở bị nối
   // thẳng thành một mảng lạ; khoét thì thủng mất một mảng bo. Chỉ vẽ nét.
+  //
+  // Chỉ khi hở RÕ: khoảng hở ≥ nửa chiều dài nét (đường phay Slaver: 0.58; vạch V-cut
+  // 0.7–0.95). Viền bo con hở một khe nhỏ (panel "SAL-66": 0.04–0.25) vẫn tô như vòng
+  // kín — coi nó là nét thì bo con mất nền.
   const isOpen = (i: number) => {
-    const ch = parts[i]?.children ?? []
-    const a = ch[0]?.segments?.[0]?.start
-    const b = ch[ch.length - 1]?.segments?.[0]?.end
-    return !!a && !!b && Math.hypot(a[0] - b[0], a[1] - b[1]) * scale > OPEN_GAP_MM
+    const segs = (parts[i]?.children ?? []).map((c: any) => c?.segments?.[0]).filter(Boolean)
+    if (segs.length === 0) return false
+    const a = segs[0].start
+    const b = segs[segs.length - 1].end
+    const gap = Math.hypot(a[0] - b[0], a[1] - b[1]) * scale
+    let len = 0
+    for (const sg of segs) len += Math.hypot(sg.end[0] - sg.start[0], sg.end[1] - sg.start[1]) * scale
+    return gap > OPEN_GAP_MM && gap >= len * 0.5
   }
 
   const body: any[] = []
@@ -174,6 +196,10 @@ const bbox = (poly: number[][]): number[] => {
   return [x0, y0, x1, y1]
 }
 
-/** Ô a nằm trọn trong ô b (cho lệch `tol` mm ở mép — hai vòng chung cạnh). */
-const boxInside = (a: number[], b: number[], tol: number) =>
-  a[0] >= b[0] - tol && a[1] >= b[1] - tol && a[2] <= b[2] + tol && a[3] <= b[3] + tol
+/** Phần ô bao a chồng lên ô b, tính theo diện tích ô a (0..1). */
+const overlapRatio = (a: number[], b: number[]) => {
+  const w = Math.min(a[2], b[2]) - Math.max(a[0], b[0])
+  const h = Math.min(a[3], b[3]) - Math.max(a[1], b[1])
+  const area = (a[2] - a[0]) * (a[3] - a[1])
+  return w > 0 && h > 0 && area > 0 ? (w * h) / area : 0
+}
