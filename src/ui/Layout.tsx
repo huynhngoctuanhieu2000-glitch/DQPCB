@@ -79,7 +79,7 @@ export const Layout: React.FC = () => {
         gapPx: SPLIT_GAP_PX,
         background: '#eeeeee',
         name: boardState.projectName ?? '',
-        layerCount: boardState.layerCount,
+        layerCount: boardState.layersOverride ?? boardState.layerCount,
         widthMM: boardState.bounds.widthMM,
         heightMM: boardState.bounds.heightMM,
       })
@@ -1045,7 +1045,7 @@ export const Layout: React.FC = () => {
                 <BoardBadge
                   bounds={boardState.bounds}
                   name={boardState.projectName ?? ''}
-                  layerCount={boardState.layerCount}
+                  layerCount={boardState.layersOverride ?? boardState.layerCount}
                   panel={splitSize}
                 />
               </div>

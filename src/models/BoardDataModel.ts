@@ -31,6 +31,11 @@ export interface Board {
   sourceDir: string
   /** Thời gian đọc bộ file (giải nén + nhận diện + plot), ms. 0 nếu không đo. */
   parseMs: number
+  /**
+   * Số lớp người lập chọn tay trong "Thông số bo", null nếu vẫn theo Gerber. Nhãn ở
+   * 2 Mặt và ảnh copy gửi khách phải ghi đúng số lớp sẽ đặt, không phải số đọc từ file.
+   */
+  layersOverride: number | null
 }
 
 /**
@@ -65,6 +70,7 @@ const emptyBoard = (): Board => ({
   failedFiles: [],
   sourceDir: '',
   parseMs: 0,
+  layersOverride: null,
 })
 
 let boards: Board[] = []
@@ -119,6 +125,7 @@ const toBoard = (data: BoardParsedData, sourceDir = '', parseMs = 0): Board => (
   failedFiles: data.failedFiles ?? [],
   sourceDir,
   parseMs,
+  layersOverride: null,
 })
 
 export const BoardDataModel = {
@@ -212,6 +219,13 @@ export const BoardDataModel = {
   setMaskColor: (color: string) => {
     lastMaskColor = color
     updateActive((board) => ({ ...board, maskColor: color }))
+  },
+
+  /** Số lớp chọn tay cho bo đang xem; null = theo Gerber. Không đổi thì không báo. */
+  setLayersOverride: (layers: number | null) => {
+    const active = boards.find((b) => b.id === activeBoardId)
+    if (!active || active.layersOverride === layers) return
+    updateActive((board) => ({ ...board, layersOverride: layers }))
   },
 
   setActiveView: (view: BoardState['activeView']) => {

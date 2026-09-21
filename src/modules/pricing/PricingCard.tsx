@@ -14,6 +14,8 @@ import { BoardDataModel, type BoardState } from '../../models/BoardDataModel'
 import { MASK_COLORS } from '../../models/MaskColors'
 import type { QuotationSeed } from '../quotation/QuotationPanel'
 import { PricingStore } from './PricingStore'
+import { PanelPreview, type BoardShape, type PanelKind } from './PanelPreview'
+import { copperSamplePoints, loopPolygon, splitOutlineLoops } from '../../lib/gerber-reader'
 import {
   COPPER_CHOICES,
   FINISHES,
@@ -27,6 +29,7 @@ import {
 } from './BoardSpec'
 import {
   computePrice,
+  pickStencil,
   fitsTable,
   usesTable,
   type PriceBasis,
@@ -52,6 +55,10 @@ const parseDigits = (raw: string): number | null => {
 /** Những gì người lập đã nhập trên thẻ cho một bo. */
 interface CardInputs {
   qty: number | null
+  panelOn: boolean
+  qtyFrom: 'pcs' | 'sets'
+  setCount: number | null
+  panelKind: PanelKind
   spec: BoardSpec
   specTouched: boolean
   mode: PriceMode | null
@@ -86,7 +93,22 @@ export const PricingCard: React.FC<{
   const [cfg, setCfg] = useState<PricingConfig>(PricingStore.getConfig())
   useEffect(() => PricingStore.subscribe(setCfg), [])
 
+  /** Số PCB khách đặt (luôn là số bo lẻ, kể cả khi ghép panel). */
   const [qty, setQty] = useState<number | null>(5)
+  /** Có ghép panel không. Tắt thì mọi ô panel/rail coi như 1×1, rail 0. */
+  const [panelOn, setPanelOn] = useState(false)
+  /**
+   * Ghép panel nhập từ đâu:
+   *   'pcs'  — xưởng ghép: nhập số PCB, ra số set; tấm = bo × X×Y + rail.
+   *   'sets' — khách gửi file ĐÃ GHÉP SẴN: Gerber chính là tấm panel; nhập số set, ra số
+   *            PCB. Không nhân X×Y vào kích thước, không cộng rail (rail nằm sẵn trong file).
+   * Cả hai đều tính tiền theo số set × diện tích tấm (chốt 21/09/2026).
+   */
+  const [qtyFrom, setQtyFrom] = useState<'pcs' | 'sets'>('pcs')
+  /** Số set nhập tay, chỉ dùng khi qtyFrom = 'sets'. */
+  const [setCount, setSetCount] = useState<number | null>(1)
+  /** Kiểu ghép: V-cut cần tấm đủ lớn cho máy cắt; mouse bite (phay + cầu) thì không. */
+  const [panelKind, setPanelKind] = useState<PanelKind>('vcut')
   const [spec, setSpec] = useState<BoardSpec>(() => defaultSpec(2))
   const [mode, setMode] = useState<PriceMode | null>(null)
   const [panelX, setPanelX] = useState(1)
@@ -125,7 +147,7 @@ export const PricingCard: React.FC<{
   if (board.activeBoardId !== seenBoardId) {
     if (seenBoardId) {
       cardMemory.set(seenBoardId, {
-        qty, spec, specTouched, mode, panelX, panelY, railX, railY,
+        qty, panelOn, qtyFrom, setCount, panelKind, spec, specTouched, mode, panelX, panelY, railX, railY,
         extraFeeCny, forceFormula, manualAmount, sizeOverride,
       })
     }
@@ -133,6 +155,10 @@ export const PricingCard: React.FC<{
     const saved = board.activeBoardId ? cardMemory.get(board.activeBoardId) : undefined
     if (saved) {
       setQty(saved.qty)
+      setPanelOn(saved.panelOn)
+      setQtyFrom(saved.qtyFrom)
+      setSetCount(saved.setCount)
+      setPanelKind(saved.panelKind)
       setSpec(saved.spec)
       setSpecTouched(saved.specTouched)
       setMode(saved.mode)
@@ -145,12 +171,21 @@ export const PricingCard: React.FC<{
       setManualAmount(saved.manualAmount)
       setSizeOverride(saved.sizeOverride)
     } else {
+      setPanelOn(false)
+      setQtyFrom('pcs')
       setSizeOverride(null)
       setManualAmount(null)
       setSpecTouched(false)
       if (board.isLoaded) setSpec(defaultSpec(board.layerCount))
     }
   }
+
+  // Số lớp chọn tay báo lên model, để nhãn ở 2 Mặt và ảnh copy ghi đúng số lớp sẽ đặt.
+  // Trùng số lớp Gerber thì coi như không sửa.
+  const layersOverride = specTouched && spec.layers !== board.layerCount ? spec.layers : null
+  useEffect(() => {
+    if (board.activeBoardId) BoardDataModel.setLayersOverride(layersOverride)
+  }, [board.activeBoardId, layersOverride])
 
   // Thông số đặt hàng → phương án trong bảng giá. Không có thì để rỗng: computePrice sẽ
   // báo lỗi "không có phương án", đúng ý không lấy giá loại khác thay vào.
@@ -167,6 +202,30 @@ export const PricingCard: React.FC<{
   )
   const size = sizeOverride ?? boardCm
 
+  // Ghép panel: công thức giá tính theo SỐ SET (diện tích = panel × số set), còn người lập
+  // nghĩ theo số PCB khách đặt. Giữ số PCB làm gốc, số set = làm tròn lên PCB ÷ bo/set.
+  const perSet = panelOn ? Math.max(1, panelX) * Math.max(1, panelY) : 1
+  const fromSets = panelOn && qtyFrom === 'sets'
+  /** Số đưa vào công thức giá: số set khi ghép panel, số PCB khi bo lẻ. */
+  const orderQty = fromSets ? setCount : qty === null ? null : panelOn ? Math.ceil(qty / perSet) : qty
+  /** Số PCB thật khách nhận. */
+  const pcsCount = fromSets ? (setCount === null ? null : setCount * perSet) : qty
+  // File ghép sẵn: Gerber đã là tấm panel → công thức coi như bo 1×1, không rail.
+  const tiled = panelOn && !fromSets
+  const usePanel = { panelX: tiled ? panelX : 1, panelY: tiled ? panelY : 1, railX: tiled ? railX : 0, railY: tiled ? railY : 0 }
+  /** Gõ một số lượng (mốc bảng giá, nút gợi ý) vào đúng ô đang là ô nhập. */
+  const setOrderInput = (n: number) => (fromSets ? setSetCount(n) : setQty(n))
+  /** Đảo ô nhập ⇄ ô kết quả, giữ nguyên con số đang có. */
+  const swapQtyInput = () => {
+    if (fromSets) {
+      setQty(pcsCount)
+      setQtyFrom('pcs')
+    } else {
+      setSetCount(orderQty)
+      setQtyFrom('sets')
+    }
+  }
+
   // Tách cơ sở (mọi thứ trừ số lượng) ra riêng vì nó theo dòng báo giá sang form —
   // đổi SL trên form thì form tra lại từ đúng cơ sở này.
   const basis = useMemo(
@@ -178,18 +237,17 @@ export const PricingCard: React.FC<{
             boardW: size.w,
             boardH: size.h,
             option,
-            panelX,
-            panelY,
-            railX,
-            railY,
+            ...usePanel,
             extraFeeCny,
-            forceFormula,
+            // Bảng tra nhà máy chỉ cho bo ĐƠN LẺ: không ghép panel, không nhiều thiết kế,
+            // không mouse bite/V-cut. Tích Ghép panel (kể cả file ghép sẵn) là đi công thức.
+            forceFormula: forceFormula || panelOn,
             ...(mode ? { mode } : null),
           }
         : null,
-    [size, option, panelX, panelY, railX, railY, extraFeeCny, forceFormula, mode],
+    [size, option, panelOn, qtyFrom, panelX, panelY, railX, railY, extraFeeCny, forceFormula, mode],
   )
-  const input = useMemo(() => (basis && qty ? { ...basis, qty } : null), [basis, qty])
+  const input = useMemo(() => (basis && orderQty ? { ...basis, qty: orderQty } : null), [basis, orderQty])
 
   const { result, error } = useMemo((): { result: PriceResult | null; error: string | null } => {
     if (!input) return { result: null, error: null }
@@ -217,7 +275,7 @@ export const PricingCard: React.FC<{
   // Bo nhỏ mà vẫn phải đi công thức thì phải nói rõ vì sao, không để người lập đoán.
   const tableBlockedBy =
     size && fitsTable(size.w * 10, size.h * 10, cfg.table)
-      ? panelX > 1 || panelY > 1
+      ? panelOn
         ? 'đã ghép panel'
         : option && option !== cfg.table.coversOption
           ? `loại "${cfg.options.find((o) => o.key === option)?.label ?? option}" không nằm trong bảng giá nhà máy (bảng chỉ có ${cfg.options.find((o) => o.key === cfg.table.coversOption)?.label ?? cfg.table.coversOption})`
@@ -232,7 +290,7 @@ export const PricingCard: React.FC<{
       ? 'chưa có công thức cho thông số đang chọn'
     : !fitsTable(size.w * 10, size.h * 10, cfg.table)
       ? 'bo lớn hơn khổ bảng giá nhà máy'
-      : panelX > 1 || panelY > 1
+      : panelOn
         ? 'đã ghép panel'
         : option !== cfg.table.coversOption
           ? `bảng giá nhà máy chỉ có loại ${cfg.options.find((o) => o.key === cfg.table.coversOption)?.label ?? cfg.table.coversOption}`
@@ -240,7 +298,7 @@ export const PricingCard: React.FC<{
 
   const amount =
     result?.kind === 'table' || result?.kind === 'formula' ? result.priceVnd : manualAmount
-  const canSend = !!qty && amount !== null && amount > 0
+  const canSend = !!orderQty && amount !== null && amount > 0
 
   // Gõ tay đè lên kích thước Gerber thì báo giá phải ghi theo số đã tính giá, kẻo
   // dòng báo giá ghi một đằng mà tiền tính một nẻo. Dạng "200*350mm" khớp cột
@@ -259,14 +317,70 @@ export const PricingCard: React.FC<{
       canSend && basis
         ? {
             boardId: board.activeBoardId,
-            quantity: qty!,
+            quantity: orderQty!,
             amount: amount!,
             basis,
             ...(sizeText ? { size: sizeText } : null),
           }
         : null,
     )
-  }, [onPriceChange, synced, canSend, board.activeBoardId, qty, amount, basis, sizeText])
+  }, [onPriceChange, synced, canSend, board.activeBoardId, orderQty, amount, basis, sizeText])
+
+  // ── Nhắc nhở kỹ thuật (mốc của xưởng, chốt 21/09/2026) ──
+  // Cạnh bo < 15 mm: máy không kẹp được bo lẻ, phải ghép V-cut → giá tính có V-cut.
+  const MIN_BOARD_EDGE_MM = 15
+  // Ghép V-cut: tấm panel phải có cả hai cạnh ≥ 70 mm cho máy cắt V; mouse bite thì không.
+  const MIN_VCUT_PANEL_MM = 70
+  const boardMinMm = size ? Math.min(size.w, size.h) * 10 : null
+  const panelMm = size
+    ? { w: (size.w * usePanel.panelX + usePanel.railX) * 10, h: (size.h * usePanel.panelY + usePanel.railY) * 10 }
+    : null
+  const smallBoardWarn =
+    boardMinMm !== null && boardMinMm < MIN_BOARD_EDGE_MM
+      ? `Bo có cạnh ${+boardMinMm.toFixed(2)} mm < ${MIN_BOARD_EDGE_MM} mm — phải ghép V-cut, tính giá có V-cut.`
+      : null
+  const vcutPanelWarn =
+    panelOn && panelKind === 'vcut' && panelMm && Math.min(panelMm.w, panelMm.h) < MIN_VCUT_PANEL_MM
+      ? `Tấm panel ${+panelMm.w.toFixed(2)} × ${+panelMm.h.toFixed(2)} mm có cạnh < ${MIN_VCUT_PANEL_MM} mm — V-cut cần cả hai cạnh ≥ ${MIN_VCUT_PANEL_MM} mm. Tăng số bo, thêm rail, hoặc ghép mouse bite.`
+      : null
+
+  // Hình viền thật của một bo (mm, gốc ở góc dưới-trái) cho sơ đồ ghép panel. Tính một
+  // lần theo bộ lớp; kích thước sửa tay thì co giãn theo khi vẽ.
+  const gerberShape = useMemo(() => {
+    const ol = board.layers.find((l) => l.type === 'outline' && l.imageTree?.parts?.length)
+    if (!ol) return null
+    const sc = ol.imageTree.units === 'in' ? 25.4 : 1
+    const parts = ol.imageTree.parts
+    const sp = parts.length > 1
+      ? splitOutlineLoops(parts, { scale: sc, copperPoints: copperSamplePoints(board.layers) })
+      : { body: parts, cutouts: [] as any[] }
+    const body = sp.body.map((pt: any) => loopPolygon(pt, sc)).filter((pl: number[][]) => pl.length >= 3)
+    const holes = sp.cutouts.map((pt: any) => loopPolygon(pt, sc)).filter((pl: number[][]) => pl.length >= 3)
+    if (body.length === 0) return null
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity
+    for (const [x, y] of body.flat()) {
+      x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y)
+    }
+    const norm = (pl: number[][]) => pl.map(([x, y]) => [x - x0, y - y0])
+    return { body: body.map(norm), holes: holes.map(norm), w: x1 - x0, h: y1 - y0 }
+  }, [board.layers])
+  const boardShape = useMemo((): BoardShape | null => {
+    if (!gerberShape || !size || !(gerberShape.w > 0) || !(gerberShape.h > 0)) return null
+    const sx = (size.w * 10) / gerberShape.w, sy = (size.h * 10) / gerberShape.h
+    const fit = (pl: number[][]) => pl.map(([x, y]) => [x * sx, y * sy])
+    return { body: gerberShape.body.map(fit), holes: gerberShape.holes.map(fit) }
+  }, [gerberShape, size])
+
+  // ── Gợi ý stencil: khung rẻ nhất vừa TẤM sẽ in (panel nếu ghép, bo lẻ nếu không),
+  // mặt nào có lớp paste thì mặt đó cần một tấm. ──
+  const pasteSides = ['top', 'bottom'].filter((side) => board.layers.some((l) => l.type === 'solderpaste' && l.side === side))
+  const stencilTier = panelMm ? pickStencil(panelMm.w / 10, panelMm.h / 10, cfg.stencil) : null
+
+  /** Đơn giá dưới thành tiền: bo lẻ ghi / pcs; ghép panel ghi / set và quy ra / pcs. */
+  const unitText = (priceVnd: number) =>
+    panelOn && orderQty
+      ? [`${money(priceVnd / orderQty)} đ / set`, `${money(priceVnd / (pcsCount || orderQty * perSet))} đ / pcs`].join('\n')
+      : `${money(priceVnd / (orderQty || 1))} đ / pcs`
 
   // Kích thước hiện bằng mm cho khớp số đọc từ Gerber và cột KÍCH THƯỚC của báo giá;
   // state vẫn giữ cm vì công thức giá tính bằng cm.
@@ -310,6 +424,94 @@ export const PricingCard: React.FC<{
           <button style={S.linkInline} onClick={() => setSizeOverride(null)}>
             ↺ về {mm(boardCm.w)} × {mm(boardCm.h)} theo Gerber
           </button>
+        </div>
+      )}
+
+      {smallBoardWarn && <div style={S.warn}>⚠ {smallBoardWarn}</div>}
+
+      {/* Ghép panel ngay dưới kích thước: là thông số của tấm sẽ sản xuất, không phải tuỳ
+          chọn giá phụ. Tích vào mới hiện các ô, bo lẻ không phải nhìn thấy. */}
+      <label style={S.panelToggle}>
+        <input type="checkbox" checked={panelOn} onChange={(e) => setPanelOn(e.target.checked)} style={{ margin: 0 }} />
+        <span>Ghép panel</span>
+        {panelOn && <span style={S.panelHint}>{perSet} bo / set</span>}
+      </label>
+      {panelOn && (
+        <div style={S.panelBox}>
+          <div style={S.row}>
+            <span style={S.label}>Kiểu ghép</span>
+            <div style={S.kindGroup}>
+              {(
+                [
+                  ['vcut', 'V-cut'],
+                  ['mousebite', 'Mouse bite'],
+                ] as const
+              ).map(([k, label]) => (
+                <button
+                  key={k}
+                  onClick={() => setPanelKind(k)}
+                  style={{ ...S.chip, ...(panelKind === k ? S.chipOn : null) }}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div style={S.row}>
+            <span style={S.label}>Số bo mỗi cạnh</span>
+            <div style={S.sizeGroup}>
+              <input
+                style={S.sizeInput}
+                value={panelX}
+                onChange={(e) => setPanelX(Math.max(1, parseDigits(e.target.value) ?? 1))}
+              />
+              <span style={S.times}>×</span>
+              <input
+                style={S.sizeInput}
+                value={panelY}
+                onChange={(e) => setPanelY(Math.max(1, parseDigits(e.target.value) ?? 1))}
+              />
+            </div>
+          </div>
+          {!fromSets && (
+          <div style={S.row}>
+            <span style={S.label}>Rail</span>
+            <div style={S.sizeGroup}>
+              <input
+                style={S.sizeInput}
+                value={mm(railX)}
+                onChange={(e) => setRailX((parseNum(e.target.value) ?? 0) / 10)}
+              />
+              <span style={S.times}>×</span>
+              <input
+                style={S.sizeInput}
+                value={mm(railY)}
+                onChange={(e) => setRailY((parseNum(e.target.value) ?? 0) / 10)}
+              />
+              <span style={S.unit}>mm</span>
+            </div>
+          </div>
+          )}
+          {size && !fromSets && (
+            <PanelPreview
+              boardW={size.w * 10}
+              boardH={size.h * 10}
+              cols={Math.max(1, panelX)}
+              rows={Math.max(1, panelY)}
+              railX={railX * 10}
+              railY={railY * 10}
+              kind={panelKind}
+              shape={boardShape}
+            />
+          )}
+          {vcutPanelWarn && <div style={S.warn}>⚠ {vcutPanelWarn}</div>}
+          {size && fromSets && (
+            <div style={S.panelSize}>
+              {fromSets
+                ? `File ghép sẵn — tấm panel = kích thước Gerber ${mm(size.w)} × ${mm(size.h)} mm`
+                : `Tấm panel: ${mm(size.w * panelX + railX)} × ${mm(size.h * panelY + railY)} mm`}
+            </div>
+          )}
         </div>
       )}
 
@@ -451,25 +653,44 @@ export const PricingCard: React.FC<{
       </div>
 
       {/* Số lượng — mốc nhà máy bấm một phát, ô số để gõ trường hợp lạ */}
+      {/* Ô NHẬP ở trên, ô KẾT QUẢ (dấu =, chỉ đọc) ở dưới. Ghép panel thì có nút ⇅ để
+          đảo: bình thường nhập số PCB ra số set; khách gửi file ghép sẵn thì nhập số set
+          ra số PCB. Tiền luôn tính theo số set. */}
       <div style={S.row}>
-        <span style={S.label}>Số lượng</span>
+        <span style={S.label}>{fromSets ? 'Số set' : 'Số lượng'}</span>
         <div style={S.qtyGroup}>
           <input
             style={S.qtyInput}
-            value={qty ?? ''}
-            onChange={(e) => setQty(parseDigits(e.target.value))}
+            value={(fromSets ? setCount : qty) ?? ''}
+            onChange={(e) => (fromSets ? setSetCount : setQty)(parseDigits(e.target.value))}
           />
-          <span style={S.unit}>pcs</span>
+          <span style={S.unit}>{fromSets ? 'set' : 'pcs'}</span>
         </div>
       </div>
+      {panelOn && (
+        <div style={S.row}>
+          <button
+            style={S.swapBtn}
+            onClick={swapQtyInput}
+            title={fromSets ? 'Đảo: nhập số PCB → ra số set' : 'Đảo: file ghép sẵn — nhập số set → ra số PCB'}
+          >
+            ⇅
+          </button>
+          <span style={S.label}>= {fromSets ? 'Số lượng' : 'Số set'}</span>
+          <div style={S.qtyGroup}>
+            <span style={S.qtyResult}>{(fromSets ? pcsCount : orderQty) ?? '—'}</span>
+            <span style={S.unit}>{fromSets ? 'pcs' : 'set'}</span>
+          </div>
+        </div>
+      )}
 
       {onTablePath && (
         <div style={S.chips}>
           {cfg.table.tiers.map((t) => (
             <button
               key={t.qty}
-              onClick={() => setQty(t.qty)}
-              style={{ ...S.chip, ...(qty === t.qty ? S.chipOn : null) }}
+              onClick={() => setOrderInput(t.qty)}
+              style={{ ...S.chip, ...(orderQty === t.qty ? S.chipOn : null) }}
               title={`${t.qty} pcs — ${money(t.priceVnd)} đ`}
             >
               {t.qty}
@@ -491,12 +712,12 @@ export const PricingCard: React.FC<{
           <div style={S.offMsg}>{result.message}</div>
           <div style={S.offNeighbours}>
             {result.below && (
-              <button style={S.neighbour} onClick={() => setQty(result.below!.qty)}>
+              <button style={S.neighbour} onClick={() => setOrderInput(result.below!.qty)}>
                 {result.below.qty} pcs · {money(result.below.priceVnd)}
               </button>
             )}
             {result.above && (
-              <button style={S.neighbour} onClick={() => setQty(result.above!.qty)}>
+              <button style={S.neighbour} onClick={() => setOrderInput(result.above!.qty)}>
                 {result.above.qty} pcs · {money(result.above.priceVnd)}
               </button>
             )}
@@ -519,7 +740,7 @@ export const PricingCard: React.FC<{
       {result?.kind === 'table' && (
         <div style={S.priceBox}>
           <div style={S.priceMain}>{money(result.priceVnd)} đ</div>
-          <div style={S.priceSub}>{money(result.unitPriceVnd)} đ / pcs</div>
+          <div style={{ ...S.priceSub, whiteSpace: 'pre-line' }}>{unitText(result.priceVnd)}</div>
         </div>
       )}
 
@@ -545,7 +766,7 @@ export const PricingCard: React.FC<{
                   <span style={{ ...S.modeTag, ...(on ? { color: '#e2e8f0' } : null) }}>{label}</span>
                 </div>
                 <div style={{ ...S.priceMain, ...(on ? null : S.priceMainOff) }}>{money(r.priceVnd)} đ</div>
-                <div style={S.priceSub}>{money(r.unitPriceVnd)} đ / pcs</div>
+                <div style={{ ...S.priceSub, whiteSpace: 'pre-line' }}>{unitText(r.priceVnd)}</div>
               </label>
             )
           })}
@@ -560,12 +781,11 @@ export const PricingCard: React.FC<{
               value={`${+result.panelW.toFixed(2)} × ${+result.panelH.toFixed(2)} cm`}
             />
             <BreakRow label="Diện tích cả đơn" value={`${money(result.totalAreaCm2)} cm²`} />
-            <BreakRow label="Khối lượng" value={`${result.weightKg} kg`} />
             {result.bigBoardFeeCny > 0 && (
               <BreakRow label="Phí bo lớn" value={`¥ ${result.bigBoardFeeCny.toFixed(1)}`} />
             )}
-            <BreakRow label="Giá vốn" value={`¥ ${result.costCny.toFixed(1)}`} />
-            <BreakRow label={`+ VAT ${(cfg.formula.vatRate * 100).toFixed(0)}%`} value={`${money(result.priceWithVatVnd)} đ`} />
+            {/* Khối lượng, giá vốn (¥) và giá kèm VAT không hiện nữa (21/09/2026) — người lập
+                chỉ cần giá bán; mấy số đó vẫn nằm trong result nếu sau cần. */}
           </tbody>
         </table>
       )}
@@ -578,6 +798,34 @@ export const PricingCard: React.FC<{
         ↑ Đưa vào báo giá
       </button>
 
+      {/* ── Gợi ý stencil ── */}
+      {board.isLoaded && size && (
+        <div style={S.stencilBox}>
+          <div style={S.stencilHead}>
+            <span>Stencil gợi ý</span>
+            <span style={S.stencilFor}>{panelOn ? 'theo tấm panel' : 'theo bo'}</span>
+          </div>
+          {pasteSides.length === 0 ? (
+            <div style={S.stencilNote}>File không có lớp paste — thường không cần stencil.</div>
+          ) : stencilTier ? (
+            <>
+              <div style={S.stencilMain}>
+                Khung {stencilTier.frameW}×{stencilTier.frameH} cm{stencilTier.noFrame ? ' (không khung)' : ''} ·{' '}
+                {money(stencilTier.priceVnd)} đ/tấm
+              </div>
+              <div style={S.stencilNote}>
+                Vùng mạch {stencilTier.areaW}×{stencilTier.areaH} cm ·{' '}
+                {pasteSides.length === 2
+                  ? `2 tấm (Top + Bot) = ${money(stencilTier.priceVnd * 2)} đ`
+                  : `1 tấm mặt ${pasteSides[0] === 'top' ? 'Top' : 'Bot'}`}
+              </div>
+            </>
+          ) : (
+            <div style={S.stencilNote}>Tấm {panelMm ? `${+panelMm.w.toFixed(1)} × ${+panelMm.h.toFixed(1)} mm` : ''} lớn hơn mọi khung stencil trong bảng giá.</div>
+          )}
+        </div>
+      )}
+
       {/* ── Tuỳ chọn nâng cao ───────────────────────────── */}
       <button style={S.disclosure} onClick={() => setAdvanced((v) => !v)}>
         {advanced ? '▾' : '▸'} Tuỳ chọn {!advanced && onTablePath ? '(không cần cho bảng tra)' : ''}
@@ -585,41 +833,6 @@ export const PricingCard: React.FC<{
 
       {advanced && (
         <div style={S.advanced}>
-          <div style={S.row}>
-            <span style={S.label}>Ghép panel</span>
-            <div style={S.sizeGroup}>
-              <input
-                style={S.sizeInput}
-                value={panelX}
-                onChange={(e) => setPanelX(parseDigits(e.target.value) ?? 1)}
-              />
-              <span style={S.times}>×</span>
-              <input
-                style={S.sizeInput}
-                value={panelY}
-                onChange={(e) => setPanelY(parseDigits(e.target.value) ?? 1)}
-              />
-            </div>
-          </div>
-
-          <div style={S.row}>
-            <span style={S.label}>Rail</span>
-            <div style={S.sizeGroup}>
-              <input
-                style={S.sizeInput}
-                value={mm(railX)}
-                onChange={(e) => setRailX((parseNum(e.target.value) ?? 0) / 10)}
-              />
-              <span style={S.times}>×</span>
-              <input
-                style={S.sizeInput}
-                value={mm(railY)}
-                onChange={(e) => setRailY((parseNum(e.target.value) ?? 0) / 10)}
-              />
-              <span style={S.unit}>mm</span>
-            </div>
-          </div>
-
           <div style={S.row}>
             <span style={S.label} title="Phụ phí thủ công, tính bằng CNY (ô O3 của sheet)">
               Phí thêm
@@ -685,6 +898,47 @@ const inputBase: React.CSSProperties = {
 }
 
 const S: Record<string, React.CSSProperties> = {
+  warn: {
+    margin: '6px 0',
+    padding: '6px 8px',
+    borderRadius: 5,
+    fontSize: 11,
+    lineHeight: 1.45,
+    color: '#fde68a',
+    backgroundColor: '#2a2208',
+    border: '1px solid #6b5412',
+  },
+  kindGroup: { display: 'flex', gap: 4 },
+  stencilBox: { margin: '10px 0 4px', padding: '8px 10px', borderRadius: 6, backgroundColor: '#12151c', border: '1px solid #262b36' },
+  stencilHead: { display: 'flex', justifyContent: 'space-between', fontSize: 11, color: '#94a3b8', marginBottom: 4 },
+  stencilFor: { color: '#64748b' },
+  stencilMain: { fontSize: 13, fontWeight: 600, color: '#e2e8f0' },
+  stencilNote: { fontSize: 11, color: '#94a3b8', marginTop: 2 },
+  panelToggle: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+    padding: '8px 0',
+    fontSize: 12,
+    color: '#cbd5e1',
+    cursor: 'pointer',
+    borderBottom: '1px solid #1f2430',
+  },
+  panelHint: { marginLeft: 'auto', fontSize: 11, color: '#38bdf8', fontWeight: 600 },
+  panelBox: { padding: '4px 0 6px 20px', borderBottom: '1px solid #1f2430' },
+  swapBtn: {
+    marginRight: 6,
+    padding: '1px 6px',
+    fontSize: 13,
+    lineHeight: 1.2,
+    borderRadius: 4,
+    cursor: 'pointer',
+    color: '#38bdf8',
+    background: 'transparent',
+    border: '1px solid #334155',
+  },
+  qtyResult: { minWidth: 60, textAlign: 'right', fontSize: 14, fontWeight: 700, color: '#e2e8f0', padding: '4px 8px' },
+  panelSize: { fontSize: 11, color: '#94a3b8', textAlign: 'right', paddingTop: 2 },
   specHead: {
     width: '100%',
     display: 'flex',
