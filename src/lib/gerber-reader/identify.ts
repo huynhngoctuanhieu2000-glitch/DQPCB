@@ -261,7 +261,25 @@ export const drillPlatingOf = (
   if (fn === 'nonplated') return 'NPTH'
   if (fn === 'mixedplating') return 'mixed'
 
-  const type = head?.match(/^\s*;\s*TYPE\s*=\s*([A-Z_ ]+)/im)?.[1].replace(/[^A-Z]/gi, '').toUpperCase()
+  // Altium ghi CẢ HAI mục ";TYPE=PLATED" và ";TYPE=NON_PLATED" vào mọi file, mỗi mục kèm
+  // các mũi khoan thuộc nó — mục rỗng thì không có mũi nào. Phải xem mục nào có mũi thật:
+  // bo "AGVH7" (Vu Bao, 21/09/2026) có RoundHoles.TXT chứa cả lỗ mạ lẫn lỗ Ø3.2 không
+  // mạ, trước bị gán PTH vì chỉ đọc dòng ;TYPE= đầu tiên.
+  const used = new Set<string>()
+  let first: string | undefined
+  let current: string | undefined
+  for (const line of (head ?? '').split(/\r?\n/)) {
+    if (/^\s*%/.test(line)) break // hết header
+    const t = line.match(/^\s*;\s*TYPE\s*=\s*([A-Z_ ]+)/i)?.[1].replace(/[^A-Z]/gi, '').toUpperCase()
+    if (t) {
+      current = t
+      first ??= t
+    } else if (current && /^T\d+.*C[\d.]+/i.test(line.trim())) {
+      used.add(current)
+    }
+  }
+  if (used.has('PLATED') && used.has('NONPLATED')) return 'mixed'
+  const type = used.size === 1 ? [...used][0] : first
   if (type === 'NONPLATED') return 'NPTH'
   if (type === 'PLATED') return 'PTH'
 
@@ -291,11 +309,28 @@ export const looksLikeCamData = (content: string) => {
 export const isGerberContent = (content: string) => /%FS[LT]?[AI]?X\d/i.test(content.slice(0, 4000))
 
 /**
- * Đếm lỗ khoan. Excellon: mỗi dòng bắt đầu bằng X là một lỗ. Gerber (bộ Proteus):
- * mỗi lệnh flash D03 là một lỗ, cộng các lỗ oval/rãnh phay vẽ bằng D02 → D01.
+ * [DQPCB] File khoan này chỉ là MỘT PHẦN của bộ khoan — phải vẽ kèm các file còn lại —
+ * hay là file gộp đủ mọi lỗ (khi có file gộp thì các file tách thường là bản trùng).
+ *
+ * Phần theo mạ: PTH / NPTH (X2, ;TYPE=, hoặc đuôi -PTH/-NPTH của KiCad).
+ * Phần theo HÌNH LỖ: Altium tách RoundHoles / SlotHoles / RectHoles / SquareHoles.
+ * RoundHoles có thể chứa cả lỗ mạ lẫn không mạ (mixed) nhưng vẫn KHÔNG phải file gộp —
+ * coi nó là gộp thì viewer chỉ vẽ nó và bỏ mất lỗ slot (bo "AGVH7").
+ */
+export const isPartialDrillFile = (filename: string, plating?: 'PTH' | 'NPTH' | 'mixed') =>
+  plating === 'PTH' ||
+  plating === 'NPTH' ||
+  /-(N?PTH)\.\w+$/i.test(filename) ||
+  // Cả từ: "SlotHoles", "-RectHoles", "squareholes.drl", hay chỉ "Slot.txt" (bộ Dung Nguyen
+  // "Rail mtfc_sdkd_main": Drl.txt + Slot.txt). "Rectifier.drl" thì không.
+  /(^|[^a-z])(round|slot|rect|square)s?(holes?)?([^a-z]|$)/i.test(filename.split(/[\\/]/).pop() ?? filename)
+
+/**
+ * Đếm lỗ khoan. Gerber (bộ Proteus): mỗi lệnh flash D03 là một lỗ, cộng các lỗ oval/rãnh
+ * phay vẽ bằng D02 → D01. Excellon: xem countExcellonHoles.
  */
 export const countHoles = (content: string): number => {
-  if (!isGerberContent(content)) return (content.match(/^X/gm) || []).length
+  if (!isGerberContent(content)) return countExcellonHoles(content)
   let holes = 0
   let inSlot = false
   // Tách theo dấu kết thúc lệnh '*'. Bỏ qua khối %…% (header, aperture) vì D10+ ở đó
@@ -475,4 +510,27 @@ export const shortenNames = (filenames: string[]): Record<string, string> => {
     result[filenames[i]] = short.replace(/^[-_. ]+/, '') || base
   }
   return result
+}
+
+/**
+ * [DQPCB] Đếm lỗ Excellon.
+ *
+ * Khoan thường: mỗi dòng toạ độ (X…/Y…) là một lỗ; G85 (slot một dòng) cũng một dòng.
+ * Phay (route): Altium xuất slot và lỗ chữ nhật bằng G00 tới điểm đầu → M15 hạ dao →
+ * G01 chạy → M16 nhấc dao. Mỗi lần hạ dao là MỘT lỗ; các dòng G00/G01 là di chuyển.
+ * Trước chỉ đếm dòng bắt đầu bằng X nên SlotHoles.TXT ra 0 lỗ và bị bỏ qua hẳn — bo
+ * "AGVH7" mất 6 lỗ slot, bộ "BAI111" mất lỗ RectHoles.
+ */
+export const countExcellonHoles = (content: string): number => {
+  let holes = 0
+  let routing = false // đang ở chế độ phay (sau G00), dòng toạ độ chỉ là di chuyển
+  for (const raw of content.split(/\r?\n/)) {
+    const line = raw.trim().toUpperCase()
+    if (!line || line.startsWith(';')) continue
+    if (/^G0?0(?!\d)/.test(line)) routing = true
+    else if (/^G0?5(?!\d)/.test(line)) routing = false // G05: về chế độ khoan
+    if (/^M15\b/.test(line)) holes++
+    else if (!routing && /^[XY][-+]?\d/.test(line)) holes++
+  }
+  return holes
 }

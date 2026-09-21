@@ -83,3 +83,34 @@ describe('pointInPolygon', () => {
     expect(pointInPolygon([-1, -1], sq)).toBe(false)
   })
 })
+
+describe('splitOutlineLoops — panel (Le Quoc Huy, 21/09/2026)', () => {
+  const frame = rect(0, 0, 144, 212)
+
+  it('rail nhỏ nằm NGOÀI khung là thân bo, không phải lỗ', () => {
+    const rail = rect(0, -5, 144, 5) // 2.4% khung — dưới mốc 5% nhưng không nằm trong gì
+    const r = splitOutlineLoops([frame, rail], { copperPoints: [] })
+    expect(r.body).toEqual([frame, rail])
+    expect(r.cutouts).toEqual([])
+  })
+
+  it('panel nhiều bo xếp ngang: lỗ nhỏ trong MỖI bo đều là lỗ, không chỉ trong bo lớn nhất', () => {
+    const a = rect(0, 0, 60, 150), b = rect(60, 0, 60, 150)
+    const holeInB = rect(80, 10, 3, 3)
+    const r = splitOutlineLoops([a, b, holeInB], { copperPoints: [] })
+    expect(r.body).toEqual([a, b])
+    expect(r.cutouts).toEqual([holeInB])
+  })
+
+  it('nét hở nằm trong bo là đường phay: chỉ vẽ nét, không tô, không khoét', () => {
+    const zigzag = {
+      children: [[10, 10], [20, 10], [20, 30], [30, 30]].slice(0, 3).map((p, i, arr) => ({
+        segments: [{ type: 'line', start: p, end: [[20, 10], [20, 30], [30, 30]][i] }],
+      })),
+    }
+    const r = splitOutlineLoops([frame, zigzag], { copperPoints: [] })
+    expect(r.body).toEqual([frame])
+    expect(r.cutouts).toEqual([])
+    expect(r.lines).toEqual([zigzag])
+  })
+})

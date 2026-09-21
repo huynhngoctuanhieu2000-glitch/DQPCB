@@ -422,9 +422,55 @@ export const stitchOutline = (tree: any) => {
   // Còn hở mà chỉ 1–2 đoạn thì đúng là đường lẻ (vạch v-cut, khe tab), bỏ.
   // Phải có ít nhất một cung: hai ĐOẠN THẲNG khép kín chỉ là đi ra rồi đi về trên cùng
   // một vạch, diện tích bằng 0.
+  /**
+   * Tách vòng "hình số 8" thành từng vòng đơn: vòng đi qua cùng một đỉnh hai lần.
+   *
+   * Panel V-cut vẽ mỗi bo một đường bao, hai bo chung một cạnh. Ở góc chung có 4 đoạn
+   * gặp nhau, chainUp đi thẳng sang bo bên cạnh thay vì khép vòng bo đang đi, ra MỘT
+   * vòng ôm cả hai bo, qua cạnh chung hai lần. Đa giác tự chạm như vậy tô ra sai: bo
+   * dưới của panel "Dynamic Master" (Le Quoc Huy, 21/09/2026) mất nửa thân bo, nhìn
+   * trắng toát giữa mạch.
+   *
+   * Chỉ tách ở đỉnh TRÙNG KHÍT (≤ DUP_TOL) và khi phần tách ra có diện tích thật: góc bo
+   * KiCad 10 là hàng trăm đoạn ngắn hơn TOL, so bằng TOL thì vỡ vụn cả góc.
+   */
+  const MIN_LOOP_AREA = (TOL * 20) ** 2 // 1 mm²
+  const chordArea = (ch: any[]) => {
+    let a = 0
+    for (const seg of ch) a += seg.start[0] * seg.end[1] - seg.end[0] * seg.start[1]
+    return Math.abs(a) / 2
+  }
+  const key = (pt: number[]) => `${Math.round(pt[0] / DUP_TOL)},${Math.round(pt[1] / DUP_TOL)}`
+  const splitAtRepeats = (ch: any[]): any[][] => {
+    // Cả chuỗi HỞ cũng xét: bo "Slaver_Ceiling" có rail chung cạnh dưới với bo, cạnh
+    // chung chỉ vẽ một lần (bản trùng đã bị bỏ) nên chuỗi bo + rail không khép — vẫn
+    // đi qua góc chung hai lần, 3D cắt chéo mất hai góc bo.
+    if (ch.length < 6) return [ch]
+    const out: any[][] = []
+    const stack: any[] = []
+    const at = new Map<string, number>() // đỉnh → vị trí đoạn bắt đầu từ đỉnh đó trong stack
+    for (const seg of ch) {
+      at.set(key(seg.start), stack.length)
+      stack.push(seg)
+      const k = at.get(key(seg.end))
+      if (k === undefined || stack.length - k < 3) continue
+      const loop = stack.slice(k)
+      if (chordArea(loop) < MIN_LOOP_AREA) continue
+      // Vòng khép ngay ở đoạn cuối và đi từ đầu chuỗi là vòng bình thường — để nguyên.
+      if (k === 0 && seg === ch[ch.length - 1]) break
+      stack.length = k
+      for (const [pt, idx] of at) if (idx >= k) at.delete(pt)
+      out.push(loop)
+    }
+    if (out.length === 0) return [ch]
+    if (stack.length > 0) out.push(stack)
+    return out
+  }
+  const simple = chains.flatMap(splitAtRepeats)
+
   const isClosedArc = (ch: any[]) =>
     isClosedLoop(ch, TOL * 10) && ch.some((s) => s?.type === 'arc')
-  const usable = chains.filter((ch) => ch.length >= 3 || isClosedArc(ch))
+  const usable = simple.filter((ch) => ch.length >= 3 || isClosedArc(ch))
 
   // Lọc sạch nhẵn thì trả lại nguyên cây: lớp .GM1 nhiều khi chỉ có một vạch ghi chú cơ
   // khí, dựng ra rỗng là vẽ ít hơn trước.

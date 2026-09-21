@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { BoardDataModel } from '../../models/BoardDataModel'
 import { realPalette, HOLE, MASK_OPENING, BASE_BOARD } from '../../models/RealPalette'
-import { copperSamplePoints, splitOutlineLoops } from '../../lib/gerber-reader'
+import { copperSamplePoints, isPartialDrillFile, splitOutlineLoops } from '../../lib/gerber-reader'
 // @ts-ignore - web-gerber typings for named exports are incomplete
 import {
   createParser,
@@ -189,7 +189,7 @@ const buildLayerObject = (
     //    như thân bo thì lỗ biến mất.
     //  - CAM: tô trắng như lỗ khoan để phân biệt với đường bao gia công; ăn theo
     //    màu outline thì lỗ bắt vít lẫn hẳn vào viền bo.
-    const { body, cutouts: holes } = splitOutlineLoops(plotted.parts, {
+    const { body, cutouts: holes, lines } = splitOutlineLoops(plotted.parts, {
       scale: plotted.units === 'in' ? 25.4 : 1,
       copperPoints,
     })
@@ -198,6 +198,11 @@ const buildLayerObject = (
       .filter(Boolean)
     obj = made.shift()
     made.forEach((extra: any) => obj?.add(extra))
+    // Đường phay vẽ bằng một nét hở: chỉ vẽ nét, không tô (xem splitOutlineLoops).
+    for (const part of lines) {
+      const line = renderThree(part, color, undefined, false)
+      if (line) obj?.add(line)
+    }
     for (const part of holes) {
       const hole = renderThree(part, holeColor, undefined, fillOutline)
       if (hole) cutouts.push(hole)
@@ -314,13 +319,9 @@ export const Viewer2DWebGL: React.FC<Viewer2DWebGLProps> = ({
       .map((l) => ({
         name: l.filename,
         holes: l.holeCount,
-        // Tách = chỉ chứa một phần (PTH hoặc NPTH), phải vẽ kèm các file tách còn lại.
-        // Proteus đặt tên "Drill TOP-BOT Plated.GBR" / "… NonPlated.GBR" nên chỉ đoán
-        // theo đuôi -PTH/-NPTH của KiCad thì bỏ sót — GerberParser đọc X2 cho chắc.
-        split:
-          l.drillPlating === 'PTH' ||
-          l.drillPlating === 'NPTH' ||
-          /-(N?PTH)\.\w+$/i.test(l.filename),
+        // Tách = chỉ chứa một phần (theo mạ, hoặc theo hình lỗ kiểu Altium Round/Slot/
+        // RectHoles), phải vẽ kèm các file tách còn lại — luật nằm trong gerber-reader.
+        split: isPartialDrillFile(l.filename, l.drillPlating),
       }))
 
     const merged = drills.filter((d) => !d.split).sort((a, b) => b.holes - a.holes)
@@ -429,7 +430,13 @@ export const Viewer2DWebGL: React.FC<Viewer2DWebGLProps> = ({
           // Real/3D thì nó là chỗ thủng vật liệu, đi chung cụm khoan để kéo dài hết
           // bề dày bo.
           if (camMode) obj.add(hole)
-          else outlineCutouts.push(hole)
+          else {
+            // Tách khỏi obj thì không ăn theo phép đổi inch → mm của obj ở dưới: lỗ khoét
+            // của viền inch nhỏ đi 25.4 lần, dồn về một góc, nhìn như không có (rãnh
+            // 38 mm của panel "Ceiling Master" chỉ còn 1.5 mm).
+            if (plotted.units === 'in') hole.scale.set(25.4, 25.4, hole.scale.z)
+            outlineCutouts.push(hole)
+          }
         }
 
         // Các lớp trong cùng một bộ có thể khác đơn vị — bo VOL LED có gerber theo mm

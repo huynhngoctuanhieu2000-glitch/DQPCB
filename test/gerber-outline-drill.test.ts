@@ -9,7 +9,7 @@
  *     sạch lỗ không mạ lẫn lỗ via.
  */
 import { describe, it, expect } from 'vitest'
-import { GerberParser, drillPlatingOf, matchLayer } from '../src/lib/gerber-reader'
+import { GerberParser, countExcellonHoles, drillPlatingOf, isPartialDrillFile, matchLayer } from '../src/lib/gerber-reader'
 
 const asFile = (name: string, content: string) =>
   ({
@@ -179,4 +179,65 @@ describe('dilateRegions — lấp khe giữa các dải phủ đồng', () => {
     const [board] = await parse([['Gerber_TopLayer.GTL', copper], ['Gerber_BoardOutlineLayer.GKO', outlineWithRoundHole]])
     expect(board.bounds.widthMM).toBeCloseTo(10, 1)
   })
+})
+
+describe('Altium: lỗ slot / chữ nhật và file khoan tách theo hình lỗ', () => {
+  // Bo "AGVH7" (Vu Bao, 21/09/2026): slot vẽ bằng lệnh phay G00 → M15 → G01 → M16.
+  const slotHoles = [
+    'M48', ';FILE_FORMAT=2:4', 'INCH,LZ', ';TYPE=PLATED', 'T7F00S00C0.0354', 'T13F00S00C0.0472', ';TYPE=NON_PLATED', '%',
+    'G90', 'G05', 'T07',
+    'G00X-006898Y020936', 'M15', 'G01X-006858Y020937', 'M16',
+    'G00X-005913Y020936', 'M15', 'G01X-005874Y020937', 'M16',
+    'T13',
+    'G00X-008087Y022121', 'M15', 'G01Y021806', 'M16',
+    'M17', 'M30',
+  ].join('\n')
+  // RoundHoles cùng bộ: mũi T1 mạ, T21 KHÔNG mạ (Ø3.2) — nằm chung một file.
+  const roundHoles = [
+    'M48', 'INCH,LZ', ';TYPE=PLATED', 'T1F00S00C0.0280', ';TYPE=NON_PLATED', 'T21F00S00C0.1260', '%',
+    'G90', 'G05', 'T01', 'X010000Y010000', 'Y012000', 'X011000', 'T21', 'X020000Y020000', 'M30',
+  ].join('\n')
+
+  it('mỗi lần hạ dao M15 là một lỗ; G00/G01 chỉ là di chuyển', () => {
+    expect(countExcellonHoles(slotHoles)).toBe(3)
+  })
+
+  it('dòng chỉ có Y (giữ X cũ) vẫn là một lỗ', () => {
+    expect(countExcellonHoles(roundHoles)).toBe(4)
+  })
+
+  it('đọc từng mục ;TYPE= xem mục nào có mũi thật', () => {
+    expect(drillPlatingOf('AGVH7-RoundHoles.TXT', roundHoles)).toBe('mixed')
+    expect(drillPlatingOf('AGVH7-SlotHoles.TXT', slotHoles)).toBe('PTH') // mục NON_PLATED rỗng
+  })
+
+  it('file tách theo hình lỗ luôn là một phần của bộ khoan, kể cả khi mixed', () => {
+    expect(isPartialDrillFile('AGVH7-RoundHoles.TXT', 'mixed')).toBe(true)
+    expect(isPartialDrillFile('AGVH7-SlotHoles.TXT')).toBe(true)
+    expect(isPartialDrillFile('BAI111-RectHoles.TXT')).toBe(true)
+    expect(isPartialDrillFile('squareholes.drl')).toBe(true)
+    expect(isPartialDrillFile('Slot.txt')).toBe(true)
+    expect(isPartialDrillFile('Drill.drl')).toBe(false)
+    expect(isPartialDrillFile('Rectifier.drl')).toBe(false)
+    expect(isPartialDrillFile('board.drl', 'mixed')).toBe(false)
+  })
+})
+
+describe('stitchOutline — panel V-cut: hai bo chung cạnh', () => {
+  // Đúng dáng bộ "Dynamic Master" (Le Quoc Huy, 21/09/2026): bo dưới có khấc ở cạnh
+  // chung nên cạnh đó bị chia hai đoạn, bo trên vẽ cạnh chung bằng một đường liền.
+  // Bản cũ nối cả hai bo thành MỘT vòng 12 đoạn hình số 8 → mất nửa thân bo khi tô.
+  const P = (x: number, y: number) => `X${x * 100000}Y${y * 100000}`
+  const path = (pts: number[][]) => [`G01${P(pts[0][0], pts[0][1])}D02*`, ...pts.slice(1).map(([x, y]) => `G01${P(x, y)}D01*`)]
+  const lower = path([[10, 10], [6, 10], [6, 10.5], [4, 10.5], [4, 10], [0, 10], [0, 0], [10, 0], [10, 10]])
+  const upper = path([[10, 10], [0, 10], [0, 20], [10, 20], [10, 10]])
+
+  for (const [order, body] of [['bo trên trước', [...upper, ...lower]], ['bo dưới trước', [...lower, ...upper]]] as const) {
+    it(`tách thành hai vòng đơn (${order})`, async () => {
+      const [board] = await parse([['Gerber_TopLayer.GTL', copper], ['Gerber_BoardOutlineLayer.GKO', gbr(body.join('\n'))]])
+      const parts = outlineOf(board).imageTree.parts
+      expect(parts.map((p: any) => p.children.length).sort()).toEqual([4, 8])
+      expect(board.bounds.heightMM).toBeCloseTo(20, 1)
+    })
+  }
 })

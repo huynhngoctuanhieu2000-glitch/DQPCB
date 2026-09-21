@@ -27,6 +27,8 @@ API công khai (`index.ts`):
 | `matchLayer(name, allNames?, content?)` | Một file là lớp gì, mặt nào |
 | `isAuxiliaryFile(name, allNames?)` | File phụ trợ/rác, bỏ qua |
 | `drillPlatingOf(name, content?)` | File khoan là PTH, NPTH hay gộp |
+| `isPartialDrillFile(name, plating?)` | File khoan chỉ là một phần của bộ (phải vẽ kèm file khác) |
+| `countExcellonHoles(content)` | Đếm lỗ Excellon, tính cả slot/lỗ chữ nhật phay |
 | `shortenNames(names)` | Bỏ tiền tố chung để tên hiển thị ngắn |
 | `extractProfileGerber(content)` | Lấy nét viền (AperFunction Profile) lẫn trong lớp khác |
 | `ESTIMATED_OUTLINE_FILE` | Tên file giả của viền ước lượng |
@@ -50,6 +52,8 @@ Trong code, mỗi bộ nhận diện có thẻ:
 | ↳ từ khoá tên file | So theo ranh giới từ ("depth" không bị hiểu là "pth"); mã ba chữ OrCAD/CAM350 `SMT/SMB/SST/SSB` |
 | ↳ file phụ trợ | Report, aperture list, BOM, ảnh, file dự án KiCad… |
 | ↳ PTH/NPTH | X2 → `;TYPE=PLATED/NON_PLATED` (EasyEDA, Altium) → tên file |
+| ↳ file khoan một phần | `isPartialDrillFile`: tách theo mạ (PTH/NPTH) hoặc theo hình lỗ của Altium (`RoundHoles`/`SlotHoles`/`RectHoles`/`SquareHoles`, `Slot.txt`) — viewer vẽ hết, không coi là file gộp |
+| ↳ đếm lỗ Excellon | `countExcellonHoles`: dòng toạ độ (kể cả chỉ có `Y`), `G85`, và lỗ phay `G00 → M15 → G01 → M16` (slot, lỗ chữ nhật của Altium) |
 | `normalize.ts` | Đơn vị, aperture list của OrCAD, toạ độ G91 → tuyệt đối |
 | `geometry.ts` | Bẻ cung thành đoạn; nới vùng tô 0.035 mm (lấp khe dải phủ đồng CAM350); nối viền bo thành vòng kín |
 | `outline.ts` | Viền dự phòng: lấy nét Profile lẫn lớp khác, hoặc ước lượng từ khung lớp đồng |
