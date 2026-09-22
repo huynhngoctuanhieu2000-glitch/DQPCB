@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
-import { BOARD_RENDERED_EVENT, Viewer2DWebGL } from '../modules/viewer2d/Viewer2D.WebGL'
+import { BOARD_RENDERED_EVENT, Viewer2DWebGL, isBoardBuilt } from '../modules/viewer2d/Viewer2D.WebGL'
 import type { CaptureFn } from '../modules/viewer2d/Viewer2D.WebGL'
 import { composeTwoSides, copyPng } from '../modules/viewer2d/captureBoard'
 import { BoardDataModel } from '../models/BoardDataModel'
@@ -23,7 +23,25 @@ export const Layout: React.FC = () => {
    * không phải lúc đọc file xong: giữa hai mốc đó khung xem vẫn còn bo cũ trong khi
    * cột bên đã là thông tin bo mới — đang mở nhiều bo là dễ đọc nhầm bo này ra bo kia.
    */
-  const [opening, setOpening] = useState<{ name: string; waitFor: string | null } | null>(null)
+  const [opening, setOpening] = useState<{ name: string; waitFor: string | null; label?: string } | null>(null)
+
+  /**
+   * Chuyển sang bo khác. Bo đã có hình dựng sẵn (đã xem, hoặc dựng ở nền) thì hiện ngay.
+   * Chưa có thì bật màn chờ TRƯỚC rồi mới chuyển: dựng hình chạy đồng bộ, chặn cả giao
+   * diện 1–3 s — không có màn chờ thì khung đứng im với bo cũ, người dùng tưởng treo.
+   */
+  const switchBoard = (id: string) => {
+    const s = BoardDataModel.getState()
+    const target = s.boards.find((b) => b.id === id)
+    if (!target || id === s.activeBoardId) return
+    if (isBoardBuilt(target, s.activeView)) {
+      BoardDataModel.setActiveBoard(id)
+      return
+    }
+    setOpening({ name: target.projectName, waitFor: id, label: 'Đang dựng hình…' })
+    // Cho màn chờ kịp vẽ lên màn hình trước khi luồng bị chiếm để dựng.
+    window.setTimeout(() => BoardDataModel.setActiveBoard(id), 40)
+  }
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [showQuotation, setShowQuotation] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
@@ -572,7 +590,7 @@ export const Layout: React.FC = () => {
           <span style={{ position: 'relative', flex: 1, minWidth: 0, display: 'flex' }}>
             <select
               value={boardState.activeBoardId ?? ''}
-              onChange={(e) => BoardDataModel.setActiveBoard(e.target.value)}
+              onChange={(e) => switchBoard(e.target.value)}
               style={{
                 ...drawerBtn(false),
                 flex: 1,
@@ -623,7 +641,7 @@ export const Layout: React.FC = () => {
               return (
                 <div
                   key={b.id}
-                  onClick={() => BoardDataModel.setActiveBoard(b.id)}
+                  onClick={() => switchBoard(b.id)}
                   title={b.projectName}
                   style={{
                     display: 'flex',
@@ -681,7 +699,7 @@ export const Layout: React.FC = () => {
 
       {/* 3. MAIN WORKSPACE: 3-COLUMN SPLIT */}
       <div style={{ display: 'flex', flex: 1, overflow: 'hidden', position: 'relative' }}>
-        {opening && <OpeningSkeleton name={opening.name} />}
+        {opening && <OpeningSkeleton name={opening.name} label={opening.label} />}
         {/* ================= COLUMN 1: LEFT LAYERS PANEL ================= */}
         <div
           style={{
@@ -1320,7 +1338,7 @@ const MenuItem: React.FC<{ label: string; hint?: string; disabled?: boolean; onC
  * Màn chờ khi mở file: phủ ĐỤC cả ba cột (danh sách lớp, khung xem, thông tin bo) bằng
  * khung xương nhấp nháy và tên file đang mở. Phủ mờ như trước thì bo cũ vẫn lộ ra sau.
  */
-const OpeningSkeleton: React.FC<{ name: string }> = ({ name }) => {
+const OpeningSkeleton: React.FC<{ name: string; label?: string }> = ({ name, label = 'Đang mở file…' }) => {
   const bar = (w: string, h = 12): React.CSSProperties => ({
     width: w,
     height: h,
@@ -1353,7 +1371,7 @@ const OpeningSkeleton: React.FC<{ name: string }> = ({ name }) => {
             textAlign: 'center',
           }}
         >
-          <span style={{ color: '#38bdf8', fontSize: 16, fontWeight: 600 }}>⏳ Đang mở file…</span>
+          <span style={{ color: '#38bdf8', fontSize: 16, fontWeight: 600 }}>⏳ {label}</span>
           <span style={{ color: '#e2e8f0', fontSize: 13, wordBreak: 'break-all' }}>{name}</span>
         </div>
       </div>

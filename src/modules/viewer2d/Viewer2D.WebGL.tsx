@@ -54,6 +54,14 @@ const CAM_FALLBACK = 0x9b59b6
 const CAM_BACKGROUND = 0x14161b
 
 /**
+ * Màu mũi khoan nhỏ nhất trên badge: dưới 0.254 mm (10 mil) đỏ, 0.254 – dưới 0.3 mm vàng.
+ * So có dung sai 0.0005 mm: toạ độ inch đổi ra mm (0.01 in = 0.254) có thể lệch ở số lẻ cuối.
+ */
+const drillColor = (mm: number) => (mm < 0.2535 ? '#f87171' : mm < 0.2995 ? '#fbbf24' : undefined)
+/** 0.254 → "0.254", 0.25 → "0.25", 0.4 → "0.40": đủ số lẻ để thấy mũi 10 mil. */
+const mmText = (mm: number) => mm.toFixed(3).replace(/(\.\d\d)0$/, '$1')
+
+/**
  * Tách cây ảnh thành các ĐOẠN liên tiếp cùng cực (`%LPD*%` / `%LPC*%`).
  *
  * web-gerber có đọc đảo cực và đóng dấu `polarity` lên từng hình, nhưng không
@@ -101,15 +109,20 @@ const SCENE_TYPES = new Set(['copper', 'soldermask', 'silkscreen', 'outline', 'd
  * hình y hệt. Giữ bản gốc ở đây, khung nào cần thì `clone()` (dùng chung geometry và
  * material, chỉ tốn transform).
  *
- * Cache thuộc về một `board.layers` cụ thể: nạp bo khác là dọn sạch, giải phóng GPU.
+ * Cache giữ RIÊNG cho từng bo (khoá là `board.layers`). Trước đây chỉ giữ một bo: mở 3 file,
+ * đang xem file 3 bấm lại file 1 là dọn sạch rồi dựng lại từ đầu — FRIWO 55807 mất 3.3 s mỗi
+ * lần bấm qua, bấm lại lần 2 vẫn 3.2 s (khảo sát 22/09/2026). Giữ tối đa MAX_CACHED_BOARDS
+ * bo dùng gần nhất; bo đã đóng (hoặc đọc lại vì chọn tay loại lớp) thì giải phóng GPU.
  */
-const built: { layers: unknown; entries: Map<string, { obj: any; cutouts: any[] }> } = {
-  layers: null,
-  entries: new Map(),
-}
+type BuildEntry = { obj: any; cutouts: any[] }
+/** Lớp dựng ra rỗng — vẫn ghi vào cache để biết "đã dựng", khỏi dựng lại mỗi lần. */
+const EMPTY_ENTRY: BuildEntry = { obj: null, cutouts: [] }
+const MAX_CACHED_BOARDS = 5
+/** layers của bo → hình đã dựng của bo đó. Thứ tự trong Map = thứ tự dùng (cuối = mới nhất). */
+const boardCaches = new Map<object, Map<string, BuildEntry>>()
 /**
  * Geometry/material đang nằm trong cache — cleanup của cảnh phải chừa chúng ra. Chúng
- * được dispose khi cache bị dọn (đổi bo), không phải khi một khung đóng.
+ * được dispose khi cache của bo bị dọn (đóng bo / quá số bo giữ), không phải khi một khung đóng.
  */
 const cachedGpu = new WeakSet<object>()
 
@@ -128,14 +141,170 @@ const claimGpu = (obj: any) =>
     materialsOf(o).forEach((m: any) => cachedGpu.add(m))
   })
 
-const ensureBuildCache = (layers: unknown) => {
-  if (built.layers === layers) return
-  for (const { obj, cutouts } of built.entries.values()) {
+const disposeCache = (cache: Map<string, BuildEntry>) => {
+  for (const { obj, cutouts } of cache.values()) {
     disposeDeep(obj)
     cutouts.forEach(disposeDeep)
   }
-  built.entries.clear()
-  built.layers = layers
+  cache.clear()
+}
+
+/**
+ * Dọn cache của bo không còn mở (đóng bo, hoặc bo đã đọc lại nên có mảng layers mới) và
+ * của bo dùng lâu nhất khi giữ quá MAX_CACHED_BOARDS bo. Bo `keep` (đang xem) không bao giờ bị dọn.
+ */
+const pruneCaches = (keep?: object) => {
+  const open = new Set<object>(BoardDataModel.getState().boards.map((b) => b.layers))
+  for (const [layers, cache] of boardCaches) {
+    if (layers === keep || open.has(layers)) continue
+    disposeCache(cache)
+    boardCaches.delete(layers)
+  }
+  for (const [layers, cache] of boardCaches) {
+    if (boardCaches.size <= MAX_CACHED_BOARDS) break
+    if (layers === keep) continue
+    disposeCache(cache)
+    boardCaches.delete(layers)
+  }
+}
+
+/** Cache của một bo (tạo nếu chưa có). `touch` = đánh dấu vừa dùng, để không bị dọn trước. */
+const cacheFor = (layers: object, touch = true) => {
+  let cache = boardCaches.get(layers)
+  if (cache && touch) {
+    boardCaches.delete(layers)
+    boardCaches.set(layers, cache)
+  }
+  if (!cache) {
+    cache = new Map()
+    boardCaches.set(layers, cache)
+  }
+  return cache
+}
+
+/** File khoan được vẽ: file gộp nhiều lỗ nhất; không có file gộp thì mọi file tách. */
+const drillPlanOf = (layers: any[]) => {
+  // KiCad có thể xuất cả bản gộp (.drl, FileFunction MixedPlating) LẪN bộ tách
+  // (-PTH.drl / -NPTH.drl). Bản gộp là đầy đủ nhất; nếu chỉ có bộ tách thì phải
+  // dùng tất cả. pcb.Drill chỉ có 1 slot nên các file phụ được gắn làm con.
+  const drills = layers
+    .filter((l) => l.type === 'drill' && l.holeCount > 0)
+    .map((l) => ({
+      name: l.filename,
+      holes: l.holeCount,
+      // Tách = chỉ chứa một phần (theo mạ, hoặc theo hình lỗ kiểu Altium Round/Slot/
+      // RectHoles), phải vẽ kèm các file tách còn lại — luật nằm trong gerber-reader.
+      split: isPartialDrillFile(l.filename, l.drillPlating),
+    }))
+  const merged = drills.filter((d) => !d.split).sort((a, b) => b.holes - a.holes)
+  const drillPlan = merged.length > 0 ? [merged[0]] : drills
+  return {
+    drillPlan,
+    drillUse: new Set(drillPlan.map((d) => d.name)),
+    drillHoles: drillPlan.reduce((n, d) => n + d.holes, 0),
+  }
+}
+
+/**
+ * Lớp nào có chỗ trong cảnh. Dựng xong mà không có chỗ đặt thì dựng làm gì: lớp tài liệu
+ * (drill drawing, assembly…) và file khoan không được chọn vẽ. Trước đây vẫn dựng hết —
+ * riêng ba lớp tài liệu của một bo Altium đã tốn 1.1 s trong tổng 4.7 s.
+ */
+const inScene = (raw: any, drillUse: Set<string>) =>
+  Boolean(raw.type) && SCENE_TYPES.has(raw.type) && (raw.type !== 'drill' || drillUse.has(raw.filename)) && Boolean(raw.imageTree)
+
+/**
+ * Màu, khoá cache và tham số dựng của một lớp — dùng chung cho cảnh và cho dựng sẵn ở nền,
+ * để hai bên ra đúng một khoá (khác khoá là dựng sẵn vô ích).
+ */
+const layerSpec = (raw: any, camMode: boolean, palette: ReturnType<typeof realPalette>) => {
+  // CAM lấy màu từ chính layer, tức ô màu người dùng bấm đổi được ở sidebar.
+  // Real/3D thì màu là mô phỏng vật liệu nên vẫn dùng bảng cố định.
+  // `|| CAM_FALLBACK` cũ coi màu đen (parseInt = 0) là không hợp lệ, nên lớp nào
+  // để đen cũng bị đổi sang tím dự phòng. Chỉ thật sự hỏng khi parse ra NaN.
+  const swatch = parseInt(String(raw.color).replace('#', ''), 16)
+  const color = camMode
+    ? (Number.isNaN(swatch) ? CAM_FALLBACK : swatch)
+    : raw.type === 'copper' ? palette.Copper :
+      raw.type === 'soldermask' ? palette.MaskOpening :
+      raw.type === 'silkscreen' ? palette.Silkscreen :
+      raw.type === 'drill' ? palette.Drill :
+      palette.BaseBoard
+  const isOutline = raw.type === 'outline'
+  // Tham số cuối của renderThree quyết định outline được TÔ ĐẶC hay vẽ VIỀN.
+  // Real/3D cần tô đặc vì đó là lõi FR-4 của bo. CAM thì outline là đường bao gia
+  // công, phải vẽ thành viền — tô đặc sẽ thành một mảng che hết, mà bật riêng lớp
+  // Outline lại chỉ thấy một mảng tối.
+  const fillOutline = isOutline && !camMode
+  const eraseColor = camMode ? CAM_BACKGROUND : palette.Oil
+  const key = [raw.id, camMode ? 'cam' : 'real', color, eraseColor, fillOutline].join('|')
+  return { key, color, eraseColor, fillOutline, isOutline }
+}
+
+/**
+ * Bo này đã có sẵn hình cho chế độ xem đó chưa — chuyển sang là hiện ngay, hay phải dựng
+ * (Layout bật màn chờ trước khi chuyển nếu phải dựng).
+ */
+export const isBoardBuilt = (board: { layers: any[]; maskColor: string }, view: string) => {
+  const cache = boardCaches.get(board.layers)
+  if (!cache) return false
+  const camMode = view === 'CAM'
+  const palette = realPalette(board.maskColor)
+  const { drillUse } = drillPlanOf(board.layers)
+  return board.layers.filter((l) => inScene(l, drillUse)).every((l) => cache.has(layerSpec(l, camMode, palette).key))
+}
+
+let prebuildRun = 0
+const whenIdle = (fn: () => void) => {
+  const ric = (window as any).requestIdleCallback
+  if (ric) ric(fn, { timeout: 2000 })
+  else window.setTimeout(fn, 60)
+}
+
+/**
+ * Dựng sẵn ở nền các bo đang mở mà chưa xem, theo chế độ xem hiện tại: mở 3 file thì bo
+ * cuối hiện trước, hai bo kia dựng dần lúc rảnh → lần đầu bấm sang cũng hiện ngay.
+ * Mỗi lượt dựng MỘT lớp rồi nhả luồng, để giao diện vẫn bấm được giữa các lớp. Gọi lại
+ * (đổi bo / đổi chế độ) thì lượt cũ tự dừng.
+ */
+const schedulePrebuild = () => {
+  const run = ++prebuildRun
+  const s = BoardDataModel.getState()
+  const camMode = s.activeView === 'CAM'
+  const active = s.boards.find((b) => b.id === s.activeBoardId)
+  // Bo mở gần nhất dựng trước; chừa một chỗ cho bo đang xem.
+  const others = s.boards.filter((b) => b !== active).reverse().slice(0, MAX_CACHED_BOARDS - 1)
+  const queue: (() => void)[] = []
+  for (const b of others) {
+    const palette = realPalette(b.maskColor)
+    const { drillUse } = drillPlanOf(b.layers)
+    let copperPoints: number[][] | null = null
+    for (const raw of b.layers.filter((l) => inScene(l, drillUse))) {
+      queue.push(() => {
+        const spec = layerSpec(raw, camMode, palette)
+        const cache = cacheFor(b.layers, false)
+        if (cache.has(spec.key)) return
+        copperPoints ??= copperSamplePoints(b.layers)
+        const made = buildLayerObject(raw.imageTree, { ...spec, holeColor: HOLE, copperPoints })
+        if (made) {
+          claimGpu(made.obj)
+          made.cutouts.forEach(claimGpu)
+        }
+        cache.set(spec.key, made ?? EMPTY_ENTRY)
+      })
+    }
+  }
+  const step = () => {
+    if (run !== prebuildRun || queue.length === 0) return
+    try {
+      queue.shift()!()
+    } catch (e) {
+      console.warn('[WebGL] dựng sẵn lỗi', e)
+    }
+    whenIdle(step)
+  }
+  // Chờ bo đang xem hiện lên đã rồi mới bắt đầu.
+  window.setTimeout(() => whenIdle(step), 600)
 }
 
 /**
@@ -325,28 +494,15 @@ export const Viewer2DWebGL: React.FC<Viewer2DWebGLProps> = ({
     const t0 = performance.now()
     const bad: string[] = []
     const palette = realPalette(board.maskColor)
-    ensureBuildCache(board.layers)
+    const cache = cacheFor(board.layers)
+    pruneCaches(board.layers)
     let cacheHits = 0
-    const copperPoints = copperSamplePoints(board.layers)
+    // Tính khi thật sự phải dựng một lớp — lấy hết từ cache thì khỏi tốn.
+    let copperPointsMemo: number[][] | null = null
+    const copperPoints = () => (copperPointsMemo ??= copperSamplePoints(board.layers))
 
-    // --- Chọn file khoan ---
-    // KiCad có thể xuất cả bản gộp (.drl, FileFunction MixedPlating) LẪN bộ tách
-    // (-PTH.drl / -NPTH.drl). Bản gộp là đầy đủ nhất; nếu chỉ có bộ tách thì phải
-    // dùng tất cả. pcb.Drill chỉ có 1 slot nên các file phụ được gắn làm con.
-    const drills = board.layers
-      .filter((l) => l.type === 'drill' && l.holeCount > 0)
-      .map((l) => ({
-        name: l.filename,
-        holes: l.holeCount,
-        // Tách = chỉ chứa một phần (theo mạ, hoặc theo hình lỗ kiểu Altium Round/Slot/
-        // RectHoles), phải vẽ kèm các file tách còn lại — luật nằm trong gerber-reader.
-        split: isPartialDrillFile(l.filename, l.drillPlating),
-      }))
-
-    const merged = drills.filter((d) => !d.split).sort((a, b) => b.holes - a.holes)
-    const drillPlan = merged.length > 0 ? [merged[0]] : drills
-    const drillUse = new Set(drillPlan.map((d) => d.name))
-    const drillHoles = drillPlan.reduce((n, d) => n + d.holes, 0)
+    // --- Chọn file khoan --- (xem drillPlanOf)
+    const { drillPlan, drillUse, drillHoles } = drillPlanOf(board.layers)
 
     // Bounds tính từ ImageTree.size (không đụng tới three)
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
@@ -380,13 +536,7 @@ export const Viewer2DWebGL: React.FC<Viewer2DWebGLProps> = ({
     // lần: phân loại lớp (identifyLayers vs matchLayer) và chuẩn hoá file khoan.
     for (const raw of board.layers) {
       const id = { type: raw.type, side: raw.side }
-      if (!id.type) continue
-
-      // Dựng xong mà không có chỗ đặt trong cảnh thì dựng làm gì: lớp tài liệu (drill
-      // drawing, assembly…) và file khoan không được chọn vẽ. Trước đây vẫn dựng hết —
-      // riêng ba lớp tài liệu của một bo Altium đã tốn 1.1 s trong tổng 4.7 s.
-      if (!SCENE_TYPES.has(id.type)) continue
-      if (id.type === 'drill' && !drillUse.has(raw.filename)) continue
+      if (!inScene(raw, drillUse)) continue
 
       const isOutline = id.type === 'outline'
       try {
@@ -401,45 +551,21 @@ export const Viewer2DWebGL: React.FC<Viewer2DWebGLProps> = ({
           maxY = Math.max(maxY, plotted.size[3] * scale)
         }
 
-        // CAM lấy màu từ chính layer, tức ô màu người dùng bấm đổi được ở sidebar.
-        // Real/3D thì màu là mô phỏng vật liệu nên vẫn dùng bảng cố định.
-        // `|| CAM_FALLBACK` cũ coi màu đen (parseInt = 0) là không hợp lệ, nên lớp nào
-        // để đen cũng bị đổi sang tím dự phòng. Chỉ thật sự hỏng khi parse ra NaN.
-        const swatch = parseInt(String(raw.color).replace('#', ''), 16)
-        const color = camMode
-          ? (Number.isNaN(swatch) ? CAM_FALLBACK : swatch)
-          : id.type === 'copper' ? palette.Copper :
-            id.type === 'soldermask' ? palette.MaskOpening :
-            id.type === 'silkscreen' ? palette.Silkscreen :
-            id.type === 'drill' ? palette.Drill :
-            palette.BaseBoard
-
-        // Tham số cuối của renderThree quyết định outline được TÔ ĐẶC hay vẽ VIỀN.
-        // Real/3D cần tô đặc vì đó là lõi FR-4 của bo. CAM thì outline là đường bao gia
-        // công, phải vẽ thành viền — tô đặc sẽ thành một mảng che hết, mà bật riêng lớp
-        // Outline lại chỉ thấy một mảng tối.
-        const fillOutline = isOutline && !camMode
-
-        const eraseColor = camMode ? CAM_BACKGROUND : palette.Oil
-        const key = [raw.id, camMode ? 'cam' : 'real', color, eraseColor, fillOutline].join('|')
-        let hit = built.entries.get(key)
+        // Màu, khoá cache, tô đặc hay vẽ viền: xem layerSpec.
+        const spec = layerSpec(raw, camMode, palette)
+        let hit = cache.get(spec.key)
         if (hit) {
           cacheHits++
         } else {
-          const made = buildLayerObject(plotted, {
-            color,
-            eraseColor,
-            fillOutline,
-            isOutline,
-            holeColor: HOLE,
-            copperPoints,
-          })
-          if (!made) continue
-          claimGpu(made.obj)
-          made.cutouts.forEach(claimGpu)
-          built.entries.set(key, made)
-          hit = made
+          const made = buildLayerObject(plotted, { ...spec, holeColor: HOLE, copperPoints: copperPoints() })
+          if (made) {
+            claimGpu(made.obj)
+            made.cutouts.forEach(claimGpu)
+          }
+          hit = made ?? EMPTY_ENTRY
+          cache.set(spec.key, hit)
         }
+        if (!hit.obj) continue
         // Bản trong cache là bản gốc, cảnh chỉ nhận bản clone: assembly và paintOrder
         // đổi position/scale/renderOrder, mà hai khung "2 Mặt" đặt khác nhau.
         const obj: any = hit.obj.clone()
@@ -668,7 +794,7 @@ export const Viewer2DWebGL: React.FC<Viewer2DWebGLProps> = ({
         const swatch = parseInt(String(raw.color).replace('#', ''), 16)
         const color = Number.isNaN(swatch) ? CAM_FALLBACK : swatch
         const key = [raw.id, 'cam-extra', color].join('|')
-        let hit = built.entries.get(key)
+        let hit = cache.get(key)
         if (!hit) {
           const made = buildLayerObject(raw.imageTree, {
             color,
@@ -676,11 +802,11 @@ export const Viewer2DWebGL: React.FC<Viewer2DWebGLProps> = ({
             fillOutline: false,
             isOutline: false,
             holeColor: HOLE,
-            copperPoints,
+            copperPoints: copperPoints(),
           })
           if (!made) return
           claimGpu(made.obj)
-          built.entries.set(key, made)
+          cache.set(key, made)
           hit = made
         }
         const obj: any = hit.obj.clone()
@@ -1111,6 +1237,8 @@ export const Viewer2DWebGL: React.FC<Viewer2DWebGLProps> = ({
         ? `${drillPlan.map((d) => d.name.split(/[\\/]/).pop()).join(', ')} · ${drillHoles} lỗ`
         : 'không có'
     )
+    // Bo đang xem đã hiện: tranh thủ lúc rảnh dựng sẵn các bo còn lại (xem schedulePrebuild).
+    schedulePrebuild()
 
     return () => {
       cleanups.forEach((fn) => fn())
@@ -1209,11 +1337,15 @@ export const Viewer2DWebGL: React.FC<Viewer2DWebGLProps> = ({
           <div>Viền: {outlineFile}</div>
           <div>Khoan: {status}</div>
           {(smallest.hole || smallest.slot) && (
-            <div>
+            <div title="Đỏ: dưới 0.254 mm · Vàng: 0.254 – dưới 0.3 mm">
               Mũi nhỏ nhất:{' '}
-              {smallest.hole && `Ø${smallest.hole.d.toFixed(2)} mm (${smallest.hole.count} lỗ)`}
+              {smallest.hole && (
+                <span style={{ color: drillColor(smallest.hole.d) }}>
+                  Ø{mmText(smallest.hole.d)} mm ({smallest.hole.count} lỗ)
+                </span>
+              )}
               {smallest.hole && smallest.slot ? ' · ' : ''}
-              {smallest.slot && `rãnh ${smallest.slot.toFixed(2)} mm`}
+              {smallest.slot && <span style={{ color: drillColor(smallest.slot) }}>rãnh {mmText(smallest.slot)} mm</span>}
             </div>
           )}
           {panel && (
