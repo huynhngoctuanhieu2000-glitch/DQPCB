@@ -368,9 +368,24 @@ export const vatAmount = (q: Quotation): number =>
 
 export const grandTotal = (q: Quotation): number => subtotal(q) + vatAmount(q)
 
-/** Tên file gợi ý: "Bao gia <khách> <ngày>.xlsx", đã bỏ ký tự cấm của Windows. */
+/**
+ * Bỏ dấu tiếng Việt — dùng riêng cho tên file, không đụng tới nội dung file (nội
+ * dung vẫn có dấu đầy đủ). Tên file không dấu để gõ, tìm và gửi qua Zalo/USB
+ * không bị lỗi phông trên các máy/app cũ.
+ *
+ * "đ"/"Đ" không tách được bằng NFD (là một chữ cái riêng, không phải chữ + dấu tổ
+ * hợp) nên phải thay tay.
+ */
+const stripDiacritics = (s: string): string =>
+  s
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .replace(/đ/g, 'd')
+    .replace(/Đ/g, 'D')
+
+/** Tên file gợi ý: "Bao gia <khach> <ngay>.xlsx", không dấu, đã bỏ ký tự cấm của Windows. */
 export const suggestedFileName = (q: Quotation): string => {
-  const who = q.customer.name.trim() || 'khach hang'
+  const who = stripDiacritics(q.customer.name.trim() || 'khach hang')
   const safe = `Bao gia ${who} ${q.date.replace(/\//g, '_')}`
   return `${safe.replace(/[\\:*?"<>|/]/g, '-')}.xlsx`
 }
