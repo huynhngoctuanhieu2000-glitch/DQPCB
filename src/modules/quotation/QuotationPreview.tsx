@@ -11,8 +11,14 @@ import { grandTotal, subtotal, vatAmount } from './QuotationModel'
 import { brandingFor } from './branding'
 import { ZoomBox } from '../../ui/ZoomBox'
 
-/** Bề rộng tương đối của 9 cột (quy ra phần trăm); đủ rộng để tiêu đề bảng không xuống hàng. */
-const COL_WIDTHS = [7.9, 55, 17, 27, 20, 7.4, 26, 19, 60]
+// TÊN FILE và GHI CHÚ đều rộng hơn hẳn 6 cột còn lại: tên bo và ghi chú thường là
+// chữ dài nhất trong bảng (tên bo vd "ESP32_Multi_Purpose_IoT_Kit", ghi chú có khi
+// cả câu), nên nằm gọn một dòng — chỉ khi thật dài mới cần xuống hàng (đã có
+// break-word lo phần đó). 6 cột kia (SỐ LỚP..ĐƠN GIÁ) chỉ vừa đủ cho tiêu đề bảng
+// không xuống hàng, không co được nữa — khối "KÍCH THƯỚC → GHI CHÚ" (cột D–I) còn
+// phải đủ chỗ cho dòng tên công ty ở đầu trang không xuống hàng (colSpan 6 chung ô).
+/** Bề rộng tương đối của 9 cột, coi như px trên bảng rộng 900px. */
+const COL_WIDTHS = [32, 223, 65, 103, 76, 29, 100, 72, 200]
 const TOTAL_W = COL_WIDTHS.reduce((a, b) => a + b, 0)
 
 /** Bề rộng dựng bản xem trước (px): bảng 900 như khổ A4 ngang + lề trắng hai bên. */
@@ -94,7 +100,7 @@ export const QuotationSheet: React.FC<{ q: Quotation }> = ({ q }) => {
             <td style={{ ...cell, fontSize: '14px', fontWeight: 700, lineHeight: 1.35 }} colSpan={6}>
               {/* Không xuống dòng: trên iPhone font Times rộng hơn Times New Roman một chút,
                   20px là chữ "PCB" rớt xuống hàng dưới trong file PDF. */}
-              <div style={{ fontSize: '18px', color: '#C00000', marginBottom: '2px', whiteSpace: 'nowrap' }}>{q.company.name}</div>
+              <div style={{ fontSize: '16px', color: '#C00000', marginBottom: '2px', whiteSpace: 'nowrap' }}>{q.company.name}</div>
               <div>{q.company.address}</div>
               <div>{q.company.contact}</div>
             </td>
