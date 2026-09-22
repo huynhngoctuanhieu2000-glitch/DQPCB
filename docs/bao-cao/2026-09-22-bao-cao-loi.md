@@ -22,6 +22,7 @@ Tóm tắt:
 | 13 | CAM: nét phụ của lớp viền hiện màu xanh mask | (viewer) | Đã sửa · `706ea9f` |
 | 14 | OrCAD Layout: vẽ bản vẽ khoan `.DRD` thay cho `thruhole.tap` | Dinh Anh Tuan — DA82 (+ 252 bộ OrCAD) | Đã sửa · `11dc1bb` |
 | 15 | Lớp tài liệu / không rõ loại bật lên không có gì; không chọn tay được loại lớp | Dinh Anh Tuan — DA82 | Đã sửa · `11dc1bb` |
+| 16 | File khoan Pulsonix `INCH` không khai định dạng số, lỗ co 10 lần nằm ngoài bo | FRIWO — 55807.931-90FE | Đã sửa · `c680077` |
 
 ---
 
@@ -222,6 +223,32 @@ tam giác chéo sai; Rosario: rãnh móc câu nhất quán là lỗ).
 - **Lưu ý:** `.DTS` là báo cáo chữ (bảng mũi khoan), không có hình để vẽ. DA82 không có file
   viền nên kích thước là viền ước lượng từ lớp đồng.
 
+## 16. File khoan Pulsonix không khai định dạng số — lỗ co 10 lần
+
+- **Bộ file:** `D:\JobDatMach\FRIWO\2026\22-09\FRIWO 55807.931-90FE.zip`
+- **Hiện tượng:** bo (panel 4 × 2) nằm lọt thỏm góc trên phải khung nhìn; một cụm nhỏ lạc
+  tận giữa dưới. Cụm đó là toàn bộ 2641 lỗ khoan.
+- **Nguyên nhân:** Pulsonix xuất `M48` / `FMAT,1` / `INCH` trơn — không `LZ/TZ`, không
+  `;FILE_FORMAT`, toạ độ không dấu chấm, 8 chữ số giữ số 0 đầu (`X01011283`). Đó là
+  định dạng 3.5 → 10.11283 in. Không có gì trong file nói vậy, nên parser áp mặc định inch
+  2.4 → 1.011283 in: cả cụm lỗ **nhỏ đi 10 lần**, rơi ra ngoài bo (viền 9.46–14.88 in, lỗ
+  0.90–1.47 in). Khung nhìn ôm cả bo lẫn cụm lỗ lạc nên bo trông bé tí. Cùng họ với lỗi 8
+  (Altium 4:3), nhưng lỗi 8 còn có dòng khai format để đọc, ở đây thì không.
+- **Cách giải quyết** (`reader.ts` → `fixDrillScale`): file không đủ thông tin để đoán,
+  nên **lấy chính bo làm thước** — lỗ khoan phải nằm trong viền (không có viền thì trong
+  vùng đồng). Đọc xong cả bộ, file khoan nào mà cụm lỗ nằm **gần như hẳn ngoài bo** (dưới
+  nửa diện tích chồng lên bo) thì thử lại các cách đặt dấu thập phân hay gặp (giữ đủ số /
+  bỏ số 0 đầu: 2–6 số lẻ; bỏ số 0 cuối: 2.4, 2.5, 3.3, 3.4, 3.5, 4.4), chọn cách cho cụm lỗ
+  nằm trong bo và **phủ rộng nhất** (co quá tay cụm lỗ cũng lọt vào trong nhưng bé tí).
+  Không có viền thì tính lại ô bao cả bo sau khi sửa. Lỗ định vị trên rail hơi lấn viền
+  không bị đọc lại (vẫn chồng lên bo quá nửa).
+- **Kiểm:** FRIWO — 2641/2641 lỗ nằm trong viền (0.90–1.47 in → 9.60–14.63 in), kích thước
+  giữ 137.4 × 147 mm. Hồi quy corpus: mẫu 1/10 kho (1.850 bộ): 541 bộ có file khoan không dấu thập phân, **10 bộ đổi — cả 10 từ 0–14 lỗ trên bo lên 100%**, kích thước bo không đổi, không bộ nào tệ đi (BOARD CONG SUAT 0→150/150, BoardC25v2 0→503/503, ESP8266_Out_IO 0→88/88, VGS805A 14→130/130, PCB4 1→50/50, CS2 0→40/40, PCB_doline 1→76/76, Quan 1 0→137/137, CONTROL_S02 0→25/25, PS700W_S07 0→245/245; lượt chạy thử đầu thêm 2 bộ Anh Giang TL). Ước cả kho khoảng 100 bộ từng bị. 2 test mới (đọc đúng file kiểu Pulsonix;
+  không đụng file khoan vốn đã nằm trong bo).
+- **Lưu ý:** file FRIWO là panel 4 × 2 nhưng các bo chỉ ngăn bằng đường V-cut, không có viền
+  bo riêng → app vẫn đếm là 1 bo, không nhắc "file ghép sẵn" (cùng mục 3 vấn đề còn tồn).
+  Báo giá gửi khách cũng đã tính cả tấm 137 × 147 mm.
+
 ---
 
 ## Vấn đề còn tồn
@@ -230,7 +257,7 @@ tam giác chéo sai; Rosario: rãnh móc câu nhất quán là lỗ).
    xem có file khoan thật không, hoặc chọn tay. (`.DRD` cạnh `.tap` đã sửa ở lỗi 14.)
 2. **Tam giác chéo sai** ở một số panel (Rail.zip, GWLRWEX-CELLULAR, ph_analyzer…): đa giác
    viền tô lệch. Bản cũ cũng bị y hệt.
-3. **Bo ghép chỉ ngăn bằng rãnh** (CHAT_BOT_4) vẫn đếm là 1 bo nên không có nhắc nhở "nhiều
+3. **Bo ghép chỉ ngăn bằng rãnh / V-cut** (CHAT_BOT_4, FRIWO 55807) vẫn đếm là 1 bo nên không có nhắc nhở "nhiều
    bo ghép" (`706ea9f` đã nhắc cho file có nhiều viền bo rời như CHAT_BOT_1).
 4. **V-cut / mouse bite chưa vào giá:** chỉ nhắc nhở (cạnh < 15 mm, tấm V-cut < 70 mm), công
    thức chưa có phí V-cut.
@@ -245,7 +272,7 @@ tưởng mất logo. Tải lại tab là hết. Từ nay kiểm clipboard/ảnh 
 
 ## Cách kiểm lại
 
-- `npx vitest run test/*.test.ts` — 139 test.
+- `npx vitest run test/*.test.ts` — 142 test.
 - `npm run build` — build thật (`tsc -b` chặt hơn `tsc --noEmit`; lỗi build Vercel ở
   `f12b339` là do chỉ chạy lệnh nhẹ).
 - Hồi quy corpus: script trong `test/_scratch/` (không commit) so bản cũ/mới trên
