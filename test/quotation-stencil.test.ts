@@ -7,7 +7,7 @@ import {
   applyNoteSuggestion,
   noteHas,
   panelNote,
-  withPanelNote,
+  withAutoNote,
   itemFromStencil,
   stencilSideFromBoard,
   sameStencil,
@@ -90,8 +90,9 @@ describe('Dòng stencil', () => {
       ({ layers: sides.map((side) => ({ type: 'solderpaste', side })) }) as any
     expect(stencilSideFromBoard(board(['bottom']))).toBe('Bot')
     expect(stencilSideFromBoard(board(['top']))).toBe('Top')
-    // Bo có kem cả hai mặt, hoặc không có lớp kem nào, thì mặc định Top.
-    expect(stencilSideFromBoard(board(['top', 'bottom']))).toBe('Top')
+    // Kem cả hai mặt: một file chỉ làm một tấm, tấm đó làm cả Top + Bot.
+    expect(stencilSideFromBoard(board(['top', 'bottom']))).toBe('Top + Bot')
+    // Không có lớp kem nào thì mặc định Top.
     expect(stencilSideFromBoard(board([]))).toBe('Top')
     expect(stencilSideFromBoard(undefined)).toBe('Top')
   })
@@ -136,15 +137,25 @@ describe('Dòng stencil', () => {
     expect(panelNote(1, 4)).toBe('Panel 1*4')
   })
 
-  it('đổi cách ghép thì THAY dòng panel, giữ nguyên các dòng khác', () => {
+  it('ghi chú panel có số set và rail (rail hai chiều bằng nhau nên ghi một số)', () => {
+    expect(panelNote(2, 5, 50, 5)).toBe('Panel 2*5 · 50 set · Rail 5mm')
+    expect(panelNote(2, 5, 50, 0)).toBe('Panel 2*5 · 50 set')
+    expect(panelNote(2, 5)).toBe('Panel 2*5')
+  })
+
+  it('đổi bên thẻ thì THAY phần ghi chú tự điền, giữ chữ người lập gõ thêm', () => {
     const gap = 'Hàng gấp - hoả tốc'
-    expect(withPanelNote('', 2, 3)).toBe('Panel 2*3')
-    expect(withPanelNote(gap, 2, 3)).toBe(`Panel 2*3\n${gap}`)
-    // Ghép lại kiểu khác: một dòng panel duy nhất, không chồng thêm dòng thứ hai.
-    expect(withPanelNote(`Panel 2*3\n${gap}`, 4, 1)).toBe(`Panel 4*1\n${gap}`)
-    // Bỏ ghép panel thì dòng đó biến mất, ghi chú khác vẫn còn.
-    expect(withPanelNote(`Panel 2*3\n${gap}`, 1, 1)).toBe(gap)
-    expect(withPanelNote('Panel 2*3', 1, 1)).toBe('')
+    const a = 'Mạ vàng ENIG, Panel 2*3 · 10 set'
+    const b = 'Mạ vàng ENIG, Panel 4*1 · 15 set'
+    expect(withAutoNote('', '', a)).toBe(a)
+    expect(withAutoNote(`${a}, ${gap}`, a, b)).toBe(`${b}, ${gap}`)
+    // Thông số về mặc định, bỏ ghép: phần tự điền biến mất, chữ gõ tay còn lại.
+    expect(withAutoNote(`${a}, ${gap}`, a, '')).toBe(gap)
+    expect(withAutoNote(a, a, '')).toBe('')
+    // Dòng trước chưa có phần tự điền mà người lập đã gõ: chèn phần tự điền lên đầu.
+    expect(withAutoNote(gap, '', a)).toBe(`${a}, ${gap}`)
+    // Người lập đã sửa chính phần tự điền thì không đạp lên.
+    expect(withAutoNote('Mạ vàng, bo mỏng', a, b)).toBe('Mạ vàng, bo mỏng')
   })
 
   it('ghi chú thường vẫn cộng dồn, và dòng stencil chỉ thay đúng dòng của nó', () => {

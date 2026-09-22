@@ -37,6 +37,87 @@ interface InputBundle {
   orcadGtdText: string
 }
 
+type Box = [number, number, number, number]
+const toMm = (size: number[], units: string | undefined): Box => {
+  const k = units === 'in' ? 25.4 : 1
+  return [size[0] * k, size[1] * k, size[2] * k, size[3] * k]
+}
+/** a nằm trong b (có chừa 3% kích thước b cho lỗ sát mép, rail…). */
+const boxInside = (a: Box, b: Box): boolean => {
+  const tx = (b[2] - b[0]) * 0.03
+  const ty = (b[3] - b[1]) * 0.03
+  return a[0] >= b[0] - tx && a[1] >= b[1] - ty && a[2] <= b[2] + tx && a[3] <= b[3] + ty
+}
+
+/** Phần diện tích của a nằm chồng lên b (0…1). */
+const overlapShare = (a: Box, b: Box): number => {
+  const w = Math.max(0, Math.min(a[2], b[2]) - Math.max(a[0], b[0]))
+  const h = Math.max(0, Math.min(a[3], b[3]) - Math.max(a[1], b[1]))
+  const area = Math.max((a[2] - a[0]) * (a[3] - a[1]), 1e-9)
+  return (w * h) / area
+}
+
+/**
+ * [DQPCB] File khoan KHÔNG nói rõ định dạng số — không dấu thập phân, không
+ * ";FILE_FORMAT=", không "INCH,LZ/TZ" — thì parser áp mặc định inch 2:4. Pulsonix xuất
+ * "INCH" trơn với toạ độ 3:5 giữ số 0 đầu (X01011283 = 10.11283 in): đọc 2:4 thành
+ * 1.011283 in, cả cụm lỗ co 10 lần dồn ra ngoài bo (báo giá FRIWO 55807.931-90FE,
+ * 22/09/2026). File tự nó không đủ thông tin để đoán chắc, nên dùng chính bo làm
+ * thước: lỗ khoan phải nằm trong viền (hoặc trong vùng đồng khi không có viền).
+ *
+ * Chỉ chạy khi cách đọc mặc định cho lỗ nằm NGOÀI bo. Thử các cách đặt dấu thập phân
+ * hay gặp và lấy cách cho cụm lỗ nằm trong bo và phủ rộng nhất (co quá tay thì cụm lỗ
+ * cũng lọt vào trong nhưng bé tí — phủ rộng nhất mới là tỉ lệ thật). Trả về nội dung
+ * đã chèn dấu thập phân, hoặc null nếu không cách nào khớp.
+ */
+const fixDrillScale = (
+  content: string,
+  ref: Box,
+  parse: (text: string) => { size?: number[]; units?: string },
+): string | null => {
+  const body = content.replace(/;[^\n]*/g, '')
+  const tokens = body.match(/[XY][+-]?[\d.]+/g) || []
+  if (tokens.length === 0 || tokens.some((t) => t.includes('.'))) return null
+
+  const withDecimal = (fmt: (digits: string) => string) =>
+    content.replace(/([XY])([+-]?)(\d+)(?=\D|$)/g, (_w, axis, sign, digits) => axis + sign + fmt(digits))
+  const candidates: string[] = []
+  // Giữ đủ chữ số (hoặc bỏ số 0 ĐẦU): giá trị = số nguyên ÷ 10^dec.
+  for (let dec = 2; dec <= 6; dec++) {
+    candidates.push(
+      withDecimal((d) => {
+        const p = d.padStart(dec + 1, '0')
+        return p.slice(0, p.length - dec) + '.' + p.slice(p.length - dec)
+      }),
+    )
+  }
+  // Bỏ số 0 CUỐI (LZ): bù đuôi cho đủ tổng số chữ số rồi mới đặt dấu.
+  for (const [int, dec] of [[2, 4], [2, 5], [3, 3], [3, 4], [3, 5], [4, 4]]) {
+    candidates.push(
+      withDecimal((d) => {
+        if (d.length > int + dec) return d
+        const f = d.padEnd(int + dec, '0')
+        return f.slice(0, int) + '.' + f.slice(int)
+      }),
+    )
+  }
+
+  let best: { text: string; area: number } | null = null
+  for (const text of candidates) {
+    try {
+      const t = parse(text)
+      if (!t.size || t.size.length !== 4) continue
+      const box = toMm(t.size, t.units)
+      if (!(box[2] > box[0]) || !boxInside(box, ref)) continue
+      const area = (box[2] - box[0]) * Math.max(box[3] - box[1], 1e-6)
+      if (!best || area > best.area) best = { text, area }
+    } catch {
+      /* cách đọc này hỏng — bỏ qua */
+    }
+  }
+  return best?.text ?? null
+}
+
 export class GerberParser {
   /**
    * Đọc các file người dùng thả vào, trả về MỘT BO CHO MỖI ARCHIVE.
@@ -443,6 +524,55 @@ export class GerberParser {
         // Không nuốt lỗi im lặng: người dùng cần biết lớp nào bị mất và vì sao.
         console.warn(`Skipping unparseable file: ${raw.name}`, err)
         failedFiles.push({ name: raw.name, reason: err?.message || String(err) })
+      }
+    }
+
+    // Lỗ khoan rơi ra ngoài bo thì thử đọc lại định dạng số (xem fixDrillScale).
+    const refLayers = parsedLayers.filter((l) => l.type === 'outline' && l.size[2] > l.size[0])
+    const refPool = refLayers.length ? refLayers : parsedLayers.filter((l) => l.type === 'copper' && l.size[2] > l.size[0])
+    if (refPool.length) {
+      const boxes = refPool.map((l) => toMm(l.size, l.units))
+      const ref: Box = [
+        Math.min(...boxes.map((b) => b[0])),
+        Math.min(...boxes.map((b) => b[1])),
+        Math.max(...boxes.map((b) => b[2])),
+        Math.max(...boxes.map((b) => b[3])),
+      ]
+      let rescaled = false
+      for (const layer of parsedLayers) {
+        if (layer.type !== 'drill' || gerberDrillIds.has(layer.id) || !(layer.size[2] > layer.size[0])) continue
+        // Chỉ sửa khi cụm lỗ nằm gần như hẳn ngoài bo (dưới nửa diện tích chồng lên bo) —
+        // lỗ định vị trên rail hơi lấn ra ngoài viền là chuyện bình thường, không phải sai tỉ lệ.
+        const own = toMm(layer.size, layer.units)
+        if (boxInside(own, ref) || overlapShare(own, ref) >= 0.5) continue
+        const raw = rawFiles.find((f) => f.name === layer.filename)
+        if (!raw) continue
+        const parseDrill = (text: string) => flattenArcs(plot((() => { const p = createParser(); p.feed(text); return p.result() })(), false))
+        const fixed = fixDrillScale(raw.content, ref, parseDrill)
+        if (!fixed) continue
+        const tree = parseDrill(fixed)
+        layer.imageTree = tree
+        layer.size = [tree.size[0], tree.size[1], tree.size[2], tree.size[3]]
+        layer.units = tree.units || layer.units
+        rescaled = true
+      }
+      // Không có viền thì ô bao cả bo cộng dồn trong vòng đọc đã lẫn toạ độ khoan sai —
+      // tính lại. Có viền thì phía dưới lấy thẳng từ viền nên khỏi làm.
+      if (rescaled && !refLayers.length) {
+        globalMinX = globalMinY = Infinity
+        globalMaxX = globalMaxY = -Infinity
+        for (const l of parsedLayers) {
+          const w = l.size[2] - l.size[0]
+          const h = l.size[3] - l.size[1]
+          const counts =
+            (w > 0.1 || h > 0.1) &&
+            (l.type === 'copper' || l.type === 'silkscreen' || (l.type === 'soldermask' && w < 250) ||
+              (l.type === 'drill' && l.displayName === 'Drl'))
+          if (!counts) continue
+          const b = toMm(l.size, l.units)
+          globalMinX = Math.min(globalMinX, b[0]); globalMinY = Math.min(globalMinY, b[1])
+          globalMaxX = Math.max(globalMaxX, b[2]); globalMaxY = Math.max(globalMaxY, b[3])
+        }
       }
     }
 

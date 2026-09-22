@@ -263,6 +263,36 @@ describe('Excellon khai ;FILE_FORMAT (Altium)', () => {
   })
 })
 
+describe('Excellon INCH không khai định dạng số (Pulsonix)', () => {
+  // Bo "FRIWO 55807.931-90FE" (22/09/2026): Pulsonix xuất "INCH" trơn, toạ độ 3:5 giữ số
+  // 0 đầu. Không có gì trong file nói là 3:5, parser áp 2:4 → X01011283 thành 1.011283 in,
+  // cả cụm lỗ co 10 lần nằm ngoài bo. Lấy chính viền bo làm thước để chọn lại cách đọc.
+  const inchGbr = (body: string) =>
+    ['%FSLAX35Y35*%', '%MOIN*%', '%ADD10C,0.00787*%', 'G75*', 'G54D10*', body, 'M02*'].join('\n')
+  const outline = inchGbr(
+    'G01X946100Y630200D02*\nG01X1487800Y630200D01*\nG01X1487800Y1209700D01*\nG01X946100Y1209700D01*\nG01X946100Y630200D01*',
+  )
+  const drill = ['M48', 'FMAT,1', 'INCH', 'T01C000.00984', '%', 'G81', 'M70', 'T01', 'X01011283Y00706890', 'X01411283Y01106890', 'M30'].join('\n')
+
+  it('đặt lỗ vào đúng trong viền bo', async () => {
+    const [b] = await parse([['55807(Keep Out).gbr', outline], ['55807(Drilling Data).drl', drill]])
+    const layer = b.layers.find((l: any) => l.type === 'drill')
+    const hole = layer.imageTree.children.find((c: any) => c.type === 'imageShape').shape
+    expect(layer.imageTree.units).toBe('in')
+    expect(hole.cx).toBeCloseTo(10.11283, 4)
+    expect(hole.cy).toBeCloseTo(7.0689, 4)
+  })
+
+  it('không đụng file khoan vốn đã nằm trong bo', async () => {
+    // Cùng file khoan nhưng bo nhỏ quanh gốc toạ độ: cách đọc mặc định (2:4) đã nằm trong
+    // viền nên phải giữ nguyên, không đi tìm cách đọc khác.
+    const small = inchGbr('G01X0Y0D02*\nG01X200000Y0D01*\nG01X200000Y150000D01*\nG01X0Y150000D01*\nG01X0Y0D01*')
+    const [b] = await parse([['x(Keep Out).gbr', small], ['x(Drilling Data).drl', drill]])
+    const hole = b.layers.find((l: any) => l.type === 'drill').imageTree.children.find((c: any) => c.type === 'imageShape').shape
+    expect(hole.cx).toBeCloseTo(1.011283, 4)
+  })
+})
+
 describe('nhiều lớp viền (Altium .GKO + .GM1)', () => {
   // Bo "Slaver_Ceiling_ EC" (Le Quoc Huy, 21/09/2026): GM1 chỉ là khung linh kiện nằm
   // trong bo. Viewer lấy lớp viền dựng sau cùng làm thân bo → thân bo chỉ còn cái khung.
