@@ -28,17 +28,30 @@ const SPEC_BG = '#92D050'
 
 const money = (n: number | null) => (n === null ? '' : n.toLocaleString('en-US'))
 
+// Tên file gerber thật không có khoảng trắng (vd "ESP32_Multi_Purpose_IoT_Kit") —
+// trình duyệt chỉ tự xuống dòng ở chỗ có khoảng trắng, nên một chuỗi dài dính liền
+// bị coi là "một từ" và tràn ra ngoài ô thay vì xuống dòng. overflowWrap: 'break-word'
+// (+ wordBreak cho trình duyệt cũ) cho phép ngắt giữa từ khi nó dài hơn cả ô.
+const breakWord: React.CSSProperties = { overflowWrap: 'break-word', wordBreak: 'break-word' }
+
 const cell: React.CSSProperties = {
   border: '1px solid #000',
   padding: '3px 5px',
   textAlign: 'center',
   verticalAlign: 'middle',
   fontSize: '12px',
+  ...breakWord,
 }
 /** Dòng thông tin khách + lời mở đầu: không kẻ ô, chỉ có khung ngoài như file mẫu. */
-const info: React.CSSProperties = { padding: '3px 5px', textAlign: 'left', verticalAlign: 'middle', fontSize: '12px' }
+const info: React.CSSProperties = {
+  padding: '3px 5px',
+  textAlign: 'left',
+  verticalAlign: 'middle',
+  fontSize: '12px',
+  ...breakWord,
+}
 const tag: React.CSSProperties = { display: 'inline-block', padding: '2px 8px', whiteSpace: 'nowrap' }
-const plain: React.CSSProperties = { padding: '2px 5px', fontSize: '11px', verticalAlign: 'middle' }
+const plain: React.CSSProperties = { padding: '2px 5px', fontSize: '11px', verticalAlign: 'middle', ...breakWord }
 
 /** Tab Xem trước trong app: tờ báo giá đặt trong khung co vừa + zoom. */
 export const QuotationPreview: React.FC<{ q: Quotation }> = ({ q }) => (

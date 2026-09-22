@@ -113,19 +113,30 @@ export const quotationToPdf = async (q: Quotation): Promise<Blob> => {
 
 const pdfFileName = (q: Quotation) => suggestedFileName(q).replace(/\.[^.]+$/, '.pdf')
 
-/** Máy này có bảng chia sẻ nhận file không (iOS/Android có; Chrome máy tính tuỳ). */
-export const canShareFiles = (): boolean =>
+/**
+ * Máy này có bảng chia sẻ nhận file kiểu `type` không (iOS/Android có; Chrome máy
+ * tính tuỳ; Edge trên Windows có qua bảng chia sẻ của hệ điều hành). Kiểm tra đúng
+ * `type` MIME cần chia sẻ — có máy nhận PDF nhưng không nhận .xlsx hoặc ngược lại.
+ */
+export const canShareType = (type: string, extension: string): boolean =>
   typeof navigator.canShare === 'function' &&
-  navigator.canShare({ files: [new File([''], 'x.pdf', { type: 'application/pdf' })] })
+  navigator.canShare({ files: [new File([''], `x.${extension}`, { type })] })
+
+/** Máy này có bảng chia sẻ nhận file PDF không. */
+export const canShareFiles = (): boolean => canShareType('application/pdf', 'pdf')
 
 /**
- * Mở bảng chia sẻ của điện thoại với file PDF — chọn Zalo, Messenger, Lưu vào Tệp…
- * Không có bảng chia sẻ (trình duyệt máy tính) thì tải PDF về.
+ * Mở bảng chia sẻ của hệ điều hành với một file — chọn Zalo, Messenger, Lưu vào
+ * Tệp… Không có bảng chia sẻ (hay trình duyệt không hỗ trợ kiểu file này) thì tải
+ * file về thẳng. Dùng chung cho cả PDF và Excel, chỉ khác blob/tên/khả năng chia sẻ.
  */
-export const shareQuotationPdf = async (q: Quotation): Promise<'shared' | 'downloaded' | 'canceled'> => {
-  const blob = await quotationToPdf(q)
-  const file = new File([blob], pdfFileName(q), { type: 'application/pdf' })
-  if (canShareFiles()) {
+export const shareOrDownload = async (
+  blob: Blob,
+  fileName: string,
+  canShare: boolean
+): Promise<'shared' | 'downloaded' | 'canceled'> => {
+  const file = new File([blob], fileName, { type: blob.type })
+  if (canShare) {
     try {
       await navigator.share({ files: [file], title: file.name })
       return 'shared'
@@ -142,4 +153,13 @@ export const shareQuotationPdf = async (q: Quotation): Promise<'shared' | 'downl
   a.click()
   setTimeout(() => URL.revokeObjectURL(url), 10000)
   return 'downloaded'
+}
+
+/**
+ * Mở bảng chia sẻ của điện thoại với file PDF — chọn Zalo, Messenger, Lưu vào Tệp…
+ * Không có bảng chia sẻ (trình duyệt máy tính) thì tải PDF về.
+ */
+export const shareQuotationPdf = async (q: Quotation): Promise<'shared' | 'downloaded' | 'canceled'> => {
+  const blob = await quotationToPdf(q)
+  return shareOrDownload(blob, pdfFileName(q), canShareFiles())
 }

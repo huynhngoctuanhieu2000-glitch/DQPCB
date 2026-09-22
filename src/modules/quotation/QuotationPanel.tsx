@@ -32,7 +32,7 @@ import {
 import type { Quotation, QuotationItem } from './QuotationModel'
 import { exportQuotationToPdf, revealInFolder } from './exportPdf'
 import { canShareFiles, shareQuotationPdf } from './exportImage'
-import { exportQuotationToXlsx } from './exportExcel'
+import { exportQuotationToXlsx, canShareXlsxFiles, shareQuotationXlsx } from './exportExcel'
 import { saveXlsx } from './saveFile'
 import { computePrice, pickStencil, type PriceBasis, type StencilTier } from '../pricing/PricingModel'
 import { PricingStore } from '../pricing/PricingStore'
@@ -295,12 +295,12 @@ export const QuotationPanel: React.FC<{
     }
   }
 
+  /** Electron: hộp thoại "Save as" ngay cạnh file gerber vừa nạp, như PDF. */
   const handleExportExcel = async () => {
     setBusy(true)
     setStatus(null)
     try {
       const bytes = await exportQuotationToXlsx(q)
-      // Lưu mặc định ngay cạnh file gerber vừa nạp, như PDF.
       const res = await saveXlsx(bytes, suggestedFileName(q), board.sourceDir)
       if (res.canceled) {
         setStatus(null)
@@ -314,6 +314,22 @@ export const QuotationPanel: React.FC<{
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
       setStatus({ kind: 'err', text: `Xuất thất bại: ${message}` })
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  /** Web: cùng cách với handleShare (PDF) — mở bảng chia sẻ nếu máy hỗ trợ, không thì tải về. */
+  const handleShareExcel = async () => {
+    setBusy(true)
+    setStatus(null)
+    try {
+      const how = await shareQuotationXlsx(q)
+      if (how === 'shared') setStatus({ kind: 'ok', text: 'Đã gửi file Excel.' })
+      else if (how === 'downloaded') setStatus({ kind: 'ok', text: 'Đã tải Excel về máy.' })
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      setStatus({ kind: 'err', text: `Không chia sẻ được: ${message}` })
     } finally {
       setBusy(false)
     }
@@ -802,9 +818,11 @@ export const QuotationPanel: React.FC<{
               {busy ? 'Đang tạo PDF…' : canShareFiles() ? '📤 Chia sẻ PDF' : '⬇ Tải PDF'}
             </button>
           )}
-          {/* Bản có thể sửa lại — PDF mới là bản gửi khách, Excel để chỉnh tay khi cần. */}
+          {/* Bản có thể sửa lại — PDF mới là bản gửi khách, Excel để chỉnh tay khi cần.
+              Trên web: cùng kiểu tự đổi Chia sẻ/Tải như nút PDF — kiểm tra riêng
+              canShareXlsxFiles() vì máy có thể nhận PDF mà không nhận .xlsx. */}
           <button
-            onClick={handleExportExcel}
+            onClick={window.ipcRenderer ? handleExportExcel : handleShareExcel}
             disabled={busy}
             style={{ ...S.secondaryBtn, ...(busy ? S.disabled : null) }}
             title={
@@ -812,10 +830,18 @@ export const QuotationPanel: React.FC<{
                 ? board.sourceDir
                   ? `Lưu vào ${board.sourceDir}`
                   : 'Chọn chỗ lưu ở hộp thoại'
-                : 'Tải file Excel về máy'
+                : canShareXlsxFiles()
+                  ? 'Mở bảng chia sẻ: Zalo, Messenger, Lưu vào Tệp…'
+                  : 'Tải file Excel về máy'
             }
           >
-            {busy ? 'Đang xuất…' : '⬇ Xuất Excel'}
+            {busy
+              ? 'Đang xuất…'
+              : window.ipcRenderer
+                ? '⬇ Xuất Excel'
+                : canShareXlsxFiles()
+                  ? '📤 Chia sẻ Excel'
+                  : '⬇ Tải Excel'}
           </button>
           {/* Trong Electron, nút "Xuất PDF" ở trên đã lo phần in ra file rồi. */}
           {!window.ipcRenderer && (

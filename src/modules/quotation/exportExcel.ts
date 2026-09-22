@@ -11,7 +11,9 @@
  */
 import ExcelJS from 'exceljs'
 import type { Quotation } from './QuotationModel'
+import { suggestedFileName } from './QuotationModel'
 import { brandingFor, splitDataUrl } from './branding'
+import { canShareType, shareOrDownload } from './exportImage'
 
 const FONT = 'Times New Roman'
 
@@ -251,9 +253,12 @@ export const buildQuotationWorkbook = (q: Quotation): ExcelJS.Workbook => {
     }
 
     style(ws.getCell(r, 1), { text: item ? i + 1 : null, size: 12, wrap: true, border: true })
-    style(ws.getCell(r, 2), { text: item?.name || null, size: 13, border: true })
+    // wrap: true trên TÊN FILE và KÍCH THƯỚC — thiếu ở bản gốc, khiến tên file thật
+    // (không khoảng trắng, vd "ESP32_Multi_Purpose_IoT_Kit") tràn sang cột bên cạnh
+    // thay vì xuống dòng trong ô.
+    style(ws.getCell(r, 2), { text: item?.name || null, size: 13, wrap: true, border: true })
     style(ws.getCell(r, 3), { text: item?.layers || null, size: 12, wrap: true, border: true })
-    style(ws.getCell(r, 4), { text: item?.size || null, size: 13, border: true })
+    style(ws.getCell(r, 4), { text: item?.size || null, size: 13, wrap: true, border: true })
     style(ws.getCell(r, 5), { text: item?.maskColor || null, size: 12, wrap: true, border: true })
     style(ws.getCell(r, 6), {
       text: item?.quantity ?? null,
@@ -421,4 +426,20 @@ export const exportQuotationToXlsx = async (q: Quotation): Promise<Uint8Array> =
   const wb = buildQuotationWorkbook(q)
   const buffer = await wb.xlsx.writeBuffer()
   return new Uint8Array(buffer as ArrayBuffer)
+}
+
+const XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+
+/** Máy này có bảng chia sẻ nhận file Excel không — kiểm tra riêng, có thể khác PDF. */
+export const canShareXlsxFiles = (): boolean => canShareType(XLSX_MIME, 'xlsx')
+
+/**
+ * Trên trình duyệt: mở bảng chia sẻ của hệ điều hành với file Excel — cùng cách
+ * với PDF (xem shareQuotationPdf) — không có thì tải về thẳng.
+ */
+export const shareQuotationXlsx = async (q: Quotation): Promise<'shared' | 'downloaded' | 'canceled'> => {
+  const bytes = await exportQuotationToXlsx(q)
+  // ArrayBuffer riêng cho Blob: bytes có thể là view vào buffer lớn hơn.
+  const blob = new Blob([bytes.slice().buffer], { type: XLSX_MIME })
+  return shareOrDownload(blob, suggestedFileName(q), canShareXlsxFiles())
 }
