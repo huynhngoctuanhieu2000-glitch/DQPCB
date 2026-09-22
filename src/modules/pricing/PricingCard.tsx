@@ -44,6 +44,12 @@ import {
 const money = (n: number) => Math.round(n).toLocaleString('vi-VN')
 
 
+/**
+ * Cỡ bo lớn nhất đặt vừa một khung stencil (vùng mạch), để chọn khung theo cỡ bo chứ
+ * không theo giá — giá đã hiện ở dòng "Stencil" phía trên. "bo ≤ 19×29 cm".
+ */
+const stencilFit = (t: { areaW: number; areaH: number }) => `bo ≤ ${+t.areaW.toFixed(1)}×${+t.areaH.toFixed(1)} cm`
+
 /** Kiểu rail của tấm panel: không rail / trên + dưới / trái + phải / cả 4 cạnh. */
 type RailSides = 'none' | 'tb' | 'lr' | 'all'
 /** Bề rộng rail từng cạnh, mm. */
@@ -677,12 +683,12 @@ export const PricingCard: React.FC<{
                 >
                   <option value={-1}>
                     {stencilTier
-                      ? `Gợi ý: ${stencilSizeLabel(stencilTier)} · ${money(stencilTier.priceVnd)} đ`
+                      ? `Gợi ý: ${stencilSizeLabel(stencilTier)} · ${stencilFit(stencilTier)}`
                       : 'Gợi ý: không có cỡ vừa tấm'}
                   </option>
                   {cfg.stencil.tiers.map((t, i) => (
-                    <option key={i} value={i}>
-                      {stencilSizeLabel(t)} · {money(t.priceVnd)} đ
+                    <option key={i} value={i} title={`${money(t.priceVnd)} đ / tấm`}>
+                      {stencilSizeLabel(t)} · {stencilFit(t)}
                     </option>
                   ))}
                 </select>
