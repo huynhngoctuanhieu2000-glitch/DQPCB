@@ -25,6 +25,7 @@ nằm trong `src/lib/gerber-reader/` (`geometry.ts`, `outlineLoops.ts`, `identif
 | Nối | Dung sai 0.05 mm (inch: 0.05/25.4). Ưu tiên đoạn khít tuyệt đối, theo thứ tự file; mảnh còn hở nối lại với dung sai ×10 |
 | **Tách vòng "số 8"** | Chuỗi đi qua cùng một đỉnh hai lần (panel V-cut, hai bo chung cạnh) → tách thành vòng đơn. Chỉ đỉnh trùng khít và phần tách ≥ 1 mm² *(21/09)* |
 | Giữ vòng | ≥ 3 đoạn (kể cả hở); 1–2 đoạn chỉ giữ khi khép kín và có cung (lỗ tròn EasyEDA = 2 cung 180°, bo tròn CAM350 = 1 cung 360°) |
+| **Rãnh một nét** | Nét thẳng 1–2 đoạn, nằm hẳn trong bo (cách mép ≥ 1 mm), rộng ≥ 0.3 mm, đứng riêng, bề rộng không dùng cho đường vẽ nhiều khúc → dựng hình thuôn rộng bằng nét, thành lỗ khoét *(22/09, `706ea9f`, CHAT_BOT_4)* |
 | Kích thước | Ô bao của các vòng đã nối + nửa nét — không dùng số thô (chấm lẻ Edge_Cuts KiCad làm bo 41.5 mm thành 89.68 mm) |
 
 ### A3. Vòng nào là thân bo, lỗ khoét hay nét phay (`splitOutlineLoops`)
@@ -84,6 +85,7 @@ ngoài góc bo. 5/171 bộ Altium trong corpus bị; sửa 22/09 (`f186434`).
 | Gerber khoan (Proteus) | `D02 → D01` | Rãnh |
 | Rãnh vẽ trong **lớp viền** | Vòng kín nhỏ trong bo | Lỗ khoét (mục A3); 2D/3D đi cùng cụm khoan |
 | Đường phay hở trong lớp viền | Nét hở | Nét phay (mục A3) — vẽ nét, không khoét |
+| **Rãnh một nét** trong lớp viền (CHAT_BOT_4) | Một nét thẳng = đường tâm dao | CAM vẽ đúng nét; 2D/3D khoét hình thuôn rộng bằng nét (mục A2) |
 
 Lưu ý:
 
@@ -102,4 +104,5 @@ Lưu ý:
    lỗ và tỉ lệ lỗ nằm trong bo. Xem hình cũ/mới các bộ bị đổi trước khi chốt.
 4. Mở lại bộ mẫu: FC_F405RGT6_Wing (KiCad 6 lớp), BOAD NUT NHAN (EasyEDA), AGVH7 (Altium inch,
    slot), Ceiling Master / Dynamic Master (panel inch), Slaver_Ceiling bản lẻ (GKO + GM1),
-   ESP32_DR (Altium metric 4:3, RectHoles), CHAT_BOT_1 (panel 4 bo), 3W NHUA XANH (CAM350, RAR).
+   ESP32_DR (Altium metric 4:3, RectHoles), CHAT_BOT_1 (panel 4 bo), CHAT_BOT_4 (rãnh một
+   nét), PHAONUOC (đường vẽ 0.8 mm không được thành rãnh), 3W NHUA XANH (CAM350, RAR).

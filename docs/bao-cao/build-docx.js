@@ -97,6 +97,8 @@ children.push(
       ['9', 'Nhiều lớp viền: GM1 (khung linh kiện) thành thân bo', 'Le Quoc Huy — Slaver_Ceiling bản lẻ', 'Đã sửa · f186434'],
       ['10', 'J11: đồng/lỗ sát mép, vạch trắng có khấc', 'Nguyen Van Quang — ESP32_DR', 'Không phải lỗi — file vẽ vậy'],
       ['11', 'Hộp chọn file bản web không mở đúng thư mục vừa dùng', '(mở file)', 'Đã sửa · 49468cd'],
+      ['12', 'Rãnh phay vẽ bằng một nét trong lớp viền bị bỏ, bo "đọc thiếu"', 'Nguyen Van Quang — CHAT_BOT_4', 'Đã sửa · 706ea9f'],
+      ['13', 'CAM: nét phụ của lớp viền hiện màu xanh mask', '(viewer)', 'Đã sửa · 706ea9f'],
     ],
     [5, 42, 30, 23],
   ),
@@ -203,6 +205,25 @@ const bugs = [
       ['Kiểm', 'Trình duyệt preview có đủ hai API, trang là secure context. Việc trình duyệt mở lại đúng thư mục cần anh thử trực tiếp (hộp chọn là cửa sổ hệ điều hành).'],
     ],
   },
+  {
+    t: 'Lỗi 12 — Rãnh phay vẽ bằng một nét bị bỏ (CHAT_BOT_4)',
+    rows: [
+      ['Bộ file', 'D:\\JobDatMach\\Nguyen Van Quang\\2026\\22-09\\Nguyen Van Quang 5pcs Green Project Outputs for CHAT_BOT_4.zip'],
+      ['Hiện tượng', '4 bo ghép trong khung chữ L, giữa các bo có 3 rãnh chia bo — app không hiện rãnh nào.'],
+      ['Nguyên nhân', 'GHEP_MACH.GKO vẽ khung bằng nét 0.5 mm, còn **mỗi rãnh là MỘT nét thẳng 0.8 mm** (đường tâm dao). Bước nối viền chỉ giữ chuỗi ≥ 3 đoạn; chuỗi 1–2 đoạn bị coi là vạch lẻ và bỏ.'],
+      ['Cách giải quyết', 'Nét thẳng 1–2 đoạn là **rãnh phay** khi: nằm hẳn trong bo (cách mép ≥ 1 mm — vạch V-cut chạm mép vẫn bỏ), rộng ≥ 0.3 mm, **đứng riêng** (không chạm nét khác), bề rộng nét không dùng cho một đường vẽ nhiều khúc.\n**CAM** vẽ đúng một nét như file khách; **2D / 3D** khoét thủng hình thuôn rộng bằng nét.'],
+      ['Kiểm', 'CHAT_BOT_4 đủ 3 rãnh, kích thước giữ 87.80 × 97.00 mm. Hồi quy corpus: lần đầu PHAONUOC (Ngoc Anh) bị nhận nhầm 15 rãnh (mảnh của đường vẽ gấp khúc 0.8 mm) → thêm điều kiện "đứng riêng" và "bề rộng". Sau sửa chỉ 6 bộ thêm rãnh, thân bo và kích thước không đổi (Hoang Long 6F E42 +7, Dinh Ngoc Tram +19, Hai Panel +2, Panel 10 +3, Phuong Ghep +2, 30pcs +4); xem hình từng bộ đều là rãnh thật. Test mới.'],
+      ['Lưu ý', 'Bề rộng rãnh lấy theo nét trong file; xưởng có thể phay bằng dao của xưởng (1.0 / 1.6 mm) nên rãnh thật có thể rộng hơn hình.'],
+    ],
+  },
+  {
+    t: 'Lỗi 13 — CAM: nét phụ của lớp viền hiện màu xanh mask',
+    rows: [
+      ['Hiện tượng', 'Ở CAM, khung viền vàng nhưng rãnh / đường phay hở trong viền lại màu xanh.'],
+      ['Nguyên nhân', 'web-gerber clone lớp viền làm lớp phủ mask; bản clone **dùng chung vật liệu** với lớp gốc. App tô xanh cả lớp phủ (để panel không loang lổ) → tô luôn các nét của lớp Outline, trừ mảnh đầu tiên. Có từ trước.'],
+      ['Cách giải quyết', 'Tô trên bản sao vật liệu (Viewer2D.WebGL.tsx); vật liệu mới được giải phóng cùng cảnh.'],
+    ],
+  },
 ]
 for (const b of bugs) children.push(H2(b.t), bugTable(b.rows), gap())
 children.push(H2('Ghi chú — "mất logo" khi chụp (không phải lỗi app)'))
@@ -225,7 +246,7 @@ const featureGroups = [
     'Danh sách lớp: bật/tắt từng lớp, All On / All Off, lọc Top Side / Bot Side, **solo** 🎯 một lớp, đổi màu lớp ở CAM. Lớp đồng giữa bo 4/6 lớp hiện ở CAM/3D.',
     '**7 màu bo kiểu JLC** (Xanh lá, Xanh dương, Đỏ, Đen, Tím, Vàng, Trắng); pad màu đồng trong lỗ mở mask; lỗ khoan trắng.',
     'Zoom / kéo, nút **Fit**. Badge góc khung: **Viền** lấy từ file nào · **Khoan** file nào, bao nhiêu lỗ · **Load** thời gian mở thật (đọc + dựng lần đầu).',
-    'Hiển thị đúng: slot/lỗ chữ nhật, lỗ khoét trong viền, panel nhiều bo chung cạnh, rail, đường phay; lấp khe dải phủ đồng CAM350.',
+    'Hiển thị đúng: slot/lỗ chữ nhật, lỗ khoét trong viền, **rãnh phay vẽ một nét** (CAM hiện nét như file, 2D/3D khoét thủng), panel nhiều bo chung cạnh, rail, đường phay; lấp khe dải phủ đồng CAM350.',
   ]],
   ['2.3 Chụp ảnh 2 mặt', [
     'Nút **Copy ảnh 2 mặt** (chế độ 2 Mặt): ảnh vào clipboard để dán Zalo / mail; tự cắt sát bo, mỗi mặt ~2000 px.',
@@ -243,6 +264,7 @@ const featureGroups = [
     '**Sơ đồ tấm** vẽ đúng hình viền thật của bo lặp X × Y, rail xám, vạch V-cut / chấm mouse bite, ghi kích thước tấm.',
     'Số lượng: nhập **số PCB → ra số set**; nút **⇅** cho file khách đã ghép sẵn: nhập **số set → ra số PCB** (Gerber chính là tấm panel). Tiền luôn = số set × diện tích tấm.',
     'Nhắc nhở: cạnh bo **< 15 mm** phải ghép V-cut; ghép V-cut mà tấm có cạnh **< 70 mm** (không nhắc với mouse bite).',
+    '**Nhắc file nhiều bo ghép**: viền có từ 2 bo rời trở lên (bỏ rail, mảnh vụn, khung) → cảnh báo bảng tra chỉ cho bo lẻ, nút **Dùng: file ghép sẵn N bo/set** tự bật Ghép panel theo X × Y đọc được và quy số PCB ra số set; đã ghép mà số bo/set khác số bo trong viền cũng nhắc.',
   ]],
   ['2.6 Tính giá', [
     '**Bảng tra** nhà máy cho bo đơn lẻ ≤ 10 × 10 cm (bấm mốc số lượng); ngoài mốc → gợi ý mốc gần nhất và ô nhập tay thành tiền.',
@@ -340,6 +362,7 @@ children.push(T([
   ['Nối', 'Dung sai 0.05 mm (inch: 0.05/25.4); ưu tiên đoạn khít, theo thứ tự file; mảnh hở nối lại với dung sai ×10'],
   ['Tách vòng "số 8"', 'Chuỗi đi qua cùng đỉnh hai lần → tách vòng đơn (đỉnh trùng khít, phần tách ≥ 1 mm²)'],
   ['Giữ vòng', '≥ 3 đoạn; 1–2 đoạn chỉ khi khép kín và có cung (lỗ tròn EasyEDA, bo tròn CAM350)'],
+  ['Rãnh một nét', 'Nét thẳng 1–2 đoạn nằm hẳn trong bo (≥ 1 mm từ mép), rộng ≥ 0.3 mm, đứng riêng, bề rộng không dùng cho đường vẽ nhiều khúc → hình thuôn rộng bằng nét, thành lỗ khoét (CHAT_BOT_4)'],
   ['Kích thước', 'Ô bao các vòng đã nối + nửa nét — không dùng số thô'],
 ], [25, 75]))
 children.push(H3('Vòng nào là thân bo, lỗ khoét hay nét phay'))
@@ -366,6 +389,7 @@ children.push(T([
   ['Gerber khoan (Proteus)', 'D02 → D01', 'Rãnh'],
   ['Rãnh trong lớp viền', 'Vòng kín nhỏ trong bo', 'Lỗ khoét; 2D/3D đi cùng cụm khoan'],
   ['Đường phay hở trong lớp viền', 'Nét hở', 'Nét phay — vẽ nét, không khoét'],
+  ['Rãnh một nét trong lớp viền', 'Một nét thẳng = đường tâm dao', 'CAM vẽ đúng nét; 2D/3D khoét hình thuôn rộng bằng nét'],
 ], [30, 32, 38]))
 children.push(P('Lưu ý: rect hole Altium là rãnh phay bằng dao tròn (góc bo theo bán kính dao); toạ độ slot nằm SAU G00/G01 — mọi luật đọc số phải dò cả ở đó.'))
 children.push(breakPage())
@@ -376,7 +400,7 @@ children.push(H2('5.1 Vấn đề còn tồn'))
 for (const s of [
   '**.DRD bị chọn thay THRUHOLE.tap** (Dinh Quang Viet, Dinh Ngoc Tram — AUTOMATION-2): .drd gán là dữ liệu khoan (Eagle) nhưng ở các bộ này có vẻ là bản vẽ khoan. Có từ trước.',
   '**Tam giác chéo sai** ở một số panel (Rail.zip, GWLRWEX-CELLULAR, ph_analyzer…): đa giác viền tô lệch. Bản cũ cũng bị.',
-  '**Chưa nhận biết file đa thiết kế**: CHAT_BOT_1 (4 bo ghép) vẫn đi bảng tra khi chưa tích Ghép panel — app đếm được số bo trong viền, có thể tự nhắc.',
+  '**Bo ghép chỉ ngăn bằng rãnh** (CHAT_BOT_4) vẫn đếm là 1 bo nên chưa có nhắc "nhiều bo ghép" (706ea9f đã nhắc cho file nhiều viền bo rời như CHAT_BOT_1).',
   '**V-cut / mouse bite chưa vào giá**: chỉ nhắc nhở; công thức chưa có phí V-cut.',
   '**Báo giá ghép panel ghi số set hay số PCB** — đang ghi số set, chờ chốt.',
   '**Bo 6 lớp chưa có đơn giá** (phương án L6).',
@@ -385,9 +409,9 @@ for (const s of [
 children.push(H2('5.2 Checklist khi sửa luật đọc file'))
 for (const s of [
   'Viết test trong test/ dựng lại đúng dáng file thật gây lỗi.',
-  'Chạy **npm run build** (tsc -b chặt hơn tsc --noEmit — lỗi build Vercel ở f12b339 là do chỉ chạy lệnh nhẹ) và npx vitest run (131 test).',
+  'Chạy **npm run build** (tsc -b chặt hơn tsc --noEmit — lỗi build Vercel ở f12b339 là do chỉ chạy lệnh nhẹ) và npx vitest run (136 test).',
   'Hồi quy corpus D:\\JobDatMach: so bản cũ/mới — kích thước bo, số vòng + thân/lỗ/nét, số lỗ và tỉ lệ lỗ nằm trong bo; xem hình cũ/mới các bộ bị đổi trước khi chốt.',
-  'Mở lại bộ mẫu: FC_F405RGT6_Wing (KiCad 6 lớp), BOAD NUT NHAN (EasyEDA), AGVH7 (Altium inch, slot), Ceiling / Dynamic Master (panel inch), Slaver_Ceiling bản lẻ (GKO + GM1), ESP32_DR (Altium metric 4:3, RectHoles), CHAT_BOT_1 (panel 4 bo), 3W NHUA XANH (CAM350, RAR).',
+  'Mở lại bộ mẫu: FC_F405RGT6_Wing (KiCad 6 lớp), BOAD NUT NHAN (EasyEDA), AGVH7 (Altium inch, slot), Ceiling / Dynamic Master (panel inch), Slaver_Ceiling bản lẻ (GKO + GM1), ESP32_DR (Altium metric 4:3, RectHoles), CHAT_BOT_1 (panel 4 bo), CHAT_BOT_4 (rãnh một nét), PHAONUOC (đường vẽ 0.8 mm không thành rãnh), 3W NHUA XANH (CAM350, RAR).',
 ]) children.push(B(s))
 
 // ── tài liệu ───────────────────────────────────────────────────────────

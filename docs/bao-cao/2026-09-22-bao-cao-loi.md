@@ -18,6 +18,8 @@ Tóm tắt:
 | 9 | Nhiều lớp viền: GM1 (khung linh kiện) thành thân bo | Le Quoc Huy — Slaver_Ceiling bản lẻ | Đã sửa · `f186434` |
 | 10 | J11 của ESP32_DR: đồng/lỗ sát mép, vạch trắng có khấc | Nguyen Van Quang — ESP32_DR | Không phải lỗi — file vẽ vậy |
 | 11 | Hộp chọn file bản web không mở đúng thư mục vừa dùng | (mở file) | Đã sửa · `49468cd` |
+| 12 | Rãnh phay vẽ bằng một nét trong lớp viền bị bỏ, bo "đọc thiếu" | Nguyen Van Quang — CHAT_BOT_4 | Đã sửa · `706ea9f` |
+| 13 | CAM: nét phụ của lớp viền hiện màu xanh mask | (viewer) | Đã sửa · `706ea9f` |
 
 ---
 
@@ -151,6 +153,38 @@ tam giác chéo sai; Rosario: rãnh móc câu nhất quán là lỗ).
   duyệt chưa hỗ trợ (Firefox, Safari, điện thoại) dùng hộp chọn cũ. Sửa tách đường dẫn.
 - **Kiểm:** preview có đủ hai API, là secure context; việc mở lại đúng thư mục cần thử tay.
 
+## 12. Rãnh phay vẽ bằng một nét bị bỏ — CHAT_BOT_4
+
+- **Bộ file:** `D:\JobDatMach\Nguyen Van Quang\2026\22-09\Nguyen Van Quang 5pcs Green Project Outputs for CHAT_BOT_4.zip`
+- **Hiện tượng:** 4 bo ghép trong khung chữ L, giữa các bo có 3 rãnh chia bo — app không
+  hiện rãnh nào.
+- **Nguyên nhân:** `GHEP_MACH.GKO` vẽ khung bằng nét 0.5 mm, còn **mỗi rãnh là MỘT nét thẳng
+  0.8 mm** (đường tâm dao). Bước nối viền chỉ giữ chuỗi ≥ 3 đoạn, chuỗi 1–2 đoạn bị coi là
+  vạch lẻ và bỏ.
+- **Cách giải quyết** (`stitchOutline`): nét thẳng 1–2 đoạn là **rãnh phay** khi đủ cả:
+  nằm hẳn trong bo (cách mép ≥ 1 mm — vạch V-cut chạm mép vẫn bỏ), nét rộng ≥ 0.3 mm (nét
+  mảnh là nét vẽ), **đứng riêng** (không chạm nét khác) và bề rộng nét không dùng cho một
+  đường vẽ nhiều khúc.
+  - **CAM:** vẽ đúng một nét như file khách.
+  - **2D / 3D:** khoét thủng hình thuôn rộng bằng nét (hai đầu tròn theo dao).
+- **Kiểm:** CHAT_BOT_4 đủ 3 rãnh, kích thước giữ 87.80 × 97.00 mm. Hồi quy corpus: lần
+  đầu PHAONUOC (Ngoc Anh) bị nhận nhầm 15 rãnh — là mảnh của đường vẽ gấp khúc 0.8 mm bị
+  đứt → thêm hai điều kiện "đứng riêng" và "bề rộng". Sau sửa chỉ 6 bộ thêm rãnh, thân bo
+  và kích thước không đổi: Hoang Long 6F E42 (+7), Dinh Ngoc Tram (+19), Hai Panel (+2),
+  Panel 10 (+3), Phuong Ghep (+2), 30pcs (+4) — xem hình từng bộ, đều là rãnh thật
+  (rộng 0.5–1.5 mm, dài 1.3–7 mm). Test mới.
+- **Lưu ý:** bề rộng rãnh lấy theo nét trong file; xưởng có thể phay bằng dao của xưởng
+  (1.0 / 1.6 mm) nên rãnh thật có thể rộng hơn hình.
+
+## 13. CAM: nét phụ của lớp viền hiện màu xanh mask
+
+- **Hiện tượng:** ở CAM, khung viền vàng nhưng rãnh / đường phay hở trong viền lại màu xanh.
+- **Nguyên nhân:** web-gerber clone lớp viền làm lớp phủ mask; bản clone **dùng chung vật
+  liệu** với lớp gốc. App tô xanh toàn bộ lớp phủ (để panel không loang lổ) → tô luôn các nét
+  của lớp Outline, trừ mảnh đầu tiên (được web-gerber gán vật liệu riêng). Có từ trước.
+- **Cách giải quyết:** tô trên bản sao vật liệu (`Viewer2D.WebGL.tsx`); vật liệu mới được
+  giải phóng cùng cảnh.
+
 ---
 
 ## Vấn đề còn tồn
@@ -160,8 +194,8 @@ tam giác chéo sai; Rosario: rãnh móc câu nhất quán là lỗ).
    này có vẻ là bản vẽ khoan; viewer chọn file "gộp" nhiều lỗ nhất. Đã có từ trước.
 2. **Tam giác chéo sai** ở một số panel (Rail.zip, GWLRWEX-CELLULAR, ph_analyzer…): đa giác
    viền tô lệch. Bản cũ cũng bị y hệt.
-3. **Chưa nhận biết file đa thiết kế:** CHAT_BOT_1 (4 bo ghép) vẫn đi bảng tra khi chưa tích
-   Ghép panel — app đếm được số bo trong viền, có thể tự nhắc.
+3. **Bo ghép chỉ ngăn bằng rãnh** (CHAT_BOT_4) vẫn đếm là 1 bo nên không có nhắc nhở "nhiều
+   bo ghép" (`706ea9f` đã nhắc cho file có nhiều viền bo rời như CHAT_BOT_1).
 4. **V-cut / mouse bite chưa vào giá:** chỉ nhắc nhở (cạnh < 15 mm, tấm V-cut < 70 mm), công
    thức chưa có phí V-cut.
 5. **Báo giá ghép panel ghi số set hay số PCB** — đang ghi số set, chờ chốt.
@@ -175,7 +209,7 @@ tưởng mất logo. Tải lại tab là hết. Từ nay kiểm clipboard/ảnh 
 
 ## Cách kiểm lại
 
-- `npx vitest run test/*.test.ts` — 131 test.
+- `npx vitest run test/*.test.ts` — 136 test.
 - `npm run build` — build thật (`tsc -b` chặt hơn `tsc --noEmit`; lỗi build Vercel ở
   `f12b339` là do chỉ chạy lệnh nhẹ).
 - Hồi quy corpus: script trong `test/_scratch/` (không commit) so bản cũ/mới trên
