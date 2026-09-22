@@ -20,6 +20,8 @@ Tóm tắt:
 | 11 | Hộp chọn file bản web không mở đúng thư mục vừa dùng | (mở file) | Đã sửa · `49468cd` |
 | 12 | Rãnh phay vẽ bằng một nét trong lớp viền bị bỏ, bo "đọc thiếu" | Nguyen Van Quang — CHAT_BOT_4 | Đã sửa · `706ea9f` |
 | 13 | CAM: nét phụ của lớp viền hiện màu xanh mask | (viewer) | Đã sửa · `706ea9f` |
+| 14 | OrCAD Layout: vẽ bản vẽ khoan `.DRD` thay cho `thruhole.tap` | Dinh Anh Tuan — DA82 (+ 252 bộ OrCAD) | Đã sửa · `11dc1bb` |
+| 15 | Lớp tài liệu / không rõ loại bật lên không có gì; không chọn tay được loại lớp | Dinh Anh Tuan — DA82 | Đã sửa · `11dc1bb` |
 
 ---
 
@@ -42,7 +44,7 @@ Tóm tắt:
     `SlotHoles`, `RectHoles`, `SquareHoles`, `Slot.txt`) là một phần của bộ khoan → vẽ hết.
 - **Kiểm:** hồi quy 238 bộ; số lỗ mới khớp số hình dựng được (vd. 28 → 150 = 150;
   453 = 445 tròn + 8 slot). 4 test mới.
-- **Vấn đề còn tồn:** xem mục "Vấn đề còn tồn" cuối file (`.DRD`).
+- **Sau đó:** lỗi 14 (`.DRD` của OrCAD Layout).
 
 ## 2. Hai bo chung cạnh nối thành vòng "số 8"
 
@@ -185,13 +187,47 @@ tam giác chéo sai; Rosario: rãnh móc câu nhất quán là lỗ).
 - **Cách giải quyết:** tô trên bản sao vật liệu (`Viewer2D.WebGL.tsx`); vật liệu mới được
   giải phóng cùng cảnh.
 
+## 14. OrCAD Layout: vẽ bản vẽ khoan `.DRD` thay cho `thruhole.tap`
+
+- **Bộ file:** `D:\JobDatMach\Dinh Anh Tuan\2026\22-09\Dinh Anh Tuan 10pcs No Step DA82.rar`
+- **Hiện tượng:** lớp `thruhole.tap` có trong danh sách nhưng không vẽ; badge ghi khoan từ
+  `.DRD`, 2D không có lỗ.
+- **Nguyên nhân:** `thruhole.tap` đọc đúng (339 lỗ). Nhưng `.DRD` của OrCAD Layout là **bản
+  vẽ khoan** dạng Gerber (ký hiệu lỗ + bảng chú thích). App nhận "file khoan dạng Gerber"
+  bằng dòng `%FS…X…`, mà OrCAD ghi `%FSLAN2X34Y34*%` — có thêm `N2` (số chữ số mã dòng)
+  nên không khớp. `.DRD` bị coi là Excellon, là file gộp nhiều hình nhất → được chọn vẽ.
+  **Có từ trước** (chính là mục ".DRD bị chọn thay THRUHOLE.tap" trong vấn đề còn tồn cũ).
+- **Cách giải quyết:** `isGerberContent` nhận thêm `N`/`G`/`D`/`M` trong header. Có Excellon
+  thì `.DRD` thành tài liệu "Drill (Gerber)" (ẩn, bật xem được).
+- **Kiểm:** 291 bộ OrCAD Layout trong corpus. **252 bộ** trước vẽ `.DRD`, giờ vẽ
+  `thruhole.tap`, 100% lỗ nằm trong bo, kích thước không đổi. Còn lại: bộ vốn sai kích thước
+  từ trước (989 mm, 2143 mm… — lỗ bị tính ra ngoài), và bộ chỉ có `.DRD` (không `.tap`) vẫn
+  vẽ `.DRD` như cũ, số lỗ đếm theo kiểu Gerber sát hơn (vd 1125 → 91). Test mới.
+
+## 15. Lớp tài liệu / không rõ loại bật lên không có gì; chọn tay loại lớp
+
+- **Hiện tượng:** DA82: `.AST`, `.FAB`, `.DRD` có trong danh sách, tích bật vẫn trống. App
+  nhận sai loại thì không có cách sửa.
+- **Nguyên nhân:** viewer chỉ dựng lớp có chỗ trong bo (đồng, mask, lụa, viền, khoan được
+  chọn); lớp tài liệu, không rõ loại, paste và file khoan không được chọn bị bỏ hẳn.
+- **Cách giải quyết:**
+  - **CAM vẽ hết**: lớp nào bật là hiện. Chỉ dựng khi bật lần đầu nên mở file không chậm đi.
+  - **Chọn tay loại lớp**: bấm vào lớp → ô "Loại lớp" (đồng / mask / lụa / paste / Outline /
+    Drill / tài liệu / không rõ). Chọn xong cả bộ file được **đọc lại** (`rebuildBoard`):
+    kích thước, file khoan được vẽ, viền chính tính lại. Lớp chọn tay có dấu ✎, nút
+    **↺ Tự nhận** để bỏ. Lớp chọn tay là viền thì thắng lớp viền app tự nhận; chọn tay là
+    khoan thì không bị hạ thành tài liệu.
+- **Kiểm:** DA82 — đổi FAB thành Outline: viền lấy từ FAB, kích thước 121.16 × 85.47 → 122.55 ×
+  87 mm; bấm ↺ về lại như cũ. Test mới.
+- **Lưu ý:** `.DTS` là báo cáo chữ (bảng mũi khoan), không có hình để vẽ. DA82 không có file
+  viền nên kích thước là viền ước lượng từ lớp đồng.
+
 ---
 
 ## Vấn đề còn tồn
 
-1. **`.DRD` bị chọn thay `THRUHOLE.tap`** (Dinh Quang Viet — Gerber Dinh Quang Viet.zip,
-   Dinh Ngoc Tram — AUTOMATION-2): `.drd` đang gán là dữ liệu khoan (Eagle) nhưng ở các bộ
-   này có vẻ là bản vẽ khoan; viewer chọn file "gộp" nhiều lỗ nhất. Đã có từ trước.
+1. **Bộ OrCAD chỉ có `.DRD`** (không có `thruhole.tap`): vẫn vẽ bản vẽ khoan làm lỗ — cần
+   xem có file khoan thật không, hoặc chọn tay. (`.DRD` cạnh `.tap` đã sửa ở lỗi 14.)
 2. **Tam giác chéo sai** ở một số panel (Rail.zip, GWLRWEX-CELLULAR, ph_analyzer…): đa giác
    viền tô lệch. Bản cũ cũng bị y hệt.
 3. **Bo ghép chỉ ngăn bằng rãnh** (CHAT_BOT_4) vẫn đếm là 1 bo nên không có nhắc nhở "nhiều
@@ -209,7 +245,7 @@ tưởng mất logo. Tải lại tab là hết. Từ nay kiểm clipboard/ảnh 
 
 ## Cách kiểm lại
 
-- `npx vitest run test/*.test.ts` — 136 test.
+- `npx vitest run test/*.test.ts` — 139 test.
 - `npm run build` — build thật (`tsc -b` chặt hơn `tsc --noEmit`; lỗi build Vercel ở
   `f12b339` là do chỉ chạy lệnh nhẹ).
 - Hồi quy corpus: script trong `test/_scratch/` (không commit) so bản cũ/mới trên

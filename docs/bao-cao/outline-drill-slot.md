@@ -60,7 +60,9 @@ nằm trong `src/lib/gerber-reader/` (`geometry.ts`, `outlineLoops.ts`, `identif
 - File **một phần** (`isPartialDrillFile`): PTH, NPTH, đuôi `-PTH/-NPTH` KiCad, hoặc tách theo
   hình lỗ Altium `RoundHoles/SlotHoles/RectHoles/SquareHoles`, `Slot.txt` → **vẽ tất cả**.
 - Còn lại coi là file **gộp** → chỉ vẽ file gộp nhiều lỗ nhất (KiCad xuất cả bản gộp lẫn bản tách).
-- Có Excellon thì bản Gerber khoan (KiCad/Altium xuất đôi) thành tài liệu — tránh đếm đôi.
+- Có Excellon thì bản Gerber khoan (KiCad/Altium xuất đôi, bản vẽ khoan `.DRD` của OrCAD
+  Layout) thành tài liệu — tránh đếm đôi / vẽ nhầm ký hiệu. *(OrCAD: 22/09, `11dc1bb`, 252 bộ)*
+- Chọn tay "Drill" ở danh sách lớp thì file đó luôn là file khoan.
 - Tất cả file khoan là con của một khung rỗng (trước đây file thứ hai bị nhân inch hai lần).
 
 ### B3. Đọc số — xem `dinh-dang-file.md` mục 4
@@ -104,5 +106,6 @@ Lưu ý:
    lỗ và tỉ lệ lỗ nằm trong bo. Xem hình cũ/mới các bộ bị đổi trước khi chốt.
 4. Mở lại bộ mẫu: FC_F405RGT6_Wing (KiCad 6 lớp), BOAD NUT NHAN (EasyEDA), AGVH7 (Altium inch,
    slot), Ceiling Master / Dynamic Master (panel inch), Slaver_Ceiling bản lẻ (GKO + GM1),
-   ESP32_DR (Altium metric 4:3, RectHoles), CHAT_BOT_1 (panel 4 bo), CHAT_BOT_4 (rãnh một
+   ESP32_DR (Altium metric 4:3, RectHoles), CHAT_BOT_1 (panel 4 bo), DA82 (OrCAD Layout,
+   thruhole.tap + .DRD), CHAT_BOT_4 (rãnh một
    nét), PHAONUOC (đường vẽ 0.8 mm không được thành rãnh), 3W NHUA XANH (CAM350, RAR).

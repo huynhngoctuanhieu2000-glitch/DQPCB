@@ -26,7 +26,7 @@ readme, ảnh, PDF, Excel, STEP/DXF, file nén lồng, file dự án KiCad (`fp-
 | **Gerber RS-274X** | `web-gerber` (parse + plot) | Chèn header `%FS/%MO` khi thiếu; đổi toạ độ tương đối `G91` → tuyệt đối; aperture list OrCAD |
 | **Gerber X2** (thuộc tính `%TF`) | DQPCB đọc `FileFunction` | Nhận lớp, mặt, PTH/NPTH từ chính file |
 | **Excellon** (NC drill) | `web-gerber` | Xem mục 4 |
-| **Gerber dạng file khoan** (Proteus CADCAM) | `web-gerber` | Chỉ dùng khi bộ file KHÔNG có Excellon (có thì bản Gerber là trùng lặp) |
+| **Gerber dạng file khoan** (Proteus CADCAM, bản vẽ khoan `.DRD` OrCAD Layout) | `web-gerber` | Chỉ dùng khi bộ file KHÔNG có Excellon (có thì bản Gerber là trùng lặp / bản vẽ). Nhận Gerber theo dòng `%FS…`, kể cả kiểu OrCAD `%FSLAN2X34Y34*%` *(22/09, `11dc1bb`)* |
 
 ## 3. Nhận diện lớp — thứ tự `matchLayer`
 
@@ -54,6 +54,10 @@ Dừng ở bước đầu tiên khớp:
 3. **`whats-that-gerber`** — phương án cuối, chỉ khi mọi luật trên không khớp.
 
 Không khớp gì → `unknown` (vẫn hiện, người lập tự bật/tắt).
+
+**Nhận sai thì chọn tay:** bấm vào lớp ở danh sách → ô "Loại lớp". Cả bộ file được đọc lại
+theo loại mới (`GerberParser.rebuildBoard`); lớp chọn tay có dấu ✎, "↺ Tự nhận" để bỏ.
+Ở CAM mọi lớp (kể cả tài liệu, không rõ loại, paste) bật lên đều vẽ. *(22/09, `11dc1bb`)*
 
 EDA đã gặp và có luật riêng: **Altium, KiCad (5–10), Eagle, OrCAD, Proteus, EasyEDA / EasyEDA
 Pro, CAM350, DipTrace, Sprint-Layout, Pulsonix.**

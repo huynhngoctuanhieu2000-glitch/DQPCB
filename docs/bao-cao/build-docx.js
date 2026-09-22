@@ -99,6 +99,8 @@ children.push(
       ['11', 'Hộp chọn file bản web không mở đúng thư mục vừa dùng', '(mở file)', 'Đã sửa · 49468cd'],
       ['12', 'Rãnh phay vẽ bằng một nét trong lớp viền bị bỏ, bo "đọc thiếu"', 'Nguyen Van Quang — CHAT_BOT_4', 'Đã sửa · 706ea9f'],
       ['13', 'CAM: nét phụ của lớp viền hiện màu xanh mask', '(viewer)', 'Đã sửa · 706ea9f'],
+      ['14', 'OrCAD Layout: vẽ bản vẽ khoan .DRD thay cho thruhole.tap', 'Dinh Anh Tuan — DA82 (+ 252 bộ OrCAD)', 'Đã sửa · 11dc1bb'],
+      ['15', 'Lớp tài liệu / không rõ loại bật lên không có gì; không chọn tay được loại lớp', 'Dinh Anh Tuan — DA82', 'Đã sửa · 11dc1bb'],
     ],
     [5, 42, 30, 23],
   ),
@@ -224,6 +226,26 @@ const bugs = [
       ['Cách giải quyết', 'Tô trên bản sao vật liệu (Viewer2D.WebGL.tsx); vật liệu mới được giải phóng cùng cảnh.'],
     ],
   },
+  {
+    t: 'Lỗi 14 — OrCAD Layout: vẽ bản vẽ khoan .DRD thay cho thruhole.tap',
+    rows: [
+      ['Bộ file', 'D:\\JobDatMach\\Dinh Anh Tuan\\2026\\22-09\\Dinh Anh Tuan 10pcs No Step DA82.rar'],
+      ['Hiện tượng', 'Lớp thruhole.tap có trong danh sách nhưng không vẽ; khoan lấy từ .DRD, 2D không có lỗ.'],
+      ['Nguyên nhân', 'thruhole.tap đọc đúng (339 lỗ). .DRD của OrCAD Layout là **bản vẽ khoan** dạng Gerber (ký hiệu lỗ + bảng chú thích). App nhận "file khoan dạng Gerber" bằng dòng %FS…X…, mà OrCAD ghi %FSLAN2X34Y34*% — thêm "N2" nên không khớp → .DRD bị coi là Excellon, là file gộp nhiều hình nhất → được chọn vẽ. **Có từ trước** (mục ".DRD bị chọn thay THRUHOLE.tap" trong vấn đề còn tồn cũ).'],
+      ['Cách giải quyết', 'Nhận thêm N / G / D / M trong header. Có Excellon thì .DRD thành tài liệu "Drill (Gerber)" (ẩn, bật xem được).'],
+      ['Kiểm', '291 bộ OrCAD Layout trong corpus: **252 bộ** trước vẽ .DRD, giờ vẽ thruhole.tap, 100% lỗ nằm trong bo, kích thước không đổi. Còn lại: bộ vốn sai kích thước từ trước, và bộ chỉ có .DRD vẫn vẽ .DRD như cũ (số lỗ đếm sát hơn, vd 1125 → 91). Test mới.'],
+    ],
+  },
+  {
+    t: 'Lỗi 15 — Lớp tài liệu / không rõ loại bật lên trống; chọn tay loại lớp',
+    rows: [
+      ['Hiện tượng', 'DA82: .AST, .FAB, .DRD có trong danh sách, tích bật vẫn trống. App nhận sai loại thì không có cách sửa.'],
+      ['Nguyên nhân', 'Viewer chỉ dựng lớp có chỗ trong bo (đồng, mask, lụa, viền, khoan được chọn); lớp tài liệu, không rõ loại, paste, file khoan không được chọn bị bỏ hẳn.'],
+      ['Cách giải quyết', '**CAM vẽ hết**: lớp nào bật là hiện (chỉ dựng khi bật lần đầu, mở file không chậm đi).\n**Chọn tay loại lớp**: bấm vào lớp → ô "Loại lớp". Cả bộ file đọc lại: kích thước, file khoan, viền chính tính lại. Lớp chọn tay có dấu ✎, nút ↺ Tự nhận để bỏ.'],
+      ['Kiểm', 'DA82: đổi FAB thành Outline → viền lấy từ FAB, 121.16 × 85.47 → 122.55 × 87 mm; ↺ về như cũ. Test mới.'],
+      ['Lưu ý', '.DTS là báo cáo chữ (bảng mũi khoan), không có hình. DA82 không có file viền nên kích thước là viền ước lượng từ lớp đồng.'],
+    ],
+  },
 ]
 for (const b of bugs) children.push(H2(b.t), bugTable(b.rows), gap())
 children.push(H2('Ghi chú — "mất logo" khi chụp (không phải lỗi app)'))
@@ -243,7 +265,8 @@ const featureGroups = [
   ]],
   ['2.2 Xem bo', [
     'Bốn chế độ: **CAM** (từng lớp màu CAM), **2 Mặt** (Top + Bot lật gương cạnh nhau), **2D** (ảnh thật), **3D** (xoay, lật xem mặt Bot).',
-    'Danh sách lớp: bật/tắt từng lớp, All On / All Off, lọc Top Side / Bot Side, **solo** 🎯 một lớp, đổi màu lớp ở CAM. Lớp đồng giữa bo 4/6 lớp hiện ở CAM/3D.',
+    'Danh sách lớp: bật/tắt từng lớp, All On / All Off, lọc Top Side / Bot Side, **solo** 🎯 một lớp, đổi màu lớp ở CAM. Lớp đồng giữa bo 4/6 lớp hiện ở CAM/3D. Ở CAM **mọi lớp** (tài liệu, không rõ loại, paste) bật lên đều vẽ.',
+    '**Chọn tay loại lớp**: bấm vào lớp → ô "Loại lớp" (đồng / mask / lụa / paste / Outline / Drill / tài liệu). App đọc lại cả bộ theo loại mới; dấu ✎ và nút ↺ Tự nhận.',
     '**7 màu bo kiểu JLC** (Xanh lá, Xanh dương, Đỏ, Đen, Tím, Vàng, Trắng); pad màu đồng trong lỗ mở mask; lỗ khoan trắng.',
     'Zoom / kéo, nút **Fit**. Badge góc khung: **Viền** lấy từ file nào · **Khoan** file nào, bao nhiêu lỗ · **Load** thời gian mở thật (đọc + dựng lần đầu).',
     'Hiển thị đúng: slot/lỗ chữ nhật, lỗ khoét trong viền, **rãnh phay vẽ một nét** (CAM hiện nét như file, 2D/3D khoét thủng), panel nhiều bo chung cạnh, rail, đường phay; lấp khe dải phủ đồng CAM350.',
@@ -313,13 +336,14 @@ children.push(T([
   ['Gerber RS-274X', 'web-gerber', 'Chèn header %FS/%MO khi thiếu; đổi G91 → tuyệt đối; aperture list OrCAD'],
   ['Gerber X2 (%TF)', 'DQPCB đọc FileFunction', 'Nhận lớp, mặt, PTH/NPTH từ chính file'],
   ['Excellon (NC drill)', 'web-gerber', 'Đọc số theo FILE_FORMAT / metric 3.3 (mục 3.4)'],
-  ['Gerber dạng file khoan (Proteus)', 'web-gerber', 'Chỉ dùng khi bộ file KHÔNG có Excellon'],
+  ['Gerber dạng file khoan (Proteus; .DRD OrCAD Layout)', 'web-gerber', 'Chỉ dùng khi bộ file KHÔNG có Excellon; nhận cả header OrCAD %FSLAN2X34Y34*%'],
 ], [25, 25, 50]))
 children.push(H2('3.3 Nhận diện lớp — thứ tự'))
 children.push(B('**0. File tự khai**: mã lớp CAM350 trong header, rồi Gerber X2 FileFunction.'))
 children.push(B('**1. Đuôi file** theo từng EDA (bảng dưới).'))
 children.push(B('**2. Từ khoá trong tên** (ranh giới từ): drill → paste → mask → silk → copper → outline → documentation; luật riêng cho SMT/SMB/SST/SSB, "Top SMT Paste" (Proteus), "Overlay"/"Legend", "Drill.GBR" của Proteus là bản vẽ khoan.'))
 children.push(B('**3. whats-that-gerber** — phương án cuối. Không khớp gì → unknown (vẫn hiện).'))
+children.push(B('**Nhận sai thì chọn tay** ở danh sách lớp (ô "Loại lớp") — cả bộ file đọc lại theo loại mới.'))
 children.push(T([
   ['Lớp', 'Đuôi'],
   ['Đồng trên / dưới', '.gtl .cmp .top / .gbl .sol .bot (+ .l1 .l2, toplayer, bottomlayer)'],
@@ -377,7 +401,7 @@ children.push(T([
 children.push(H2('4.2 Drill (lỗ khoan)'))
 children.push(B('**Đếm lỗ**: mỗi dòng toạ độ (cả dòng chỉ có Y… hay X…), G85 một dòng, mỗi M15 của lệnh phay; Gerber khoan: D03 + chuỗi D02→D01.'))
 children.push(B('**File một phần** (PTH, NPTH, -PTH/-NPTH KiCad, Round/Slot/Rect/SquareHoles, Slot.txt) → vẽ tất cả; còn lại là file **gộp** → chỉ vẽ file gộp nhiều lỗ nhất.'))
-children.push(B('Có Excellon thì bản Gerber khoan xuất đôi thành tài liệu (tránh đếm đôi). Mọi file khoan là con của một khung rỗng.'))
+children.push(B('Có Excellon thì bản Gerber khoan xuất đôi (và bản vẽ khoan .DRD của OrCAD Layout) thành tài liệu. Chọn tay "Drill" thì luôn là file khoan. Mọi file khoan là con của một khung rỗng.'))
 children.push(B('Lỗi nặng nhất đợt này: Altium metric **FILE_FORMAT=4:3** đọc nhỏ 100 lần (5/171 bộ Altium trong corpus bị).'))
 children.push(B('Vẽ: 2D ép cụm khoan thành lát mỏng ngay mặt đang nhìn; 3D trụ cao đúng bề dày bo + lượng rất nhỏ.'))
 children.push(H2('4.3 Slot / rãnh / lỗ chữ nhật'))
@@ -398,7 +422,7 @@ children.push(breakPage())
 children.push(H1('5. Vấn đề còn tồn & checklist'))
 children.push(H2('5.1 Vấn đề còn tồn'))
 for (const s of [
-  '**.DRD bị chọn thay THRUHOLE.tap** (Dinh Quang Viet, Dinh Ngoc Tram — AUTOMATION-2): .drd gán là dữ liệu khoan (Eagle) nhưng ở các bộ này có vẻ là bản vẽ khoan. Có từ trước.',
+  '**Bộ OrCAD chỉ có .DRD** (không có thruhole.tap): vẫn vẽ bản vẽ khoan làm lỗ — xem có file khoan thật không, hoặc chọn tay. (.DRD cạnh .tap đã sửa ở lỗi 14.)',
   '**Tam giác chéo sai** ở một số panel (Rail.zip, GWLRWEX-CELLULAR, ph_analyzer…): đa giác viền tô lệch. Bản cũ cũng bị.',
   '**Bo ghép chỉ ngăn bằng rãnh** (CHAT_BOT_4) vẫn đếm là 1 bo nên chưa có nhắc "nhiều bo ghép" (706ea9f đã nhắc cho file nhiều viền bo rời như CHAT_BOT_1).',
   '**V-cut / mouse bite chưa vào giá**: chỉ nhắc nhở; công thức chưa có phí V-cut.',
@@ -409,9 +433,9 @@ for (const s of [
 children.push(H2('5.2 Checklist khi sửa luật đọc file'))
 for (const s of [
   'Viết test trong test/ dựng lại đúng dáng file thật gây lỗi.',
-  'Chạy **npm run build** (tsc -b chặt hơn tsc --noEmit — lỗi build Vercel ở f12b339 là do chỉ chạy lệnh nhẹ) và npx vitest run (136 test).',
+  'Chạy **npm run build** (tsc -b chặt hơn tsc --noEmit — lỗi build Vercel ở f12b339 là do chỉ chạy lệnh nhẹ) và npx vitest run (139 test).',
   'Hồi quy corpus D:\\JobDatMach: so bản cũ/mới — kích thước bo, số vòng + thân/lỗ/nét, số lỗ và tỉ lệ lỗ nằm trong bo; xem hình cũ/mới các bộ bị đổi trước khi chốt.',
-  'Mở lại bộ mẫu: FC_F405RGT6_Wing (KiCad 6 lớp), BOAD NUT NHAN (EasyEDA), AGVH7 (Altium inch, slot), Ceiling / Dynamic Master (panel inch), Slaver_Ceiling bản lẻ (GKO + GM1), ESP32_DR (Altium metric 4:3, RectHoles), CHAT_BOT_1 (panel 4 bo), CHAT_BOT_4 (rãnh một nét), PHAONUOC (đường vẽ 0.8 mm không thành rãnh), 3W NHUA XANH (CAM350, RAR).',
+  'Mở lại bộ mẫu: FC_F405RGT6_Wing (KiCad 6 lớp), BOAD NUT NHAN (EasyEDA), AGVH7 (Altium inch, slot), Ceiling / Dynamic Master (panel inch), Slaver_Ceiling bản lẻ (GKO + GM1), ESP32_DR (Altium metric 4:3, RectHoles), CHAT_BOT_1 (panel 4 bo), DA82 (OrCAD Layout, thruhole.tap + .DRD), CHAT_BOT_4 (rãnh một nét), PHAONUOC (đường vẽ 0.8 mm không thành rãnh), 3W NHUA XANH (CAM350, RAR).',
 ]) children.push(B(s))
 
 // ── tài liệu ───────────────────────────────────────────────────────────
