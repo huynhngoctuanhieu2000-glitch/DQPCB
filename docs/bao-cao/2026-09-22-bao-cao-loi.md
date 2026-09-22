@@ -322,10 +322,13 @@ nhờ chấm bằng lụa. Mỗi bo dò tối đa ~0.3 s, tính một lần.
 Thẻ giá dùng chung cách dò: "Có" → nhắc kèm nút "file ghép sẵn N bo/set" (giờ có cả FRIWO);
 "Có thể" → chỉ nhắc nhẹ, không tự điền.
 
-## Đã chốt: báo giá ghép panel ghi theo SỐ SET (22/09)
+## Đã chốt: báo giá ghép panel ghi SL theo SỐ BO (22/09, đổi lại buổi tối)
 
-Dòng báo giá của bo ghép panel: **SL = số set**, đơn giá = tiền / set; ghi chú tự điền
-"Panel X*Y · N set". Menu chọn bo trong báo giá cũng ghi "N set" thay vì "pcs".
+Dòng báo giá của bo ghép panel: **SL = số bo khách nhận** (vd file ghép sẵn 4 × 2, 50 set →
+SL 400), đơn giá = tiền / bo; số set nằm trong ghi chú tự điền "Panel 4*2 · 50 set". Thành
+tiền vẫn tính theo số set. Sửa SL trên báo giá thì app quy ra số set (làm tròn lên: 401 bo →
+51 set) rồi tính lại tiền. Menu chọn bo trong báo giá ghi "N pcs". Bản trước trong ngày ghi
+số set vào cột SL (`40f7332`) — khách đọc thành 50 bo. Sửa ở `56ec0d4`.
 
 ## Ghi chú: "mất logo" khi chụp (22/09) — không phải lỗi app
 

@@ -323,7 +323,7 @@ const featureGroups = [
   ['2.7 Báo giá', [
     'Thông tin khách: Kính gửi (đoán từ tên thư mục), MST, Email, SĐT, Địa chỉ, **ngày báo giá** (chọn lịch); có / không VAT.',
     'Dòng hàng lấy từ bo đang mở (tên, số lớp, kích thước, màu phủ) kèm giá đã tính; thêm **stencil** (gợi ý cỡ vừa bo), dòng chiết khấu, **ghi chú hay dùng**.',
-    'Bo ghép panel: **SL = số set** (đã chốt 22/09), đơn giá / set, ghi chú tự điền "Panel X*Y · N set".',
+    'Bo ghép panel: **SL = số bo** khách nhận (vd 4 × 2, 50 set → 400; chốt 22/09), đơn giá / bo, số set trong ghi chú tự điền "Panel X*Y · N set"; sửa SL thì quy ra set (làm tròn lên) rồi tính lại tiền.',
     'Tổng cộng, người lập, tài khoản nhận tiền.',
     'Xuất **Excel** (.xlsx) và **PDF**; mở thư mục chứa file vừa lưu (Electron). Trên web/điện thoại: tạo PDF trong trình duyệt, **chia sẻ** (Zalo, Messenger) hoặc lưu ảnh PNG.',
   ]],
