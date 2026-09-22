@@ -953,7 +953,7 @@ export const Layout: React.FC = () => {
                         : 'theo khung bo — chưa kiểm được bằng pad'
                   return (
                     <div key={l.id} style={{ color: '#fbbf24' }} title={l.filename}>
-                      ⚠ {l.shortName}:{' '}
+                      ⚠ {l.filename.split(/[\\/]/).pop()}:{' '}
                       {f.reading && `không khai định dạng số, app đọc theo ${drillReadingLabel(f.reading)}`}
                       {f.reading && shift ? '; ' : ''}
                       {shift
