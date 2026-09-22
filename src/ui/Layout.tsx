@@ -257,6 +257,29 @@ export const Layout: React.FC = () => {
     e.target.value = ''
   }
 
+  /** Nút + mở thêm bo, đặt cạnh dãy tab (máy tính) hoặc cạnh ô chọn bo (điện thoại). */
+  const addBoardBtn = (
+    <button
+      onClick={() => openPicker(false)}
+      title="Mở thêm file Gerber (ZIP, RAR hoặc file lẻ)"
+      style={{
+        flexShrink: 0,
+        width: 24,
+        height: 24,
+        padding: 0,
+        borderRadius: '4px',
+        border: '1px dashed #475569',
+        backgroundColor: 'transparent',
+        color: '#94a3b8',
+        fontSize: '15px',
+        lineHeight: 1,
+        cursor: 'pointer',
+      }}
+    >
+      +
+    </button>
+  )
+
   /** Đầu bảng trượt trên điện thoại: hai tab Lớp / Thông tin, cả hai ngăn dùng chung. */
   const sheetTabs = (
     <div style={{ display: 'flex', alignItems: 'stretch', borderBottom: '1px solid #282b34', backgroundColor: '#14161b', flexShrink: 0 }}>
@@ -590,6 +613,7 @@ export const Layout: React.FC = () => {
             </button>
           </span>
         )}
+        {isMobile && boardState.boards.length > 1 && addBoardBtn}
 
         {/* Tab các bo đang mở — thả nhiều ZIP thì mỗi ZIP một bo */}
         {!(isMobile && boardState.boards.length > 1) && boardState.boards.length > 0 && (
@@ -639,26 +663,7 @@ export const Layout: React.FC = () => {
                 </div>
               )
             })}
-            {/* Mở thêm bo ngay cạnh dãy tab, khỏi phải lên menu File. */}
-            <button
-              onClick={() => openPicker(false)}
-              title="Mở thêm file Gerber (ZIP, RAR hoặc file lẻ)"
-              style={{
-                flexShrink: 0,
-                width: 24,
-                height: 24,
-                padding: 0,
-                borderRadius: '4px',
-                border: '1px dashed #475569',
-                backgroundColor: 'transparent',
-                color: '#94a3b8',
-                fontSize: '15px',
-                lineHeight: 1,
-                cursor: 'pointer',
-              }}
-            >
-              +
-            </button>
+            {addBoardBtn}
           </div>
         )}
 
