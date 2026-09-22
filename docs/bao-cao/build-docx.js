@@ -102,6 +102,7 @@ children.push(
       ['14', 'OrCAD Layout: vẽ bản vẽ khoan .DRD thay cho thruhole.tap', 'Dinh Anh Tuan — DA82 (+ 252 bộ OrCAD)', 'Đã sửa · 11dc1bb'],
       ['15', 'Lớp tài liệu / không rõ loại bật lên không có gì; không chọn tay được loại lớp', 'Dinh Anh Tuan — DA82', 'Đã sửa · 11dc1bb'],
       ['16', 'File khoan không khai định dạng số (co 10 lần) hoặc lệch gốc so với Gerber', 'FRIWO — 55807.931-90FE (+ 31 bộ / 1.850 mẫu)', 'Đã sửa · c680077, 3ec37c4'],
+      ['17', '2D / 3D chọn "Bot Side" không thấy mặt dưới', 'FRIWO — 55807.931-90FE', 'Đã sửa · 020e8de'],
     ],
     [5, 42, 30, 23],
   ),
@@ -259,6 +260,16 @@ const bugs = [
       ['Lưu ý', 'Panel FRIWO 4 × 2 chỉ ngăn bằng V-cut, không có viền bo riêng → app vẫn đếm 1 bo (vấn đề còn tồn).'],
     ],
   },
+  {
+    t: 'Lỗi 17 — 2D / 3D chọn "Bot Side" không thấy mặt dưới',
+    rows: [
+      ['Bộ file', 'D:\\JobDatMach\\FRIWO\\2026\\22-09\\FRIWO 55807.931-90FE.zip'],
+      ['Hiện tượng', '2D/3D, bấm lọc Bot Side: chỉ thấy mảng xanh với các lỗ, không thấy đồng và chữ in mặt dưới.'],
+      ['Nguyên nhân', 'Nút lọc chỉ ẩn các lớp mặt trên, còn góc nhìn vẫn từ trên xuống. Lõi bo và lớp phủ mask che hết mặt dưới.'],
+      ['Cách giải quyết', 'Chọn Bot Side ở 2D/3D thì dùng góc nhìn từ dưới lên có sẵn của khung Bot trong "2 Mặt" (lật gương). All / Top Side quay về nhìn từ trên. CAM giữ nhìn từ trên để soi file đúng toạ độ gốc.'],
+      ['Kiểm', 'FRIWO: 2D + Bot Side thấy rõ đồng và chữ in mặt dưới; All về mặt Top; 3D + Bot Side mở ở góc nhìn từ dưới.'],
+    ],
+  },
 ]
 for (const b of bugs) children.push(H2(b.t), bugTable(b.rows), gap())
 children.push(H2('Ghi chú — "mất logo" khi chụp (không phải lỗi app)'))
@@ -278,7 +289,7 @@ const featureGroups = [
   ]],
   ['2.2 Xem bo', [
     'Bốn chế độ: **CAM** (từng lớp màu CAM), **2 Mặt** (Top + Bot lật gương cạnh nhau), **2D** (ảnh thật), **3D** (xoay, lật xem mặt Bot).',
-    'Danh sách lớp: bật/tắt từng lớp, All On / All Off, lọc Top Side / Bot Side, **solo** 🎯 một lớp, đổi màu lớp ở CAM. Lớp đồng giữa bo 4/6 lớp hiện ở CAM/3D. Ở CAM **mọi lớp** (tài liệu, không rõ loại, paste) bật lên đều vẽ.',
+    'Danh sách lớp: bật/tắt từng lớp, All On / All Off, lọc Top Side / Bot Side (ở 2D/3D, Bot Side **nhìn từ dưới lên**, lật gương), **solo** 🎯 một lớp, đổi màu lớp ở CAM. Lớp đồng giữa bo 4/6 lớp hiện ở CAM/3D. Ở CAM **mọi lớp** (tài liệu, không rõ loại, paste) bật lên đều vẽ.',
     '**Chọn tay loại lớp**: bấm vào lớp → ô "Loại lớp" (đồng / mask / lụa / paste / Outline / Drill / tài liệu). App đọc lại cả bộ theo loại mới; dấu ✎ và nút ↺ Tự nhận.',
     '**7 màu bo kiểu JLC** (Xanh lá, Xanh dương, Đỏ, Đen, Tím, Vàng, Trắng); pad màu đồng trong lỗ mở mask; lỗ khoan trắng.',
     'Zoom / kéo, nút **Fit**. Badge góc khung: **Viền** lấy từ file nào · **Khoan** file nào, bao nhiêu lỗ · **Load** thời gian mở thật (đọc + dựng lần đầu).',

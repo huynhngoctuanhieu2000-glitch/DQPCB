@@ -23,6 +23,7 @@ Tóm tắt:
 | 14 | OrCAD Layout: vẽ bản vẽ khoan `.DRD` thay cho `thruhole.tap` | Dinh Anh Tuan — DA82 (+ 252 bộ OrCAD) | Đã sửa · `11dc1bb` |
 | 15 | Lớp tài liệu / không rõ loại bật lên không có gì; không chọn tay được loại lớp | Dinh Anh Tuan — DA82 | Đã sửa · `11dc1bb` |
 | 16 | File khoan không khai định dạng số (lỗ co 10 lần) hoặc lệch gốc so với Gerber | FRIWO — 55807.931-90FE (+ 31 bộ / 1.850 mẫu) | Đã sửa · `c680077`, `3ec37c4` |
+| 17 | 2D / 3D chọn "Bot Side" không thấy mặt dưới | FRIWO — 55807.931-90FE | Đã sửa · `020e8de` |
 
 ---
 
@@ -264,6 +265,19 @@ tam giác chéo sai; Rosario: rãnh móc câu nhất quán là lỗ).
   không sửa được khi cụm lỗ lệch mà vẫn lọt trong khung.
 - **Lưu ý:** file FRIWO là panel 4 × 2 nhưng các bo chỉ ngăn bằng đường V-cut, không có viền
   bo riêng → app vẫn đếm là 1 bo, không nhắc "file ghép sẵn" (cùng mục 3 vấn đề còn tồn).
+
+## 17. 2D / 3D chọn "Bot Side" không thấy mặt dưới
+
+- **Bộ file:** `D:\JobDatMach\FRIWO\2026\22-09\FRIWO 55807.931-90FE.zip`
+- **Hiện tượng:** 2D/3D, bấm lọc **Bot Side**: chỉ thấy mảng xanh với các lỗ, không thấy đồng
+  và chữ in mặt dưới.
+- **Nguyên nhân:** nút lọc chỉ ẩn các lớp mặt trên, còn góc nhìn vẫn từ trên xuống. Lõi bo và
+  lớp phủ mask che hết mặt dưới.
+- **Cách giải quyết** (`Layout.tsx`): chọn Bot Side ở 2D/3D thì dùng góc nhìn từ dưới lên có
+  sẵn của khung Bot trong "2 Mặt" (lật gương). All / Top Side quay về nhìn từ trên. CAM giữ
+  nhìn từ trên để soi file đúng toạ độ gốc.
+- **Kiểm:** FRIWO — 2D + Bot Side thấy rõ đồng và chữ in mặt dưới; All về mặt Top; 3D + Bot
+  Side mở ở góc nhìn từ dưới.
 
 ---
 
