@@ -57,7 +57,10 @@ const parseDigits = (raw: string): number | null => {
  */
 export interface QuotationSeed {
   boardId: string
+  /** Ghép panel: SỐ SET (đã chốt 22/09/2026 — báo giá bo ghép ghi theo set). Bo lẻ: số pcs. */
   quantity: number
+  /** Đơn vị của quantity. Không có = pcs. */
+  unit?: 'set' | 'pcs'
   /** null = chưa có công thức giá cho thông số đang chọn — người lập nhập tay. */
   amount: number | null
   /** Cơ sở đã dùng để ra con số trên — để form tính lại khi đổi SL. null = không có giá. */
@@ -492,7 +495,7 @@ export const QuotationPanel: React.FC<{
                           : ''}
                         {prices[b.id] && (
                           <span style={{ color: '#5eead4' }}>
-                            {` · ${prices[b.id].quantity} pcs`}
+                            {` · ${prices[b.id].quantity} ${prices[b.id].unit ?? 'pcs'}`}
                             {prices[b.id].amount !== null ? ` · ${money(prices[b.id].amount!)} đ` : ' · chưa có giá'}
                           </span>
                         )}

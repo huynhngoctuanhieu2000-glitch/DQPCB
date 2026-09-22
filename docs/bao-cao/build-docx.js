@@ -323,6 +323,7 @@ const featureGroups = [
   ['2.7 Báo giá', [
     'Thông tin khách: Kính gửi (đoán từ tên thư mục), MST, Email, SĐT, Địa chỉ, **ngày báo giá** (chọn lịch); có / không VAT.',
     'Dòng hàng lấy từ bo đang mở (tên, số lớp, kích thước, màu phủ) kèm giá đã tính; thêm **stencil** (gợi ý cỡ vừa bo), dòng chiết khấu, **ghi chú hay dùng**.',
+    'Bo ghép panel: **SL = số set** (đã chốt 22/09), đơn giá / set, ghi chú tự điền "Panel X*Y · N set".',
     'Tổng cộng, người lập, tài khoản nhận tiền.',
     'Xuất **Excel** (.xlsx) và **PDF**; mở thư mục chứa file vừa lưu (Electron). Trên web/điện thoại: tạo PDF trong trình duyệt, **chia sẻ** (Zalo, Messenger) hoặc lưu ảnh PNG.',
   ]],
@@ -451,7 +452,6 @@ for (const s of [
   '**Tam giác chéo sai** ở một số panel (Rail.zip, GWLRWEX-CELLULAR, ph_analyzer…): đa giác viền tô lệch. Bản cũ cũng bị.',
   '**Bo ghép chỉ ngăn bằng rãnh / V-cut** (CHAT_BOT_4, FRIWO 55807) vẫn đếm là 1 bo nên chưa có nhắc "nhiều bo ghép" (706ea9f đã nhắc cho file nhiều viền bo rời như CHAT_BOT_1).',
   '**V-cut / mouse bite chưa vào giá**: chỉ nhắc nhở; công thức chưa có phí V-cut.',
-  '**Báo giá ghép panel ghi số set hay số PCB** — đang ghi số set, chờ chốt.',
   '**Bo 6 lớp chưa có đơn giá** (phương án L6).',
   '**DFM chưa có**: đồng / lỗ khoan ngoài hoặc quá sát viền (như J11 ESP32_DR), trace/space, annular ring, đo kích thước.',
 ]) children.push(B(s))

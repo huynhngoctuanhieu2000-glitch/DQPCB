@@ -291,8 +291,12 @@ tam giác chéo sai; Rosario: rãnh móc câu nhất quán là lỗ).
    bo ghép" (`706ea9f` đã nhắc cho file có nhiều viền bo rời như CHAT_BOT_1).
 4. **V-cut / mouse bite chưa vào giá:** chỉ nhắc nhở (cạnh < 15 mm, tấm V-cut < 70 mm), công
    thức chưa có phí V-cut.
-5. **Báo giá ghép panel ghi số set hay số PCB** — đang ghi số set, chờ chốt.
-6. **DFM chưa có:** đồng/lỗ khoan ngoài hoặc quá sát viền (như J11 của ESP32_DR) chưa tự báo.
+5. **DFM chưa có:** đồng/lỗ khoan ngoài hoặc quá sát viền (như J11 của ESP32_DR) chưa tự báo.
+
+## Đã chốt: báo giá ghép panel ghi theo SỐ SET (22/09)
+
+Dòng báo giá của bo ghép panel: **SL = số set**, đơn giá = tiền / set; ghi chú tự điền
+"Panel X*Y · N set". Menu chọn bo trong báo giá cũng ghi "N set" thay vì "pcs".
 
 ## Ghi chú: "mất logo" khi chụp (22/09) — không phải lỗi app
 
