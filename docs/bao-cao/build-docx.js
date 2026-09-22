@@ -101,7 +101,7 @@ children.push(
       ['13', 'CAM: nét phụ của lớp viền hiện màu xanh mask', '(viewer)', 'Đã sửa · 706ea9f'],
       ['14', 'OrCAD Layout: vẽ bản vẽ khoan .DRD thay cho thruhole.tap', 'Dinh Anh Tuan — DA82 (+ 252 bộ OrCAD)', 'Đã sửa · 11dc1bb'],
       ['15', 'Lớp tài liệu / không rõ loại bật lên không có gì; không chọn tay được loại lớp', 'Dinh Anh Tuan — DA82', 'Đã sửa · 11dc1bb'],
-      ['16', 'File khoan Pulsonix INCH không khai định dạng số, lỗ co 10 lần nằm ngoài bo', 'FRIWO — 55807.931-90FE', 'Đã sửa · c680077'],
+      ['16', 'File khoan không khai định dạng số (co 10 lần) hoặc lệch gốc so với Gerber', 'FRIWO — 55807.931-90FE (+ 31 bộ / 1.850 mẫu)', 'Đã sửa · c680077, 3ec37c4'],
     ],
     [5, 42, 30, 23],
   ),
@@ -248,14 +248,15 @@ const bugs = [
     ],
   },
   {
-    t: 'Lỗi 16 — File khoan Pulsonix không khai định dạng số, lỗ co 10 lần',
+    t: 'Lỗi 16 — File khoan đọc sai tỉ lệ / lệch gốc — dò theo pad',
     rows: [
-      ['Bộ file', 'D:\\JobDatMach\\FRIWO\\2026\\22-09\\FRIWO 55807.931-90FE.zip'],
-      ['Hiện tượng', 'Bo (panel 4 × 2) nằm lọt thỏm góc trên phải khung nhìn; một cụm nhỏ lạc tận giữa dưới — đó là toàn bộ 2641 lỗ khoan.'],
-      ['Nguyên nhân', 'Pulsonix xuất M48 / FMAT,1 / INCH trơn — không LZ/TZ, không ;FILE_FORMAT, toạ độ không dấu chấm, 8 chữ số giữ số 0 đầu (X01011283 = 10.11283 in, định dạng 3.5). Không có gì trong file nói vậy, parser áp mặc định inch 2.4 → 1.011283 in: cả cụm lỗ **nhỏ đi 10 lần**, rơi ra ngoài bo. Cùng họ lỗi 8 nhưng ở đây không có dòng khai format để đọc.'],
-      ['Cách giải quyết', 'reader.ts → fixDrillScale: **lấy chính bo làm thước** — lỗ khoan phải nằm trong viền (không có viền thì trong vùng đồng). Cụm lỗ nằm gần như hẳn ngoài bo (dưới nửa diện tích chồng lên bo) thì thử lại các cách đặt dấu thập phân hay gặp, chọn cách cho cụm lỗ nằm trong bo và phủ rộng nhất. Lỗ định vị trên rail hơi lấn viền không bị đọc lại.'],
-      ['Kiểm', 'FRIWO: 2641/2641 lỗ nằm trong viền, kích thước giữ 137.4 × 147 mm. Hồi quy corpus: mẫu 1/10 kho (1.850 bộ): 541 bộ có file khoan không dấu thập phân, **10 bộ đổi — cả 10 từ 0–14 lỗ trên bo lên 100%**, kích thước không đổi, không bộ nào tệ đi (vd BoardC25v2 0→503/503, PS700W_S07 0→245/245, VGS805A 14→130/130). Ước cả kho ~100 bộ từng bị. 2 test mới.'],
-      ['Lưu ý', 'Panel 4 × 2 chỉ ngăn bằng V-cut, không có viền bo riêng → app vẫn đếm 1 bo, chưa nhắc "file ghép sẵn" (vấn đề còn tồn).'],
+      ['Bộ file', 'D:\\JobDatMach\\FRIWO\\2026\\22-09\\FRIWO 55807.931-90FE.zip (và các bộ lộ ra khi quét kho)'],
+      ['Hiện tượng', 'FRIWO: bo (panel 4 × 2) nằm lọt thỏm góc trên phải khung nhìn; một cụm nhỏ lạc tận giữa dưới — đó là toàn bộ 2641 lỗ khoan.'],
+      ['Nguyên nhân', '**Hai kiểu lỗi file khoan.** (1) **Không khai định dạng số**: Excellon chỉ ghi dãy số liền (X01011283), phải có lời khai mới biết mấy số phần nguyên. Pulsonix xuất INCH trơn với định dạng 3.5 (10.11283 in), parser áp 2.4 → 1.011283 in: nhỏ 10 lần. (2) **Lệch gốc**: định dạng đúng nhưng file khoan xuất theo gốc khác Gerber, cả cụm lỗ bị dời (PCB_doline: +87.9, +25.5 mm) — lỗi thật của file khách, xưởng khoan theo sẽ khoan lệch.'],
+      ['Cách giải quyết', '**Dò theo pad** (reader.ts): lỗ thật nằm trên pad/via, nên cách đọc đúng là cách cho nhiều tâm lỗ trúng pad đồng nhất. Mặc định trúng ≥ 50% thì giữ; không thì thử mọi cách đặt dấu thập phân + độ dời tốt nhất (bỏ phiếu hiệu toạ độ lỗ − pad), lấy cách trúng nhiều nhất. NPTH theo file khoan cùng bộ; cuối cùng mới lấy khung bo làm thước.\n**Chốt chặn khớp giả**: NPTH không dò theo pad; file khai đủ số chữ số mà lỗ nằm trong bo thì chỉ xét lệch gốc; cách đọc khác phải giữ cụm lỗ trải ≥ 25% vùng pad.\n**Cảnh báo** dưới danh sách lớp: đọc theo định dạng nào, dời bao nhiêu mm, căn cứ; lệch gốc thì nhắc báo khách.'],
+      ['Kiểm', 'FRIWO: 2641 lỗ về đúng vùng bo, kích thước giữ 137.4 × 147 mm; PCB_doline, The Cold dời lại khớp 100% pad. Hồi quy corpus, đo bằng **tỉ lệ lỗ trúng pad**: mẫu 1/10 (1.850 bộ) — **31 bộ đổi, cả 31 tốt lên, 0 tệ đi, không đổi kích thước**; bộ trúng pad < 50% giảm 34 → 3. 21 bộ sai định dạng, 10 bộ lệch gốc. Bản chỉ dùng khung bo (c680077) sửa được 10. 6 test mới.'],
+      ['Còn lại', 'File khoan không có pad để dò và không có file cùng bộ (chỉ có NPTH, hoặc không có lớp đồng): chỉ sửa được khi cụm lỗ nằm hẳn ngoài bo. Zip lẫn file khoan nhiều thiết kế (PCB_TEST) chỉ cải thiện một phần.'],
+      ['Lưu ý', 'Panel FRIWO 4 × 2 chỉ ngăn bằng V-cut, không có viền bo riêng → app vẫn đếm 1 bo (vấn đề còn tồn).'],
     ],
   },
 ]
@@ -415,7 +416,7 @@ children.push(B('**Đếm lỗ**: mỗi dòng toạ độ (cả dòng chỉ có 
 children.push(B('**File một phần** (PTH, NPTH, -PTH/-NPTH KiCad, Round/Slot/Rect/SquareHoles, Slot.txt) → vẽ tất cả; còn lại là file **gộp** → chỉ vẽ file gộp nhiều lỗ nhất.'))
 children.push(B('Có Excellon thì bản Gerber khoan xuất đôi (và bản vẽ khoan .DRD của OrCAD Layout) thành tài liệu. Chọn tay "Drill" thì luôn là file khoan. Mọi file khoan là con của một khung rỗng.'))
 children.push(B('Lỗi nặng nhất đợt này: Altium metric **FILE_FORMAT=4:3** đọc nhỏ 100 lần (5/171 bộ Altium trong corpus bị).'))
-children.push(B('File khoan **không khai định dạng số** (Pulsonix INCH trơn, toạ độ 3.5): parser áp 2.4, nhỏ 10 lần. Nếu cụm lỗ nằm gần như hẳn ngoài bo thì **lấy bo làm thước**, thử lại các cách đặt dấu thập phân (fixDrillScale).'))
+children.push(B('File khoan **không khai định dạng số** (Pulsonix INCH trơn, 3.5) hoặc **lệch gốc** so với Gerber: **dò theo pad** — lấy cách đọc + độ dời cho nhiều tâm lỗ trúng pad đồng nhất; NPTH theo file khoan cùng bộ; khung bo là phương án cuối. Lớp được sửa có cảnh báo trên giao diện.'))
 children.push(B('Vẽ: 2D ép cụm khoan thành lát mỏng ngay mặt đang nhìn; 3D trụ cao đúng bề dày bo + lượng rất nhỏ.'))
 children.push(H2('4.3 Slot / rãnh / lỗ chữ nhật'))
 children.push(T([
@@ -446,9 +447,9 @@ for (const s of [
 children.push(H2('5.2 Checklist khi sửa luật đọc file'))
 for (const s of [
   'Viết test trong test/ dựng lại đúng dáng file thật gây lỗi.',
-  'Chạy **npm run build** (tsc -b chặt hơn tsc --noEmit — lỗi build Vercel ở f12b339 là do chỉ chạy lệnh nhẹ) và npx vitest run (142 test).',
+  'Chạy **npm run build** (tsc -b chặt hơn tsc --noEmit — lỗi build Vercel ở f12b339 là do chỉ chạy lệnh nhẹ) và npx vitest run (146 test).',
   'Hồi quy corpus D:\\JobDatMach: so bản cũ/mới — kích thước bo, số vòng + thân/lỗ/nét, số lỗ và tỉ lệ lỗ nằm trong bo; xem hình cũ/mới các bộ bị đổi trước khi chốt.',
-  'Mở lại bộ mẫu: FC_F405RGT6_Wing (KiCad 6 lớp), BOAD NUT NHAN (EasyEDA), AGVH7 (Altium inch, slot), Ceiling / Dynamic Master (panel inch), Slaver_Ceiling bản lẻ (GKO + GM1), ESP32_DR (Altium metric 4:3, RectHoles), CHAT_BOT_1 (panel 4 bo), DA82 (OrCAD Layout, thruhole.tap + .DRD), FRIWO 55807 (Pulsonix, khoan INCH không khai format), CHAT_BOT_4 (rãnh một nét), PHAONUOC (đường vẽ 0.8 mm không thành rãnh), 3W NHUA XANH (CAM350, RAR).',
+  'Mở lại bộ mẫu: FC_F405RGT6_Wing (KiCad 6 lớp), BOAD NUT NHAN (EasyEDA), AGVH7 (Altium inch, slot), Ceiling / Dynamic Master (panel inch), Slaver_Ceiling bản lẻ (GKO + GM1), ESP32_DR (Altium metric 4:3, RectHoles), CHAT_BOT_1 (panel 4 bo), DA82 (OrCAD Layout, thruhole.tap + .DRD), FRIWO 55807 (Pulsonix, khoan INCH không khai format), PCB_doline (Altium, khoan lệch gốc), 5395_1 (EasyEDA, NPTH phải giữ nguyên), CHAT_BOT_4 (rãnh một nét), PHAONUOC (đường vẽ 0.8 mm không thành rãnh), 3W NHUA XANH (CAM350, RAR).',
 ]) children.push(B(s))
 
 // ── tài liệu ───────────────────────────────────────────────────────────

@@ -71,10 +71,13 @@ Lỗi nặng nhất đợt này: **Altium metric `FILE_FORMAT=4:3`** bị đọc
 ngoài góc bo. 5/171 bộ Altium trong corpus bị; sửa 22/09 (`f186434`).
 
 Cùng họ lỗi: **file khoan không khai định dạng số** (Pulsonix xuất `INCH` trơn, toạ độ 3.5
-giữ số 0 đầu — `X01011283` = 10.11283 in). Parser áp 2.4 → nhỏ 10 lần. File không đủ thông
-tin để đoán, nên **lấy chính bo làm thước** (`fixDrillScale`): lỗ khoan phải nằm trong viền.
-Chỉ chạy khi cụm lỗ nằm gần như hẳn ngoài bo (dưới nửa chồng lên bo) — lỗ định vị trên rail
-hơi lấn viền không bị đọc lại. Sửa 22/09 (FRIWO 55807.931-90FE).
+giữ số 0 đầu — `X01011283` = 10.11283 in; parser áp 2.4 → nhỏ 10 lần) và **file khoan lệch
+gốc** so với Gerber (Altium xuất theo gốc tương đối). Cả hai giải bằng **dò theo pad**: lỗ
+thật nằm trên pad/via, nên cách đọc đúng (định dạng + độ dời) là cách cho nhiều tâm lỗ trúng
+pad đồng nhất. Chốt chặn khớp giả: file đã khai định dạng chỉ được xét lệch gốc; NPTH không
+dò theo pad mà theo file khoan cùng bộ; cách đọc khác phải giữ cụm lỗ trải ≥ 25% vùng pad.
+Khung bo chỉ là phương án cuối. Lớp được sửa có `drillFix` → dải cảnh báo dưới danh sách lớp
+(lệch gốc thì nhắc báo khách). Sửa 22/09 (FRIWO 55807.931-90FE, PCB_doline, The Cold).
 
 ### B4. Vẽ
 

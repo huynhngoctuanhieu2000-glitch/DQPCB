@@ -69,8 +69,8 @@ Pro, CAM350, DipTrace, Sprint-Layout, Pulsonix.**
 | Toạ độ có dấu chấm | Để nguyên |
 | Khai `;FILE_FORMAT=a:b` + `METRIC/INCH,LZ/TZ` (Altium) | **DQPCB chèn dấu thập phân** theo a:b (LZ bù đuôi, TZ bù đầu). web-gerber không đọc dòng chú thích này. *(22/09, `f186434`)* |
 | METRIC, không khai format, không dấu chấm (Proteus) | Chèn theo chuẩn metric 3.3 |
-| INCH không khai | Để web-gerber áp 2.4 — **trừ khi** lỗ ra nằm ngoài bo (xem dòng dưới) |
-| Không khai gì, đọc mặc định thì lỗ nằm **ngoài bo** (Pulsonix `INCH` trơn, toạ độ 3.5 giữ số 0 đầu) | **Lấy bo làm thước**: thử các cách đặt dấu thập phân hay gặp, chọn cách cho cụm lỗ nằm trong viền (không có viền thì trong vùng đồng) và phủ rộng nhất. Chỉ chạy khi dưới nửa cụm lỗ chồng lên bo. *(22/09, `fixDrillScale`)* |
+| INCH không khai | Để web-gerber áp 2.4, rồi **dò theo pad** (dòng dưới) |
+| Sau khi đọc: lỗ trúng pad đồng < 50% | **Dò theo pad** (`drillReadings` + `PadIndex`): thử các cách đặt dấu thập phân (chỉ với file KHÔNG khai định dạng) và độ dời gốc; lấy cách trúng pad nhiều nhất. NPTH theo file khoan cùng bộ; không có pad thì lấy khung bo làm thước. Lớp được sửa mang `drillFix`, giao diện cảnh báo. *(22/09)* |
 | Lệnh phay `G00 → M15 → G01 → M16` | Slot / lỗ chữ nhật (xem `outline-drill-slot.md`) |
 | `G85` | Slot một dòng |
 
