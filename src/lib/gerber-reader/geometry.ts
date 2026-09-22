@@ -410,7 +410,16 @@ export const stitchOutline = (tree: any) => {
   // Vì nó chỉ dựng được một shape, panel có NHIỀU đường bao rời (9 bo + khung + rãnh
   // v-cut = 13 vòng) sẽ bị nối liền thành một khối tự cắt. Nên tách mỗi vòng thành một
   // cây riêng để bên ngoài dựng từng mảnh rồi gộp lại.
-  const template = tree.children.find((c: any) => c?.segments?.length) ?? tree.children[0]
+  //
+  // [DQPCB] Mẫu phải là NÉT VẼ (imagePath) nếu lớp có nét. Bo "Gerber Anh Nhat" (Altium,
+  // 22/09/2026): BAI111.GKO có một vùng tô G36 (rãnh dưới anten Module1) đứng TRƯỚC khung bo.
+  // Lấy phần tử đầu tiên làm mẫu thì cả 8 đoạn khung bo thành 8 "vùng tô" một đoạn — tô đặc
+  // ra 0 đỉnh, 2D/3D mất sạch lõi bo (CAM vẽ nét nên không lộ). Corpus: ~1–2% bộ dính.
+  // Lớp chỉ có vùng tô thì giữ như cũ.
+  const template =
+    tree.children.find((c: any) => c?.type === 'imagePath' && c?.segments?.length) ??
+    tree.children.find((c: any) => c?.segments?.length) ??
+    tree.children[0]
   const asTree = (segments: any[]) => ({
     ...tree,
     children: segments.map((seg) => ({ ...template, segments: [seg] })),

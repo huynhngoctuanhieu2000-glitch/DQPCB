@@ -443,3 +443,39 @@ describe('OrCAD Layout: thruhole.tap + bản vẽ khoan .DRD (bo DA82, Dinh Anh 
     expect(back.layers.find((l) => l.filename === 'BO.TOP')!.type).toBe('copper')
   })
 })
+
+describe('lớp viền có vùng tô đứng trước khung bo (bo Anh Nhat, BAI111.GKO)', () => {
+  // Vùng tô G36 (rãnh khoét) nằm TRƯỚC các nét khung bo 10 × 10 mm.
+  const gko = gbr(
+    [
+      'G36*',
+      'X300000Y100000D02*',
+      'X700000Y100000D01*',
+      'X700000Y200000D01*',
+      'X300000Y200000D01*',
+      'X300000Y100000D01*',
+      'G37*',
+      'G01X0Y0D02*',
+      'G01X1000000Y0D01*',
+      'G01X1000000Y1000000D01*',
+      'G01X0Y1000000D01*',
+      'G01X0Y0D01*',
+    ].join('\n'),
+  )
+
+  it('khung bo là nét vẽ, tô đặc được (2D/3D có lõi bo)', async () => {
+    const { renderThree } = await import('web-gerber')
+    const [b] = await GerberParser.parseInputFiles([asFile('BO.GTL', copper), asFile('BO.GKO', gko)])
+    const parts = b.layers.find((l) => l.type === 'outline')!.imageTree.parts
+    // Thân bo = vòng có ô bao lớn nhất (vòng kia là rãnh khoét 4 × 1 mm).
+    const span = (p: any) => Math.max(...p.children.map((c: any) => Math.abs(c.segments[0].end[0] - c.segments[0].start[0])))
+    const body = parts.reduce((a: any, p: any) => (span(p) > span(a) ? p : a))
+    expect(parts.every((p: any) => p.children.every((c: any) => c.type === 'imagePath'))).toBe(true)
+    let verts = 0
+    renderThree(body, 0xffffff, undefined, true).traverse((o: any) => {
+      verts += o.geometry?.attributes?.position?.count ?? 0
+    })
+    expect(verts).toBeGreaterThan(0)
+    expect(b.bounds.widthMM).toBeCloseTo(10, 0)
+  })
+})
