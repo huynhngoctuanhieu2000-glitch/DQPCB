@@ -21,6 +21,7 @@ import {
   itemFromStencil,
   sameStencil,
   stencilSideFromBoard,
+  stencilSize,
   stencilSizeLabel,
   withStencil,
   QUOTATION_DEFAULTS,
@@ -644,6 +645,9 @@ export const QuotationPanel: React.FC<{
                       {it.stencil ? (
                         // Dòng stencil: cỡ khung là một trong các cỡ nhà máy có, nên cho
                         // chọn lại bao nhiêu lần cũng được thay vì gõ tay.
+                        // Chỉ ghi cỡ khung ("37*47cm"): giá đã có ở cột Thành tiền, "không
+                        // khung" đã có ở ghi chú — thêm vào thì chữ bị cắt ("37*47cm · 4…")
+                        // hoặc ô giãn ra bóp cột Tên file.
                         <select
                           style={{ ...S.cellInput, width: '92px' }}
                           value={stencilTiers.findIndex((t) => sameStencil(t, it.stencil!))}
@@ -655,11 +659,11 @@ export const QuotationPanel: React.FC<{
                           {/* Cỡ đã chọn có thể vừa bị xoá trong Cài đặt — vẫn phải hiện ra
                               chứ không nhảy sang cỡ khác sau lưng người lập. */}
                           {stencilTiers.every((t) => !sameStencil(t, it.stencil!)) && (
-                            <option value={-1}>{stencilSizeLabel(it.stencil)} (đã xoá)</option>
+                            <option value={-1}>{stencilSize(it.stencil)} (đã xoá)</option>
                           )}
                           {stencilTiers.map((t, i) => (
-                            <option key={i} value={i}>
-                              {stencilSizeLabel(t)} · {money(t.priceVnd)}
+                            <option key={i} value={i} title={`${stencilSizeLabel(t)} · ${money(t.priceVnd)} đ`}>
+                              {stencilSize(t)}
                             </option>
                           ))}
                         </select>
