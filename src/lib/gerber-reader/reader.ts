@@ -61,61 +61,206 @@ const overlapShare = (a: Box, b: Box): number => {
  * [DQPCB] File khoan KHÔNG nói rõ định dạng số — không dấu thập phân, không
  * ";FILE_FORMAT=", không "INCH,LZ/TZ" — thì parser áp mặc định inch 2:4. Pulsonix xuất
  * "INCH" trơn với toạ độ 3:5 giữ số 0 đầu (X01011283 = 10.11283 in): đọc 2:4 thành
- * 1.011283 in, cả cụm lỗ co 10 lần dồn ra ngoài bo (báo giá FRIWO 55807.931-90FE,
- * 22/09/2026). File tự nó không đủ thông tin để đoán chắc, nên dùng chính bo làm
- * thước: lỗ khoan phải nằm trong viền (hoặc trong vùng đồng khi không có viền).
+ * 1.011283 in, cả cụm lỗ co 10 lần (báo giá FRIWO 55807.931-90FE, 22/09/2026).
  *
- * Chỉ chạy khi cách đọc mặc định cho lỗ nằm NGOÀI bo. Thử các cách đặt dấu thập phân
- * hay gặp và lấy cách cho cụm lỗ nằm trong bo và phủ rộng nhất (co quá tay thì cụm lỗ
- * cũng lọt vào trong nhưng bé tí — phủ rộng nhất mới là tỉ lệ thật). Trả về nội dung
- * đã chèn dấu thập phân, hoặc null nếu không cách nào khớp.
+ * Trả về mọi cách đặt dấu thập phân hay gặp, mỗi cách một khoá (để file khoan cùng bộ
+ * dùng lại đúng cách đã chốt). null nếu toạ độ đã có dấu chấm — khi đó không mơ hồ.
  */
-const fixDrillScale = (
-  content: string,
-  ref: Box,
-  parse: (text: string) => { size?: number[]; units?: string },
-): string | null => {
+const drillReadings = (content: string): { key: string; text: string }[] | null => {
   const body = content.replace(/;[^\n]*/g, '')
   const tokens = body.match(/[XY][+-]?[\d.]+/g) || []
   if (tokens.length === 0 || tokens.some((t) => t.includes('.'))) return null
-
   const withDecimal = (fmt: (digits: string) => string) =>
     content.replace(/([XY])([+-]?)(\d+)(?=\D|$)/g, (_w, axis, sign, digits) => axis + sign + fmt(digits))
-  const candidates: string[] = []
+  const out: { key: string; text: string }[] = []
   // Giữ đủ chữ số (hoặc bỏ số 0 ĐẦU): giá trị = số nguyên ÷ 10^dec.
   for (let dec = 2; dec <= 6; dec++) {
-    candidates.push(
-      withDecimal((d) => {
+    out.push({
+      key: `div${dec}`,
+      text: withDecimal((d) => {
         const p = d.padStart(dec + 1, '0')
         return p.slice(0, p.length - dec) + '.' + p.slice(p.length - dec)
       }),
-    )
+    })
   }
   // Bỏ số 0 CUỐI (LZ): bù đuôi cho đủ tổng số chữ số rồi mới đặt dấu.
   for (const [int, dec] of [[2, 4], [2, 5], [3, 3], [3, 4], [3, 5], [4, 4]]) {
-    candidates.push(
-      withDecimal((d) => {
+    out.push({
+      key: `lz${int}${dec}`,
+      text: withDecimal((d) => {
         if (d.length > int + dec) return d
         const f = d.padEnd(int + dec, '0')
         return f.slice(0, int) + '.' + f.slice(int)
       }),
-    )
+    })
   }
+  return out
+}
 
-  let best: { text: string; area: number } | null = null
-  for (const text of candidates) {
-    try {
-      const t = parse(text)
-      if (!t.size || t.size.length !== 4) continue
-      const box = toMm(t.size, t.units)
-      if (!(box[2] > box[0]) || !boxInside(box, ref)) continue
-      const area = (box[2] - box[0]) * Math.max(box[3] - box[1], 1e-6)
-      if (!best || area > best.area) best = { text, area }
-    } catch {
-      /* cách đọc này hỏng — bỏ qua */
+/** Tâm các lỗ tròn của một lớp khoan đã plot, mm. */
+const holeCenters = (tree: any): [number, number][] => {
+  const k = tree?.units === 'in' ? 25.4 : 1
+  const out: [number, number][] = []
+  for (const c of tree?.children ?? []) {
+    if (c.type === 'imageShape' && c.shape?.type === 'circle') out.push([c.shape.cx * k, c.shape.cy * k])
+  }
+  return out
+}
+
+/** Đường chéo ô bao một đám điểm. */
+const spreadOf = (pts: [number, number][]): number => {
+  if (!pts.length) return 0
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity
+  for (const [x, y] of pts) {
+    if (x < x0) x0 = x
+    if (y < y0) y0 = y
+    if (x > x1) x1 = x
+    if (y > y1) y1 = y
+  }
+  return Math.hypot(x1 - x0, y1 - y0)
+}
+
+/** Ô bao của một hình flash (pad), theo đơn vị của lớp. */
+const shapeBox = (sh: any): Box | null => {
+  if (!sh) return null
+  if (sh.type === 'circle') return [sh.cx - sh.r, sh.cy - sh.r, sh.cx + sh.r, sh.cy + sh.r]
+  if (sh.type === 'rectangle') return [sh.x, sh.y, sh.x + sh.xSize, sh.y + sh.ySize]
+  const pts: number[][] =
+    sh.type === 'polygon'
+      ? sh.points
+      : sh.type === 'outline'
+        ? sh.segments.flatMap((g: any) => [g.start, g.end])
+        : []
+  if (sh.type === 'layeredShape') {
+    const boxes = sh.shapes.filter((x: any) => !x.erase).map(shapeBox).filter(Boolean) as Box[]
+    if (!boxes.length) return null
+    return [
+      Math.min(...boxes.map((b) => b[0])), Math.min(...boxes.map((b) => b[1])),
+      Math.max(...boxes.map((b) => b[2])), Math.max(...boxes.map((b) => b[3])),
+    ]
+  }
+  if (!pts.length) return null
+  const xs = pts.map((p) => p[0])
+  const ys = pts.map((p) => p[1])
+  return [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)]
+}
+
+/** Dời mọi hình của một lớp đã plot đi (dx, dy) mm — toạ độ trong cây theo đơn vị lớp. */
+const shiftTree = (tree: any, dxMm: number, dyMm: number) => {
+  const k = tree?.units === 'in' ? 25.4 : 1
+  const dx = dxMm / k
+  const dy = dyMm / k
+  const pt = (p: number[]) => { p[0] += dx; p[1] += dy }
+  const shape = (sh: any) => {
+    if (!sh) return
+    if (sh.type === 'circle') { sh.cx += dx; sh.cy += dy }
+    else if (sh.type === 'rectangle') { sh.x += dx; sh.y += dy }
+    else if (sh.type === 'polygon') sh.points.forEach(pt)
+    else if (sh.type === 'outline') sh.segments.forEach(seg)
+    else if (sh.type === 'layeredShape') sh.shapes.forEach(shape)
+  }
+  const seg = (g: any) => { pt(g.start); pt(g.end); if (g.center) pt(g.center) }
+  for (const c of tree?.children ?? []) {
+    if (c.type === 'imageShape') shape(c.shape)
+    else if (c.segments) c.segments.forEach(seg)
+  }
+  if (tree?.size?.length === 4) tree.size = [tree.size[0] + dx, tree.size[1] + dy, tree.size[2] + dx, tree.size[3] + dy]
+}
+
+/**
+ * Pad đồng của cả bo (mm), xếp theo lưới để tra nhanh "tâm lỗ này có nằm trên pad nào
+ * không". Pad = hình flash (tròn, chữ nhật, macro…) và vùng tô NHỎ (≤ 6 mm — có EDA vẽ
+ * pad bằng vùng); vùng tô lớn là mảng đồng phủ, lỗ nào rơi vào cũng "trúng" nên bỏ.
+ */
+class PadIndex {
+  private cells = new Map<string, Box[]>()
+  count = 0
+  private static CELL = 2 // mm
+
+  constructor(trees: any[]) {
+    for (const tree of trees) {
+      const k = tree?.units === 'in' ? 25.4 : 1
+      for (const c of tree?.children ?? []) {
+        if (c.polarity === 'clear') continue
+        let box: Box | null = null
+        if (c.type === 'imageShape') box = shapeBox(c.shape)
+        else if (c.type === 'imageRegion') {
+          const r = shapeBox({ type: 'outline', segments: c.segments })
+          if (r && (r[2] - r[0]) * k <= 6 && (r[3] - r[1]) * k <= 6) box = r
+        }
+        if (!box) continue
+        this.add([box[0] * k, box[1] * k, box[2] * k, box[3] * k])
+      }
     }
   }
-  return best?.text ?? null
+
+  /** Tâm pad (mm) — để dò độ dời giữa file khoan và Gerber. */
+  centers: [number, number][] = []
+
+  /** Đường chéo ô bao các tâm pad, mm — thước đo "bo trải rộng cỡ nào". */
+  spread(): number {
+    return spreadOf(this.centers)
+  }
+
+  private add(b: Box) {
+    const C = PadIndex.CELL
+    this.count++
+    this.centers.push([(b[0] + b[2]) / 2, (b[1] + b[3]) / 2])
+    for (let gx = Math.floor(b[0] / C); gx <= Math.floor(b[2] / C); gx++) {
+      for (let gy = Math.floor(b[1] / C); gy <= Math.floor(b[3] / C); gy++) {
+        const key = gx + ',' + gy
+        const list = this.cells.get(key)
+        if (list) list.push(b)
+        else this.cells.set(key, [b])
+      }
+    }
+  }
+
+  /**
+   * Độ dời (mm) đưa được nhiều tâm lỗ về trúng tâm pad nhất: bỏ phiếu trên hiệu toạ độ
+   * lỗ − pad (ô 0.25 mm), lấy ô nhiều phiếu nhất rồi lấy trung bình trong ô. Lỗ thật nằm
+   * trên pad nên độ dời đúng được rất nhiều cặp cùng bầu; độ dời ngẫu nhiên thì tản mát.
+   */
+  bestOffset(holes: [number, number][]): [number, number] {
+    const pads = this.centers
+    if (!holes.length || !pads.length) return [0, 0]
+    const hs = holes.filter((_, i) => i % Math.max(1, Math.floor(holes.length / 120)) === 0)
+    const ps = pads.filter((_, i) => i % Math.max(1, Math.floor(pads.length / 3000)) === 0)
+    const G = 0.25
+    const votes = new Map<number, { n: number; sx: number; sy: number }>()
+    let top = { n: 0, sx: 0, sy: 0 }
+    for (const [hx, hy] of hs) {
+      for (const [px, py] of ps) {
+        const dx = px - hx
+        const dy = py - hy
+        const key = Math.round(dx / G) * 1_000_003 + Math.round(dy / G)
+        let v = votes.get(key)
+        if (!v) votes.set(key, (v = { n: 0, sx: 0, sy: 0 }))
+        v.n++
+        v.sx += dx
+        v.sy += dy
+        if (v.n > top.n) top = v
+      }
+    }
+    return top.n ? [top.sx / top.n, top.sy / top.n] : [0, 0]
+  }
+
+  /** Tỉ lệ tâm lỗ nằm trên một pad (chừa 0.05 mm). Lấy mẫu tối đa 1500 lỗ cho nhanh. */
+  hitRate(holes: [number, number][]): number {
+    if (!holes.length) return 0
+    const step = Math.max(1, Math.floor(holes.length / 1500))
+    const C = PadIndex.CELL
+    const e = 0.05
+    let hit = 0
+    let n = 0
+    for (let i = 0; i < holes.length; i += step) {
+      const [x, y] = holes[i]
+      n++
+      const list = this.cells.get(Math.floor(x / C) + ',' + Math.floor(y / C))
+      if (list?.some((b) => x >= b[0] - e && x <= b[2] + e && y >= b[1] - e && y <= b[3] + e)) hit++
+    }
+    return hit / n
+  }
 }
 
 export class GerberParser {
@@ -527,52 +672,166 @@ export class GerberParser {
       }
     }
 
-    // Lỗ khoan rơi ra ngoài bo thì thử đọc lại định dạng số (xem fixDrillScale).
+    // ── File khoan không khai định dạng số: chọn lại cách đọc (xem drillReadings) ──
+    // 1. Dò theo PAD: lỗ khoan thật nằm trên pad/via, nên cách đọc đúng là cách cho nhiều
+    //    tâm lỗ trúng pad đồng nhất. Bắt được cả bo đặt sát gốc toạ độ — lỗ co 10 lần vẫn
+    //    nằm trong khung bo (dồn về một góc) nên chỉ nhìn khung bo thì không thấy sai.
+    // 2. File không có pad để dò (NPTH, lỗ bắt vít): dùng lại cách đọc đã chốt cho file
+    //    khoan khác cùng bộ — cùng một phần mềm xuất thì cùng định dạng.
+    // 3. Vẫn chưa chốt được thì lấy KHUNG BO làm thước: cụm lỗ nằm gần như hẳn ngoài bo
+    //    (dưới nửa chồng lên bo) là sai; chọn cách cho cụm lỗ nằm trong bo và phủ rộng
+    //    nhất (co quá tay thì cũng lọt vào trong nhưng bé tí).
+    const parseDrill = (text: string) =>
+      flattenArcs(plot((() => { const p = createParser(); p.feed(text); return p.result() })(), false))
+    const pads = new PadIndex(parsedLayers.filter((l) => l.type === 'copper').map((l) => l.imageTree))
     const refLayers = parsedLayers.filter((l) => l.type === 'outline' && l.size[2] > l.size[0])
     const refPool = refLayers.length ? refLayers : parsedLayers.filter((l) => l.type === 'copper' && l.size[2] > l.size[0])
-    if (refPool.length) {
-      const boxes = refPool.map((l) => toMm(l.size, l.units))
-      const ref: Box = [
-        Math.min(...boxes.map((b) => b[0])),
-        Math.min(...boxes.map((b) => b[1])),
-        Math.max(...boxes.map((b) => b[2])),
-        Math.max(...boxes.map((b) => b[3])),
-      ]
-      let rescaled = false
-      for (const layer of parsedLayers) {
-        if (layer.type !== 'drill' || gerberDrillIds.has(layer.id) || !(layer.size[2] > layer.size[0])) continue
-        // Chỉ sửa khi cụm lỗ nằm gần như hẳn ngoài bo (dưới nửa diện tích chồng lên bo) —
-        // lỗ định vị trên rail hơi lấn ra ngoài viền là chuyện bình thường, không phải sai tỉ lệ.
+    const refBoxes = refPool.map((l) => toMm(l.size, l.units))
+    const ref: Box | null = refBoxes.length
+      ? [
+          Math.min(...refBoxes.map((b) => b[0])), Math.min(...refBoxes.map((b) => b[1])),
+          Math.max(...refBoxes.map((b) => b[2])), Math.max(...refBoxes.map((b) => b[3])),
+        ]
+      : null
+    const PAD_OK = 0.5
+    /** Dời dưới mức này coi như không dời (sai số làm tròn, pad lệch tâm lỗ). */
+    const MIN_SHIFT_MM = 0.5
+    let rescaled = false
+    /** Cách đọc + độ dời đã chốt theo pad, để file khoan cùng bộ (NPTH…) dùng lại. */
+    let chosen: { key: string | null; dx: number; dy: number } | null = null
+    const apply = (
+      layer: ParsedGerberLayer,
+      tree: any,
+      fix: NonNullable<ParsedGerberLayer['drillFix']>,
+    ) => {
+      if (fix.dxMm || fix.dyMm) shiftTree(tree, fix.dxMm, fix.dyMm)
+      layer.imageTree = tree
+      layer.size = [tree.size[0], tree.size[1], tree.size[2], tree.size[3]]
+      layer.units = tree.units || layer.units
+      layer.drillFix = fix
+      rescaled = true
+    }
+    const shifted = (holes: [number, number][], dx: number, dy: number) =>
+      holes.map(([x, y]) => [x + dx, y + dy] as [number, number])
+    const pending: { layer: ParsedGerberLayer; readings: { key: string; text: string }[]; raw: string }[] = []
+    for (const layer of parsedLayers) {
+      if (layer.type !== 'drill' || gerberDrillIds.has(layer.id) || !(layer.size[2] > layer.size[0])) continue
+      const raw = rawFiles.find((f) => f.name === layer.filename)
+      if (!raw) continue
+      // null = toạ độ có dấu chấm (rõ ràng) — không có cách đọc nào khác, vẫn xét lệch gốc.
+      let readings = drillReadings(raw.content) ?? []
+      // File KHAI ĐỦ số chữ số (";FILE_FORMAT=a:b", hay "METRIC,LZ,000.000" của EasyEDA)
+      // mà cụm lỗ vẫn nằm trong bo thì tin lời khai — chỉ xét lệch gốc, không thử cách
+      // đọc khác. Chỉ khai kiểu số 0 ("INCH,TZ", "METRIC,LZ") thì chưa đủ, vẫn mơ hồ. Khai
+      // đủ mà lỗ nằm hẳn ngoài bo thì lời khai sai (bộ CS2: FILE_FORMAT=2:4 nhưng không
+      // phải) — cho thử như file không khai.
+      const declared = /;\s*FILE_FORMAT\s*=|^\s*(?:METRIC|INCH)\s*,\s*(?:LZ|TZ)\s*,\s*0+\.0+/im.test(raw.content)
+      if (declared && ref) {
         const own = toMm(layer.size, layer.units)
-        if (boxInside(own, ref) || overlapShare(own, ref) >= 0.5) continue
-        const raw = rawFiles.find((f) => f.name === layer.filename)
-        if (!raw) continue
-        const parseDrill = (text: string) => flattenArcs(plot((() => { const p = createParser(); p.feed(text); return p.result() })(), false))
-        const fixed = fixDrillScale(raw.content, ref, parseDrill)
-        if (!fixed) continue
-        const tree = parseDrill(fixed)
-        layer.imageTree = tree
-        layer.size = [tree.size[0], tree.size[1], tree.size[2], tree.size[3]]
-        layer.units = tree.units || layer.units
-        rescaled = true
+        if (boxInside(own, ref) || overlapShare(own, ref) >= 0.5) readings = []
       }
-      // Không có viền thì ô bao cả bo cộng dồn trong vòng đọc đã lẫn toạ độ khoan sai —
-      // tính lại. Có viền thì phía dưới lấy thẳng từ viền nên khỏi làm.
-      if (rescaled && !refLayers.length) {
-        globalMinX = globalMinY = Infinity
-        globalMaxX = globalMaxY = -Infinity
-        for (const l of parsedLayers) {
-          const w = l.size[2] - l.size[0]
-          const h = l.size[3] - l.size[1]
-          const counts =
-            (w > 0.1 || h > 0.1) &&
-            (l.type === 'copper' || l.type === 'silkscreen' || (l.type === 'soldermask' && w < 250) ||
-              (l.type === 'drill' && l.displayName === 'Drl'))
-          if (!counts) continue
-          const b = toMm(l.size, l.units)
-          globalMinX = Math.min(globalMinX, b[0]); globalMinY = Math.min(globalMinY, b[1])
-          globalMaxX = Math.max(globalMaxX, b[2]); globalMaxY = Math.max(globalMaxY, b[3])
+      const holes = holeCenters(layer.imageTree)
+      // Có đủ pad và đủ lỗ thì dò theo pad. File NPTH thì không: lỗ bắt vít vốn không
+      // nằm trên pad, tỉ lệ trúng pad thấp là đúng chứ không phải đọc sai.
+      if (pads.count >= 10 && holes.length >= 5 && layer.drillPlating !== 'NPTH') {
+        const now = pads.hitRate(holes)
+        if (now >= PAD_OK) continue // cách đọc mặc định đã trúng pad — đúng rồi
+        // Thử cả cách đọc hiện tại (key null — có thể chỉ lệch gốc) lẫn mọi cách đặt dấu,
+        // mỗi cách thử thêm độ dời tốt nhất. Ngang nhau thì ưu tiên KHÔNG dời.
+        let best: { key: string | null; tree: any; rate: number; dx: number; dy: number } | null = null
+        const padSpread = pads.spread()
+        const consider = (key: string | null, tree: any) => {
+          const hs = holeCenters(tree)
+          if (hs.length < 5) return
+          // Cách đọc khác phải giữ cụm lỗ trải rộng tương xứng với bo: co thành một chấm
+          // thì dời đi đâu cũng lọt vào vài pad to — khớp giả.
+          if (key !== null && spreadOf(hs) < padSpread * 0.25) return
+          const plain = pads.hitRate(hs)
+          let cand = { key, tree, rate: plain, dx: 0, dy: 0 }
+          const [dx, dy] = pads.bestOffset(hs)
+          if (Math.hypot(dx, dy) >= MIN_SHIFT_MM) {
+            const moved = pads.hitRate(shifted(hs, dx, dy))
+            if (moved > plain + 0.05) cand = { key, tree, rate: moved, dx, dy }
+          }
+          const better =
+            !best ||
+            cand.rate > best.rate + 0.02 ||
+            // ngang nhau: cách không dời thắng
+            (cand.rate >= best.rate - 0.02 && !cand.dx && !cand.dy && (best.dx || best.dy))
+          if (better) best = cand
         }
+        consider(null, layer.imageTree)
+        for (const r of readings) {
+          try {
+            consider(r.key, parseDrill(r.text))
+          } catch {
+            /* cách đọc này hỏng — bỏ qua */
+          }
+        }
+        const b = best as { key: string | null; tree: any; rate: number; dx: number; dy: number } | null
+        if (b && b.rate >= PAD_OK && b.rate >= now + 0.3) {
+          // Cây của cách đọc hiện tại là cây đang gắn vào lớp — dời thẳng trên nó.
+          apply(layer, b.tree, { reading: b.key, dxMm: b.dx, dyMm: b.dy, via: 'pad', padHit: b.rate })
+          chosen = { key: b.key, dx: b.dx, dy: b.dy }
+          continue
+        }
+      }
+      pending.push({ layer, readings, raw: raw.content })
+    }
+    for (const { layer, readings } of pending) {
+      const own = toMm(layer.size, layer.units)
+      const outside = ref ? !boxInside(own, ref) && overlapShare(own, ref) < 0.5 : false
+      // 2. Dùng lại cách đọc + độ dời của file anh em — chỉ khi kết quả nằm trong bo.
+      if (chosen) {
+        const r = chosen.key === null ? null : readings.find((x) => x.key === chosen!.key)
+        if (chosen.key === null || r) {
+          try {
+            const tree = r ? parseDrill(r.text) : layer.imageTree
+            const box = toMm(tree.size, tree.units)
+            const moved: Box = [box[0] + chosen.dx, box[1] + chosen.dy, box[2] + chosen.dx, box[3] + chosen.dy]
+            if ((r || chosen.dx || chosen.dy) && (!ref || boxInside(moved, ref))) {
+              apply(layer, tree, { reading: chosen.key, dxMm: chosen.dx, dyMm: chosen.dy, via: 'sibling' })
+              continue
+            }
+          } catch {
+            /* bỏ qua */
+          }
+        }
+      }
+      // 3. Khung bo làm thước — chỉ khi cụm lỗ nằm hẳn ngoài bo (chắc chắn sai), nên đưa
+      //    vào trong bo không bao giờ tệ hơn giữ nguyên.
+      if (!ref || !outside) continue
+      let best: { key: string; tree: any; area: number } | null = null
+      for (const r of readings) {
+        try {
+          const tree = parseDrill(r.text)
+          if (!tree.size || tree.size.length !== 4) continue
+          const box = toMm(tree.size, tree.units)
+          if (!(box[2] > box[0]) || !boxInside(box, ref)) continue
+          const area = (box[2] - box[0]) * Math.max(box[3] - box[1], 1e-6)
+          if (!best || area > best.area) best = { key: r.key, tree, area }
+        } catch {
+          /* bỏ qua */
+        }
+      }
+      if (best) apply(layer, best.tree, { reading: best.key, dxMm: 0, dyMm: 0, via: 'board' })
+    }
+    // Không có viền thì ô bao cả bo cộng dồn trong vòng đọc đã lẫn toạ độ khoan sai —
+    // tính lại. Có viền thì phía dưới lấy thẳng từ viền nên khỏi làm.
+    if (rescaled && !refLayers.length) {
+      globalMinX = globalMinY = Infinity
+      globalMaxX = globalMaxY = -Infinity
+      for (const l of parsedLayers) {
+        const w = l.size[2] - l.size[0]
+        const h = l.size[3] - l.size[1]
+        const counts =
+          (w > 0.1 || h > 0.1) &&
+          (l.type === 'copper' || l.type === 'silkscreen' || (l.type === 'soldermask' && w < 250) ||
+            (l.type === 'drill' && l.displayName === 'Drl'))
+        if (!counts) continue
+        const b = toMm(l.size, l.units)
+        globalMinX = Math.min(globalMinX, b[0]); globalMinY = Math.min(globalMinY, b[1])
+        globalMaxX = Math.max(globalMaxX, b[2]); globalMaxY = Math.max(globalMaxY, b[3])
       }
     }
 

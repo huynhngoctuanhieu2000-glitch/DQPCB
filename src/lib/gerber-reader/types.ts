@@ -30,6 +30,13 @@ export interface ParsedGerberLayer {
   drillPlating?: 'PTH' | 'NPTH' | 'mixed'
   /** Loại lớp người dùng chọn tay (khoá META), không có nếu app tự nhận diện. */
   userType?: string
+  /**
+   * File khoan app đã tự đọc lại vì cách đọc mặc định không khớp bo (xem reader.ts,
+   * drillReadings): đặt lại dấu thập phân (`reading`) và/hoặc dời gốc (`dxMm`, `dyMm`).
+   * `via` = căn cứ: 'pad' (lỗ trúng pad đồng), 'sibling' (theo file khoan cùng bộ),
+   * 'board' (lỗ nằm trong khung bo). Giao diện dùng để cảnh báo người lập.
+   */
+  drillFix?: { reading: string | null; dxMm: number; dyMm: number; via: 'pad' | 'sibling' | 'board'; padHit?: number }
 }
 
 export interface BoardParsedData {

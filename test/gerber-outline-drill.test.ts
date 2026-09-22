@@ -283,13 +283,78 @@ describe('Excellon INCH không khai định dạng số (Pulsonix)', () => {
     expect(hole.cy).toBeCloseTo(7.0689, 4)
   })
 
-  it('không đụng file khoan vốn đã nằm trong bo', async () => {
-    // Cùng file khoan nhưng bo nhỏ quanh gốc toạ độ: cách đọc mặc định (2:4) đã nằm trong
-    // viền nên phải giữ nguyên, không đi tìm cách đọc khác.
-    const small = inchGbr('G01X0Y0D02*\nG01X200000Y0D01*\nG01X200000Y150000D01*\nG01X0Y150000D01*\nG01X0Y0D01*')
-    const [b] = await parse([['x(Keep Out).gbr', small], ['x(Drilling Data).drl', drill]])
-    const hole = b.layers.find((l: any) => l.type === 'drill').imageTree.children.find((c: any) => c.type === 'imageShape').shape
-    expect(hole.cx).toBeCloseTo(1.011283, 4)
+  // Bo sát gốc toạ độ: lỗ đọc 2:4 co 10 lần nhưng vẫn nằm TRONG khung bo (dồn về góc dưới
+  // trái) — chỉ nhìn khung bo thì không thấy sai. Dò theo pad đồng mới bắt được.
+  const pts: [number, number][] = [
+    [1.0, 0.7], [1.4, 1.1], [2.0, 1.3], [0.5, 0.4], [1.8, 0.2], [0.3, 1.2],
+    [2.2, 0.6], [0.9, 1.0], [1.6, 0.5], [0.6, 0.9], [2.1, 1.0], [1.2, 0.3],
+  ]
+  const in35 = (v: number) => String(Math.round(v * 100000)).padStart(8, '0') // 3:5 giữ số 0 đầu
+  const nearOrigin = inchGbr('G01X0Y0D02*\nG01X250000Y0D01*\nG01X250000Y150000D01*\nG01X0Y150000D01*\nG01X0Y0D01*')
+  const padsAt = (list: [number, number][]) =>
+    ['%FSLAX35Y35*%', '%MOIN*%', '%ADD11C,0.06*%', 'G54D11*',
+      ...list.map(([x, y]) => `X${Math.round(x * 100000)}Y${Math.round(y * 100000)}D03*`), 'M02*'].join('\n')
+  const drillAt = (list: [number, number][], dia = '000.03150') =>
+    ['M48', 'INCH', `T01C${dia}`, '%', 'T01', ...list.map(([x, y]) => `X${in35(x)}Y${in35(y)}`), 'M30'].join('\n')
+
+  it('bo sát gốc toạ độ: dò theo pad, không để lỗ dồn về góc', async () => {
+    const [b] = await parse([['p(Keep Out).gbr', nearOrigin], ['p(Copper Top Side).gbr', padsAt(pts)], ['p(Drilling Data).drl', drillAt(pts)]])
+    const holes = b.layers.find((l: any) => l.type === 'drill').imageTree.children.map((c: any) => c.shape)
+    expect(holes[0].cx).toBeCloseTo(1.0, 4)
+    expect(holes[0].cy).toBeCloseTo(0.7, 4)
+    expect(holes[2].cx).toBeCloseTo(2.0, 4)
+  })
+
+  it('file NPTH không có pad: dùng lại cách đọc đã chốt cho file PTH cùng bộ', async () => {
+    const mount: [number, number][] = [[0.15, 0.15], [2.35, 0.15], [0.15, 1.35], [2.35, 1.35], [1.25, 0.75]]
+    const [b] = await parse([
+      ['p(Keep Out).gbr', nearOrigin],
+      ['p(Copper Top Side).gbr', padsAt(pts)],
+      ['p-PTH.drl', drillAt(pts)],
+      ['p-NPTH.drl', drillAt(mount, '000.12205')],
+    ])
+    const npth = b.layers.find((l: any) => l.filename === 'p-NPTH.drl')
+    const first = npth.imageTree.children[0].shape
+    expect(first.cx).toBeCloseTo(0.15, 4)
+    expect(npth.size[2]).toBeCloseTo(2.35 + 0.061025, 3)
+  })
+
+  it('file khoan lệch gốc so với Gerber: dời cho khớp pad và ghi lại để cảnh báo', async () => {
+    // Bộ "PCB_doline" (Altium, 25/08/2025): khai đúng 2:4 nhưng file khoan xuất theo gốc
+    // khác Gerber, cả cụm lỗ dời (+88, +25.5) mm. Ở đây dời (+3, +1) in.
+    const in24 = (v: number) => String(Math.round(v * 10000)).padStart(6, '0')
+    const off = ['M48', 'INCH', 'T01C0.0315', '%', 'T01', ...pts.map(([x, y]) => `X${in24(x + 3)}Y${in24(y + 1)}`), 'M30'].join('\n')
+    const [b] = await parse([['p(Keep Out).gbr', nearOrigin], ['p(Copper Top Side).gbr', padsAt(pts)], ['p(Drilling Data).drl', off]])
+    const layer = b.layers.find((l: any) => l.type === 'drill')
+    const hole = layer.imageTree.children[0].shape
+    expect(hole.cx).toBeCloseTo(1.0, 3)
+    expect(hole.cy).toBeCloseTo(0.7, 3)
+    expect(layer.drillFix).toMatchObject({ reading: null, via: 'pad' })
+    expect(layer.drillFix.dxMm).toBeCloseTo(-76.2, 1)
+    expect(layer.drillFix.dyMm).toBeCloseTo(-25.4, 1)
+  })
+
+  it('file NPTH có khai định dạng: lỗ bắt vít không trúng pad vẫn giữ nguyên', async () => {
+    // Bộ EasyEDA "5395_1" (Le Van Quy, 09/01/2025): NPTH khai FILE_FORMAT=3:3 METRIC,LZ,
+    // đọc đúng rồi. Lỗ bắt vít ở 4 góc không có pad — bản đầu của cách dò pad thấy tỉ lệ
+    // trúng pad thấp, thử cách đọc khác và dồn cả cụm vào vài pad to (khớp giả).
+    const mm = (v: number) => String(Math.round(Math.abs(v) * 25.4 * 1000)).padStart(6, '0')
+    const holes: [number, number][] = [[0.15, 0.15], [2.35, 0.15], [0.15, 1.35], [2.35, 1.35], [1.25, 0.75], [0.8, 0.8]]
+    const npth = ['M48', 'METRIC,LZ,000.000', ';FILE_FORMAT=3:3', ';TYPE=NON_PLATED', 'T01C3.200', '%', 'T01',
+      ...holes.map(([x, y]) => `X${mm(x)}Y${mm(y)}`), 'M30'].join('\n')
+    const [b] = await parse([['p(Keep Out).gbr', nearOrigin], ['p(Copper Top Side).gbr', padsAt(pts)], ['Drill_NPTH_Through.DRL', npth]])
+    const layer = b.layers.find((l: any) => l.type === 'drill')
+    expect(layer.drillFix).toBeUndefined()
+    expect(layer.imageTree.children[0].shape.cx).toBeCloseTo(0.15 * 25.4, 2)
+  })
+
+  it('không đụng file khoan mà cách đọc mặc định đã trúng pad', async () => {
+    // Cùng vị trí nhưng file ghi đúng 2:4 (6 chữ số): mặc định đã đúng, phải giữ nguyên.
+    const in24 = (v: number) => String(Math.round(v * 10000)).padStart(6, '0')
+    const ok = ['M48', 'INCH', 'T01C0.0315', '%', 'T01', ...pts.map(([x, y]) => `X${in24(x)}Y${in24(y)}`), 'M30'].join('\n')
+    const [b] = await parse([['p(Keep Out).gbr', nearOrigin], ['p(Copper Top Side).gbr', padsAt(pts)], ['p(Drilling Data).drl', ok]])
+    const hole = b.layers.find((l: any) => l.type === 'drill').imageTree.children[0].shape
+    expect(hole.cx).toBeCloseTo(1.0, 4)
   })
 })
 

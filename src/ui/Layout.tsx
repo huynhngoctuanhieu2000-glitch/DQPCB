@@ -913,7 +913,9 @@ export const Layout: React.FC = () => {
 
           {/* Chẩn đoán: file bị bỏ qua / không đọc được — trước đây chỉ ghi console.warn
               nên người dùng không biết vì sao thiếu lớp. */}
-          {(boardState.failedFiles.length > 0 || boardState.ignoredFiles.length > 0) && (
+          {(boardState.failedFiles.length > 0 ||
+            boardState.ignoredFiles.length > 0 ||
+            boardState.layers.some((l) => l.drillFix)) && (
             <div
               style={{
                 borderTop: '1px solid #282b34',
@@ -935,6 +937,32 @@ export const Layout: React.FC = () => {
                   </span>
                 </div>
               )}
+              {/* File khoan app đã tự đọc lại (sai định dạng số / lệch gốc so với Gerber).
+                  Lệch gốc là lỗi thật của file xuất — xưởng khoan theo file sẽ khoan lệch —
+                  nên phải nói rõ để người lập báo khách, không chỉ âm thầm sửa trên màn hình. */}
+              {boardState.layers
+                .filter((l) => l.drillFix)
+                .map((l) => {
+                  const f = l.drillFix!
+                  const shift = f.dxMm || f.dyMm
+                  const how =
+                    f.via === 'pad'
+                      ? `khớp ${Math.round((f.padHit ?? 0) * 100)}% pad đồng`
+                      : f.via === 'sibling'
+                        ? 'theo file khoan cùng bộ'
+                        : 'theo khung bo — chưa kiểm được bằng pad'
+                  return (
+                    <div key={l.id} style={{ color: '#fbbf24' }} title={l.filename}>
+                      ⚠ {l.shortName}:{' '}
+                      {f.reading && `không khai định dạng số, app đọc theo ${drillReadingLabel(f.reading)}`}
+                      {f.reading && shift ? '; ' : ''}
+                      {shift
+                        ? `lệch gốc ${f.dxMm > 0 ? '+' : ''}${f.dxMm.toFixed(1)}, ${f.dyMm > 0 ? '+' : ''}${f.dyMm.toFixed(1)} mm so với Gerber — app đã dời cho khớp`
+                        : ''}{' '}
+                      ({how}).{shift ? ' Nên báo khách kiểm lại file khoan.' : ''}
+                    </div>
+                  )
+                })}
               {boardState.ignoredFiles.length > 0 && (
                 <div title={boardState.ignoredFiles.join(' | ')}>
                   ℹ {boardState.ignoredFiles.length} file phụ trợ đã bỏ qua (report / aperture / BOM)
@@ -1183,6 +1211,14 @@ export const Layout: React.FC = () => {
       {showSettings && <SettingsPanel onClose={() => setShowSettings(false)} />}
     </div>
   )
+}
+
+/** Khoá cách đọc (reader.ts, drillReadings) → chữ cho người đọc: "lz35" → "3.5", "div4" → "4 số lẻ". */
+const drillReadingLabel = (key: string): string => {
+  const lz = /^lz(\d)(\d)$/.exec(key)
+  if (lz) return `${lz[1]}.${lz[2]}`
+  const div = /^div(\d)$/.exec(key)
+  return div ? `${div[1]} số lẻ` : key
 }
 
 /** Bảng trượt từ đáy trên điện thoại: full bề ngang, cao 72% để vẫn thấy một phần bo. */
