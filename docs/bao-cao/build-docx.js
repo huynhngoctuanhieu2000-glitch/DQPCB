@@ -103,6 +103,7 @@ children.push(
       ['15', 'Lớp tài liệu / không rõ loại bật lên không có gì; không chọn tay được loại lớp', 'Dinh Anh Tuan — DA82', 'Đã sửa · 11dc1bb'],
       ['16', 'File khoan không khai định dạng số (co 10 lần) hoặc lệch gốc so với Gerber', 'FRIWO — 55807.931-90FE (+ 31 bộ / 1.850 mẫu)', 'Đã sửa · c680077, 3ec37c4'],
       ['17', '2D / 3D chọn "Bot Side" không thấy mặt dưới', 'FRIWO — 55807.931-90FE', 'Đã sửa · 020e8de'],
+      ['18', 'Chuyển qua lại giữa các bo đang mở chậm 0.5–3.3 s, không báo đang tải', 'FRIWO, PHAONUOC, CHAT_BOT_4', 'Đã sửa · 71bf3a5'],
     ],
     [5, 42, 30, 23],
   ),
@@ -270,6 +271,16 @@ const bugs = [
       ['Kiểm', 'FRIWO: 2D + Bot Side thấy rõ đồng và chữ in mặt dưới; All về mặt Top; 3D + Bot Side mở ở góc nhìn từ dưới.'],
     ],
   },
+  {
+    t: 'Lỗi 18 — Chuyển qua lại giữa các bo đang mở bị chậm',
+    rows: [
+      ['Hiện tượng', 'Mở 3 file, đang xem file 3, bấm lại file 1 → chờ 0.5–3.3 s (FRIWO 3.3 s, bấm lại lần 2 vẫn 3.2 s), không có dấu hiệu đang tải → tưởng app treo.'],
+      ['Nguyên nhân', 'Bộ nhớ hình đã dựng chỉ giữ **một** bo — đổi bo là xoá sạch rồi dựng lại từ đầu; dựng hình chạy đồng bộ, chặn cả giao diện. File không đọc lại, chậm hoàn toàn ở bước dựng.'],
+      ['Cách giải quyết', '(1) Giữ hình theo từng bo, tối đa 5 bo gần nhất, giải phóng khi đóng bo. (2) Chuyển sang bo chưa có hình thì bật màn chờ "Đang dựng hình…" trước. (3) Dựng sẵn ở nền các bo còn lại lúc trình duyệt rảnh, mỗi lượt một lớp.'],
+      ['Kiểm', 'FRIWO 3.30 → 0.06 s, PHAONUOC 1.89 → 0.05 s, CHAT_BOT_4 0.47 → 0.08 s; FRIWO ở 2D chưa từng xem (nhờ dựng sẵn) 0.055 s.'],
+      ['Còn lại', 'Bấm ngay khi lớp nặng đang dựng dở ở nền thì chờ lớp đó xong (đo được 1.6 s).'],
+    ],
+  },
 ]
 for (const b of bugs) children.push(H2(b.t), bugTable(b.rows), gap())
 children.push(H2('Ghi chú — "mất logo" khi chụp (không phải lỗi app)'))
@@ -284,7 +295,7 @@ const featureGroups = [
     'Menu **File**: Mở file Gerber… · Mở thư mục… · Đóng bo đang xem · Đóng tất cả bo.',
     'Hộp chọn **nhớ thư mục vừa mở**: app Electron dùng hộp gốc Windows (nhớ cả sau khi tắt app, kéo thả cũng cập nhật); bản web Chrome/Edge dùng API của trình duyệt.',
     '**Màn chờ** phủ cả ba cột khi đang mở, chỉ tắt khi bo mới dựng xong — không lẫn bo cũ. Mở file mới luôn về chế độ **CAM**.',
-    'Mở **nhiều bo** cùng lúc: tab trên máy tính, dropdown trên điện thoại; phần nhập giá nhớ riêng từng bo.',
+    'Mở **nhiều bo** cùng lúc: tab trên máy tính, dropdown trên điện thoại; phần nhập giá nhớ riêng từng bo. **Chuyển bo tức thì**: giữ hình đã dựng của 5 bo gần nhất, dựng sẵn các bo còn lại ở nền; bo chưa dựng thì hiện màn chờ.',
     'Tự bỏ file phụ trợ (report, BOM, ảnh, PDF, file dự án KiCad…); danh sách file bỏ qua hiện ở đáy cột Lớp.',
   ]],
   ['2.2 Xem bo', [
@@ -292,7 +303,7 @@ const featureGroups = [
     'Danh sách lớp: bật/tắt từng lớp, All On / All Off, lọc Top Side / Bot Side (ở 2D/3D, Bot Side **nhìn từ dưới lên**, lật gương), **solo** 🎯 một lớp, đổi màu lớp ở CAM. Lớp đồng giữa bo 4/6 lớp hiện ở CAM/3D. Ở CAM **mọi lớp** (tài liệu, không rõ loại, paste) bật lên đều vẽ.',
     '**Chọn tay loại lớp**: bấm vào lớp → ô "Loại lớp" (đồng / mask / lụa / paste / Outline / Drill / tài liệu). App đọc lại cả bộ theo loại mới; dấu ✎ và nút ↺ Tự nhận.',
     '**7 màu bo kiểu JLC** (Xanh lá, Xanh dương, Đỏ, Đen, Tím, Vàng, Trắng); pad màu đồng trong lỗ mở mask; lỗ khoan trắng.',
-    'Zoom / kéo, nút **Fit**. Badge góc khung: **Viền** lấy từ file nào · **Khoan** file nào, bao nhiêu lỗ · **Mũi nhỏ nhất** (lỗ tròn + số lỗ, rãnh hẹp nhất) · **Ghép** có / có thể / không, bao nhiêu bo, nhận ra bằng cách nào · **Load** thời gian mở thật (đọc + dựng lần đầu).',
+    'Zoom / kéo, nút **Fit**. Badge góc khung: **Viền** lấy từ file nào · **Khoan** file nào, bao nhiêu lỗ · **Mũi nhỏ nhất** (lỗ tròn + số lỗ, rãnh hẹp nhất; dưới 0.254 mm đỏ, dưới 0.3 mm vàng) · **Ghép** có / có thể / không, bao nhiêu bo, nhận ra bằng cách nào · **Load** thời gian mở thật (đọc + dựng lần đầu).',
     'Hiển thị đúng: slot/lỗ chữ nhật, lỗ khoét trong viền, **rãnh phay vẽ một nét** (CAM hiện nét như file, 2D/3D khoét thủng), panel nhiều bo chung cạnh, rail, đường phay; lấp khe dải phủ đồng CAM350.',
   ]],
   ['2.3 Chụp ảnh 2 mặt', [

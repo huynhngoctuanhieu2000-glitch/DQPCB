@@ -24,6 +24,7 @@ Tóm tắt:
 | 15 | Lớp tài liệu / không rõ loại bật lên không có gì; không chọn tay được loại lớp | Dinh Anh Tuan — DA82 | Đã sửa · `11dc1bb` |
 | 16 | File khoan không khai định dạng số (lỗ co 10 lần) hoặc lệch gốc so với Gerber | FRIWO — 55807.931-90FE (+ 31 bộ / 1.850 mẫu) | Đã sửa · `c680077`, `3ec37c4` |
 | 17 | 2D / 3D chọn "Bot Side" không thấy mặt dưới | FRIWO — 55807.931-90FE | Đã sửa · `020e8de` |
+| 18 | Chuyển qua lại giữa các bo đang mở chậm 0.5–3.3 s, không báo đang tải | FRIWO, PHAONUOC, CHAT_BOT_4 (mở cùng lúc) | Đã sửa · `71bf3a5` |
 
 ---
 
@@ -294,12 +295,27 @@ tam giác chéo sai; Rosario: rãnh móc câu nhất quán là lỗ).
    thức chưa có phí V-cut.
 5. **DFM chưa có:** đồng/lỗ khoan ngoài hoặc quá sát viền (như J11 của ESP32_DR) chưa tự báo.
 
+## 18. Chuyển qua lại giữa các bo đang mở bị chậm
+
+- **Hiện tượng:** mở 3 file, đang xem file 3, bấm lại file 1 → chờ 0.5–3.3 s (FRIWO 3.3 s, bấm
+  lại lần 2 vẫn 3.2 s), không có dấu hiệu đang tải → tưởng app treo.
+- **Nguyên nhân:** bộ nhớ hình đã dựng chỉ giữ **một** bo — đổi bo là xoá sạch rồi dựng lại từ
+  đầu; dựng hình chạy đồng bộ, chặn cả giao diện. File không đọc lại, chậm hoàn toàn ở bước dựng.
+- **Cách giải quyết** (`Viewer2D.WebGL.tsx`, `Layout.tsx`): (1) giữ hình theo từng bo, tối đa
+  5 bo gần nhất, giải phóng khi đóng bo; (2) chuyển sang bo chưa có hình thì bật màn chờ
+  "Đang dựng hình…" trước; (3) dựng sẵn ở nền các bo còn lại lúc trình duyệt rảnh, mỗi lượt
+  một lớp.
+- **Kiểm:** FRIWO 3.30 → 0.06 s, PHAONUOC 1.89 → 0.05 s, CHAT_BOT_4 0.47 → 0.08 s; FRIWO ở 2D
+  chưa từng xem (nhờ dựng sẵn) 0.055 s. Chi tiết: `2026-09-22-khao-sat-chuyen-bo-cham.md`.
+- **Còn lại:** bấm ngay khi lớp nặng đang dựng dở ở nền thì chờ lớp đó xong (đo được 1.6 s).
+
 ## Tính năng mới (22/09): nhận biết file ghép, mũi khoan nhỏ nhất — `6249b00`
 
 Khung thông báo ở góc khung xem thêm hai dòng:
 
 - **Mũi nhỏ nhất:** lỗ tròn nhỏ nhất trong các file khoan và số lỗ cỡ đó; có rãnh phay thì
-  ghi thêm rãnh hẹp nhất (bề rộng = 2 × bán kính cung đầu rãnh). Vd CHAT_BOT_4
+  ghi thêm rãnh hẹp nhất (bề rộng = 2 × bán kính cung đầu rãnh). **Tô màu** (`71bf3a5`): dưới
+  0.254 mm đỏ, 0.254 – dưới 0.3 mm vàng; hiện 3 số lẻ khi cần để 0.254 không thành "0.25". Vd CHAT_BOT_4
   "Ø0.40 mm (16 lỗ) · rãnh 1.10 mm", FRIWO "Ø0.25 mm (2104 lỗ)".
 - **Ghép:** có / có thể / không, bao nhiêu bo, nhận ra bằng cách nào (rê chuột xem giải thích).
 
