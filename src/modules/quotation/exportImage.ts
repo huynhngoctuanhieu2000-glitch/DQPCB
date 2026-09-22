@@ -159,7 +159,11 @@ export const shareOrDownload = async (
  * Mở bảng chia sẻ của điện thoại với file PDF — chọn Zalo, Messenger, Lưu vào Tệp…
  * Không có bảng chia sẻ (trình duyệt máy tính) thì tải PDF về.
  */
-export const shareQuotationPdf = async (q: Quotation): Promise<'shared' | 'downloaded' | 'canceled'> => {
+export const shareQuotationPdf = async (
+  q: Quotation,
+  /** 'download' = tải thẳng về máy, kể cả khi máy có bảng chia sẻ. */
+  mode: 'share' | 'download' = 'share'
+): Promise<'shared' | 'downloaded' | 'canceled'> => {
   const blob = await quotationToPdf(q)
-  return shareOrDownload(blob, pdfFileName(q), canShareFiles())
+  return shareOrDownload(blob, pdfFileName(q), mode === 'share' && canShareFiles())
 }

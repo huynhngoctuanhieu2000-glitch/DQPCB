@@ -437,9 +437,13 @@ export const canShareXlsxFiles = (): boolean => canShareType(XLSX_MIME, 'xlsx')
  * Trên trình duyệt: mở bảng chia sẻ của hệ điều hành với file Excel — cùng cách
  * với PDF (xem shareQuotationPdf) — không có thì tải về thẳng.
  */
-export const shareQuotationXlsx = async (q: Quotation): Promise<'shared' | 'downloaded' | 'canceled'> => {
+export const shareQuotationXlsx = async (
+  q: Quotation,
+  /** 'download' = tải thẳng về máy, kể cả khi máy có bảng chia sẻ. */
+  mode: 'share' | 'download' = 'share'
+): Promise<'shared' | 'downloaded' | 'canceled'> => {
   const bytes = await exportQuotationToXlsx(q)
   // ArrayBuffer riêng cho Blob: bytes có thể là view vào buffer lớn hơn.
   const blob = new Blob([bytes.slice().buffer], { type: XLSX_MIME })
-  return shareOrDownload(blob, suggestedFileName(q), canShareXlsxFiles())
+  return shareOrDownload(blob, suggestedFileName(q), mode === 'share' && canShareXlsxFiles())
 }

@@ -257,11 +257,11 @@ export const QuotationPanel: React.FC<{
    * Web (nhất là điện thoại): dựng PDF trong trình duyệt rồi mở bảng chia sẻ → Zalo,
    * Messenger, Lưu vào Tệp. Máy không có bảng chia sẻ thì tải PDF về.
    */
-  const handleShare = async () => {
+  const handleShare = async (mode: 'share' | 'download' = 'share') => {
     setBusy(true)
     setStatus(null)
     try {
-      const how = await shareQuotationPdf(q)
+      const how = await shareQuotationPdf(q, mode)
       if (how === 'shared') setStatus({ kind: 'ok', text: 'Đã gửi file PDF.' })
       else if (how === 'downloaded') setStatus({ kind: 'ok', text: 'Đã tải PDF về máy.' })
     } catch (err) {
@@ -320,11 +320,11 @@ export const QuotationPanel: React.FC<{
   }
 
   /** Web: cùng cách với handleShare (PDF) — mở bảng chia sẻ nếu máy hỗ trợ, không thì tải về. */
-  const handleShareExcel = async () => {
+  const handleShareExcel = async (mode: 'share' | 'download' = 'share') => {
     setBusy(true)
     setStatus(null)
     try {
-      const how = await shareQuotationXlsx(q)
+      const how = await shareQuotationXlsx(q, mode)
       if (how === 'shared') setStatus({ kind: 'ok', text: 'Đã gửi file Excel.' })
       else if (how === 'downloaded') setStatus({ kind: 'ok', text: 'Đã tải Excel về máy.' })
     } catch (err) {
@@ -799,6 +799,12 @@ export const QuotationPanel: React.FC<{
               trình duyệt là phụ nên đứng sau Excel. Trong app Electron: nút "Xuất
               PDF" TỰ NÓ là nút PDF chính — không có nút In riêng — nên phải đứng
               trước Excel, không đi theo vị trí "In" ở nhánh web. */}
+          {/* Thứ tự trái→phải: PDF, Excel, In, Đóng.
+              Electron: "Xuất PDF"/"Xuất Excel" mở hộp thoại lưu cạnh file gerber.
+              Web: nút Tải LUÔN có — tải thẳng về máy. Máy có bảng chia sẻ của hệ
+              điều hành (điện thoại, Edge trên Windows…) thì có thêm nút Chia sẻ
+              ngay cạnh để gửi qua Zalo/Messenger; trước đây nút Chia sẻ thay chỗ
+              nút Tải nên trên Edge máy tính không còn cách tải về. */}
           {window.ipcRenderer ? (
             <button
               onClick={handleExport}
@@ -809,40 +815,60 @@ export const QuotationPanel: React.FC<{
               {busy ? 'Đang xuất…' : '⬇ Xuất PDF'}
             </button>
           ) : (
-            <button
-              onClick={handleShare}
-              disabled={busy}
-              style={{ ...S.primaryBtn, ...(busy ? S.disabled : null) }}
-              title={canShareFiles() ? 'Mở bảng chia sẻ: Zalo, Messenger, Lưu vào Tệp…' : 'Tải file PDF về máy'}
-            >
-              {busy ? 'Đang tạo PDF…' : canShareFiles() ? '📤 Chia sẻ PDF' : '⬇ Tải PDF'}
-            </button>
+            <>
+              <button
+                onClick={() => handleShare('download')}
+                disabled={busy}
+                style={{ ...S.primaryBtn, ...(busy ? S.disabled : null) }}
+                title="Tải file PDF về máy"
+              >
+                {busy ? 'Đang tạo PDF…' : '⬇ Tải PDF'}
+              </button>
+              {canShareFiles() && (
+                <button
+                  onClick={() => handleShare('share')}
+                  disabled={busy}
+                  style={{ ...S.secondaryBtn, ...(busy ? S.disabled : null) }}
+                  title="Mở bảng chia sẻ: Zalo, Messenger, Lưu vào Tệp…"
+                >
+                  📤 Chia sẻ PDF
+                </button>
+              )}
+            </>
           )}
-          {/* Bản có thể sửa lại — PDF mới là bản gửi khách, Excel để chỉnh tay khi cần.
-              Trên web: cùng kiểu tự đổi Chia sẻ/Tải như nút PDF — kiểm tra riêng
-              canShareXlsxFiles() vì máy có thể nhận PDF mà không nhận .xlsx. */}
-          <button
-            onClick={window.ipcRenderer ? handleExportExcel : handleShareExcel}
-            disabled={busy}
-            style={{ ...S.secondaryBtn, ...(busy ? S.disabled : null) }}
-            title={
-              window.ipcRenderer
-                ? board.sourceDir
-                  ? `Lưu vào ${board.sourceDir}`
-                  : 'Chọn chỗ lưu ở hộp thoại'
-                : canShareXlsxFiles()
-                  ? 'Mở bảng chia sẻ: Zalo, Messenger, Lưu vào Tệp…'
-                  : 'Tải file Excel về máy'
-            }
-          >
-            {busy
-              ? 'Đang xuất…'
-              : window.ipcRenderer
-                ? '⬇ Xuất Excel'
-                : canShareXlsxFiles()
-                  ? '📤 Chia sẻ Excel'
-                  : '⬇ Tải Excel'}
-          </button>
+          {/* Bản có thể sửa lại — PDF mới là bản gửi khách, Excel để chỉnh tay khi cần. */}
+          {window.ipcRenderer ? (
+            <button
+              onClick={handleExportExcel}
+              disabled={busy}
+              style={{ ...S.secondaryBtn, ...(busy ? S.disabled : null) }}
+              title={board.sourceDir ? `Lưu vào ${board.sourceDir}` : 'Chọn chỗ lưu ở hộp thoại'}
+            >
+              {busy ? 'Đang xuất…' : '⬇ Xuất Excel'}
+            </button>
+          ) : (
+            <>
+              <button
+                onClick={() => handleShareExcel('download')}
+                disabled={busy}
+                style={{ ...S.secondaryBtn, ...(busy ? S.disabled : null) }}
+                title="Tải file Excel về máy"
+              >
+                {busy ? 'Đang xuất…' : '⬇ Tải Excel'}
+              </button>
+              {/* Kiểm tra riêng với PDF: có máy nhận PDF mà không nhận .xlsx. */}
+              {canShareXlsxFiles() && (
+                <button
+                  onClick={() => handleShareExcel('share')}
+                  disabled={busy}
+                  style={{ ...S.secondaryBtn, ...(busy ? S.disabled : null) }}
+                  title="Mở bảng chia sẻ: Zalo, Messenger, Lưu vào Tệp…"
+                >
+                  📤 Chia sẻ Excel
+                </button>
+              )}
+            </>
+          )}
           {/* Trong Electron, nút "Xuất PDF" ở trên đã lo phần in ra file rồi. */}
           {!window.ipcRenderer && (
             <button
