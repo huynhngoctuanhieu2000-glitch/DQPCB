@@ -9,7 +9,11 @@ Cập nhật: 22/09/2026 · Mã nguồn: `src/lib/gerber-reader/` (README trong 
 | **ZIP** | `jszip` | Mỗi ZIP là một bo (thả nhiều ZIP → nhiều tab bo) |
 | **RAR** | `node-unrar-js` (WASM, nạp khi cần) | Chạy được trên web và Electron |
 | **File lẻ** | Chọn/thả nhiều file cùng lúc | Gom thành một bo |
-| **Thư mục** | Menu File → Mở thư mục (Electron: hộp chọn Windows; web: `webkitdirectory`) | Lấy các file nằm ngay trong thư mục |
+| **Thư mục** | Menu File → Mở thư mục (Electron: hộp chọn Windows; web Chrome/Edge: `showDirectoryPicker`; trình duyệt khác: `webkitdirectory`) | Lấy các file nằm ngay trong thư mục |
+
+Hộp chọn **nhớ thư mục vừa mở**: Electron lưu vào cấu hình app; web Chrome/Edge dùng
+`showOpenFilePicker` với `id: 'dqpcb-gerber'` (trình duyệt tự nhớ). Firefox, Safari, điện
+thoại chưa hỗ trợ.
 
 Bị **bỏ qua** trước khi parse (`isAuxiliaryFile`): report, aperture list, BOM, pick&place,
 readme, ảnh, PDF, Excel, STEP/DXF, file nén lồng, file dự án KiCad (`fp-info-cache`,
@@ -59,7 +63,7 @@ Pro, CAM350, DipTrace, Sprint-Layout, Pulsonix.**
 | Trường hợp | Xử lý |
 |---|---|
 | Toạ độ có dấu chấm | Để nguyên |
-| Khai `;FILE_FORMAT=a:b` + `METRIC/INCH,LZ/TZ` (Altium) | **DQPCB chèn dấu thập phân** theo a:b (LZ bù đuôi, TZ bù đầu). web-gerber không đọc dòng chú thích này. *(22/09, chưa commit)* |
+| Khai `;FILE_FORMAT=a:b` + `METRIC/INCH,LZ/TZ` (Altium) | **DQPCB chèn dấu thập phân** theo a:b (LZ bù đuôi, TZ bù đầu). web-gerber không đọc dòng chú thích này. *(22/09, `f186434`)* |
 | METRIC, không khai format, không dấu chấm (Proteus) | Chèn theo chuẩn metric 3.3 |
 | INCH không khai | Để web-gerber áp 2.4 |
 | Lệnh phay `G00 → M15 → G01 → M16` | Slot / lỗ chữ nhật (xem `outline-drill-slot.md`) |

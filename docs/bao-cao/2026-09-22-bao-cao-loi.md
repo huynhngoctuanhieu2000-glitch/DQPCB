@@ -14,10 +14,10 @@ Tóm tắt:
 | 5 | Rãnh / lỗ khoét trong bo không hiện ở 2D, 3D | Le Quoc Huy — Ceiling Master | Đã sửa · `8e2ada0` |
 | 6 | Hồi quy do lỗi 3–4: khấc mép, lỗ mouse-bite, bo con hở viền | AC_Board, Dual USB, SAL-66 | Đã sửa · `f9121a0` |
 | 7 | Bảng tra giá vẫn áp cho bo ghép panel | (luật giá) | Đã sửa · `9884463` |
-| 8 | File khoan Altium `FILE_FORMAT=4:3` co 100 lần, lỗ dồn ngoài góc | Nguyen Van Quang — ESP32_DR | Đã sửa · **chưa commit** |
-| 9 | Nhiều lớp viền: GM1 (khung linh kiện) thành thân bo | Le Quoc Huy — Slaver_Ceiling bản lẻ | Đã sửa · **chưa commit** |
+| 8 | File khoan Altium `FILE_FORMAT=4:3` co 100 lần, lỗ dồn ngoài góc | Nguyen Van Quang — ESP32_DR | Đã sửa · `f186434` |
+| 9 | Nhiều lớp viền: GM1 (khung linh kiện) thành thân bo | Le Quoc Huy — Slaver_Ceiling bản lẻ | Đã sửa · `f186434` |
 | 10 | J11 của ESP32_DR: đồng/lỗ sát mép, vạch trắng có khấc | Nguyen Van Quang — ESP32_DR | Không phải lỗi — file vẽ vậy |
-| 11 | Hộp chọn file bản web không mở đúng thư mục vừa dùng | (mở file) | Đã sửa · **chưa commit** |
+| 11 | Hộp chọn file bản web không mở đúng thư mục vừa dùng | (mở file) | Đã sửa · `49468cd` |
 
 ---
 
@@ -155,18 +155,23 @@ tam giác chéo sai; Rosario: rãnh móc câu nhất quán là lỗ).
 
 ## Vấn đề còn tồn
 
-1. **Chưa commit:** lỗi 8 (FILE_FORMAT), 9 (viền phụ) — `src/lib/gerber-reader/reader.ts`; lỗi 11 — `src/ui/Layout.tsx`.
-2. **`.DRD` bị chọn thay `THRUHOLE.tap`** (Dinh Quang Viet — Gerber Dinh Quang Viet.zip,
+1. **`.DRD` bị chọn thay `THRUHOLE.tap`** (Dinh Quang Viet — Gerber Dinh Quang Viet.zip,
    Dinh Ngoc Tram — AUTOMATION-2): `.drd` đang gán là dữ liệu khoan (Eagle) nhưng ở các bộ
    này có vẻ là bản vẽ khoan; viewer chọn file "gộp" nhiều lỗ nhất. Đã có từ trước.
-3. **Tam giác chéo sai** ở một số panel (Rail.zip, GWLRWEX-CELLULAR, ph_analyzer…): đa giác
+2. **Tam giác chéo sai** ở một số panel (Rail.zip, GWLRWEX-CELLULAR, ph_analyzer…): đa giác
    viền tô lệch. Bản cũ cũng bị y hệt.
-4. **Chưa nhận biết file đa thiết kế:** CHAT_BOT_1 (4 bo ghép) vẫn đi bảng tra khi chưa tích
+3. **Chưa nhận biết file đa thiết kế:** CHAT_BOT_1 (4 bo ghép) vẫn đi bảng tra khi chưa tích
    Ghép panel — app đếm được số bo trong viền, có thể tự nhắc.
-5. **V-cut / mouse bite chưa vào giá:** chỉ nhắc nhở (cạnh < 15 mm, tấm V-cut < 70 mm), công
+4. **V-cut / mouse bite chưa vào giá:** chỉ nhắc nhở (cạnh < 15 mm, tấm V-cut < 70 mm), công
    thức chưa có phí V-cut.
-6. **Báo giá ghép panel ghi số set hay số PCB** — đang ghi số set, chờ chốt.
-7. **DFM chưa có:** đồng/lỗ khoan ngoài hoặc quá sát viền (như J11 của ESP32_DR) chưa tự báo.
+5. **Báo giá ghép panel ghi số set hay số PCB** — đang ghi số set, chờ chốt.
+6. **DFM chưa có:** đồng/lỗ khoan ngoài hoặc quá sát viền (như J11 của ESP32_DR) chưa tự báo.
+
+## Ghi chú: "mất logo" khi chụp (22/09) — không phải lỗi app
+
+Khi kiểm ảnh chụp trong khung trình duyệt của Claude, hàm ghi clipboard của trang bị thay
+tạm để đọc ảnh ra. Anh dùng đúng tab đó nên bấm Copy không vào clipboard, dán ra ảnh cũ →
+tưởng mất logo. Tải lại tab là hết. Từ nay kiểm clipboard/ảnh chụp bằng **tab riêng**.
 
 ## Cách kiểm lại
 

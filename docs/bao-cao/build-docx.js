@@ -93,10 +93,10 @@ children.push(
       ['5', 'Rãnh / lỗ khoét trong bo không hiện ở 2D, 3D', 'Le Quoc Huy — Ceiling Master', 'Đã sửa · 8e2ada0'],
       ['6', 'Hồi quy do lỗi 3–4: khấc mép, lỗ mouse-bite, bo con hở viền', 'AC_Board, Dual USB, SAL-66', 'Đã sửa · f9121a0'],
       ['7', 'Bảng tra giá vẫn áp cho bo ghép panel', '(luật giá)', 'Đã sửa · 9884463'],
-      ['8', 'File khoan Altium FILE_FORMAT=4:3 co 100 lần, lỗ dồn ngoài góc', 'Nguyen Van Quang — ESP32_DR', 'Đã sửa · chưa commit'],
-      ['9', 'Nhiều lớp viền: GM1 (khung linh kiện) thành thân bo', 'Le Quoc Huy — Slaver_Ceiling bản lẻ', 'Đã sửa · chưa commit'],
+      ['8', 'File khoan Altium FILE_FORMAT=4:3 co 100 lần, lỗ dồn ngoài góc', 'Nguyen Van Quang — ESP32_DR', 'Đã sửa · f186434'],
+      ['9', 'Nhiều lớp viền: GM1 (khung linh kiện) thành thân bo', 'Le Quoc Huy — Slaver_Ceiling bản lẻ', 'Đã sửa · f186434'],
       ['10', 'J11: đồng/lỗ sát mép, vạch trắng có khấc', 'Nguyen Van Quang — ESP32_DR', 'Không phải lỗi — file vẽ vậy'],
-      ['11', 'Hộp chọn file bản web không mở đúng thư mục vừa dùng', '(mở file)', 'Đã sửa · chưa commit'],
+      ['11', 'Hộp chọn file bản web không mở đúng thư mục vừa dùng', '(mở file)', 'Đã sửa · 49468cd'],
     ],
     [5, 42, 30, 23],
   ),
@@ -205,6 +205,8 @@ const bugs = [
   },
 ]
 for (const b of bugs) children.push(H2(b.t), bugTable(b.rows), gap())
+children.push(H2('Ghi chú — "mất logo" khi chụp (không phải lỗi app)'))
+children.push(P('Khi kiểm ảnh chụp trong khung trình duyệt của Claude, hàm ghi clipboard của trang bị thay tạm để đọc ảnh ra. Dùng đúng tab đó thì bấm Copy không vào clipboard, dán ra ảnh cũ → tưởng mất logo. Tải lại tab là hết. Từ nay kiểm clipboard / ảnh chụp bằng **tab riêng**.'))
 children.push(breakPage())
 
 // ═══ 2. TÍNH NĂNG ═══
@@ -312,7 +314,7 @@ children.push(H2('3.4 File khoan Excellon — đọc số'))
 children.push(T([
   ['Trường hợp', 'Xử lý'],
   ['Toạ độ có dấu chấm', 'Để nguyên'],
-  [';FILE_FORMAT=a:b + METRIC/INCH,LZ/TZ (Altium)', 'DQPCB chèn dấu thập phân theo a:b (LZ bù đuôi, TZ bù đầu) — web-gerber không đọc dòng chú thích này (22/09, chưa commit)'],
+  [';FILE_FORMAT=a:b + METRIC/INCH,LZ/TZ (Altium)', 'DQPCB chèn dấu thập phân theo a:b (LZ bù đuôi, TZ bù đầu) — web-gerber không đọc dòng chú thích này (22/09, f186434)'],
   ['METRIC, không khai format, không dấu chấm (Proteus)', 'Chèn theo chuẩn metric 3.3'],
   ['INCH không khai', 'Để web-gerber áp 2.4'],
   ['Lệnh phay G00 → M15 → G01 → M16', 'Slot / lỗ chữ nhật (mục 4.3)'],
@@ -329,7 +331,7 @@ children.push(H1('4. Quan trọng: Outline · Drill · Slot'))
 children.push(P('Ba thứ quyết định **kích thước bo (→ giá)** và **hình bo đúng hay sai**. Luật nằm trong geometry.ts, outlineLoops.ts, identify.ts, reader.ts và phần vẽ Viewer2D.WebGL.tsx.'))
 children.push(H2('4.1 Outline (viền bo)'))
 children.push(H3('Chọn lớp viền'))
-children.push(B('Chỉ lớp viền có **ô bao lớn nhất (tính bằng mm)** dựng thân bo và cho kích thước; lớp viền khác thành tài liệu "… (viền phụ)" (22/09, chưa commit).'))
+children.push(B('Chỉ lớp viền có **ô bao lớn nhất (tính bằng mm)** dựng thân bo và cho kích thước; lớp viền khác thành tài liệu "… (viền phụ)" (22/09, f186434).'))
 children.push(H3('Nối nét thành vòng'))
 children.push(T([
   ['Bước', 'Luật'],
@@ -372,7 +374,6 @@ children.push(breakPage())
 children.push(H1('5. Vấn đề còn tồn & checklist'))
 children.push(H2('5.1 Vấn đề còn tồn'))
 for (const s of [
-  '**Chưa commit**: lỗi 8 (FILE_FORMAT), lỗi 9 (viền phụ), lỗi 11 (hộp chọn file web) và thư mục báo cáo.',
   '**.DRD bị chọn thay THRUHOLE.tap** (Dinh Quang Viet, Dinh Ngoc Tram — AUTOMATION-2): .drd gán là dữ liệu khoan (Eagle) nhưng ở các bộ này có vẻ là bản vẽ khoan. Có từ trước.',
   '**Tam giác chéo sai** ở một số panel (Rail.zip, GWLRWEX-CELLULAR, ph_analyzer…): đa giác viền tô lệch. Bản cũ cũng bị.',
   '**Chưa nhận biết file đa thiết kế**: CHAT_BOT_1 (4 bo ghép) vẫn đi bảng tra khi chưa tích Ghép panel — app đếm được số bo trong viền, có thể tự nhắc.',

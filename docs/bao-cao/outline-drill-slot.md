@@ -12,7 +12,7 @@ nằm trong `src/lib/gerber-reader/` (`geometry.ts`, `outlineLoops.ts`, `identif
 
 - Có thể có nhiều file nhận là viền (`.GKO`, `.GM1`, `Edge_Cuts`, `Profile`, `Mechanical 1`…).
 - **Chỉ lớp có ô bao lớn nhất (tính bằng mm) dựng thân bo và cho kích thước.** Các lớp viền
-  khác thành tài liệu "… (viền phụ)" (ẩn, bật xem được). *(22/09, chưa commit — trước đó
+  khác thành tài liệu "… (viền phụ)" (ẩn, bật xem được). *(22/09, `f186434` — trước đó
   viewer lấy lớp dựng sau cùng: Slaver_Ceiling bản lẻ lấy nhầm GM1 = khung rơ-le.)*
 - Corpus: 34/614 bộ có nhiều lớp viền (21 trùng khít, 13 nằm trong, 1 lấn ra ngoài).
 
@@ -65,7 +65,7 @@ nằm trong `src/lib/gerber-reader/` (`geometry.ts`, `outlineLoops.ts`, `identif
 ### B3. Đọc số — xem `dinh-dang-file.md` mục 4
 
 Lỗi nặng nhất đợt này: **Altium metric `FILE_FORMAT=4:3`** bị đọc nhỏ 100 lần → mọi lỗ dồn
-ngoài góc bo. 5/171 bộ Altium trong corpus bị; sửa 22/09 (chưa commit).
+ngoài góc bo. 5/171 bộ Altium trong corpus bị; sửa 22/09 (`f186434`).
 
 ### B4. Vẽ
 
