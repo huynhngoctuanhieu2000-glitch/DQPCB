@@ -93,6 +93,31 @@ export const META: Record<string, LayerMeta> = {
   unknown: { type: 'unknown', side: 'all', displayName: 'Unknown', color: '#9B59B6', order: 11 },
 }
 
+/**
+ * [DQPCB] Các loại lớp người dùng chọn tay ở danh sách lớp (khi app nhận diện sai). Khoá
+ * là khoá của META; đọc lại bộ file với `GerberParser.rebuildBoard`.
+ */
+export const LAYER_CHOICES: { key: string; label: string }[] = [
+  { key: 'copperTop', label: 'Top Copper' },
+  { key: 'copperBot', label: 'Bot Copper' },
+  { key: 'copperInner', label: 'Inner Copper' },
+  { key: 'maskTop', label: 'Top Solder' },
+  { key: 'maskBot', label: 'Bot Solder' },
+  { key: 'silkTop', label: 'Top Silk' },
+  { key: 'silkBot', label: 'Bot Silk' },
+  { key: 'pasteTop', label: 'Top Paste' },
+  { key: 'pasteBot', label: 'Bot Paste' },
+  { key: 'outline', label: 'Outline (viền)' },
+  { key: 'drill', label: 'Drill (khoan)' },
+  { key: 'doc', label: 'Tài liệu (ẩn)' },
+  { key: 'unknown', label: 'Không rõ' },
+]
+
+/** [DQPCB] Khoá META ứng với loại + mặt hiện tại của một lớp. */
+export const layerKeyOf = (layer: { type: string; side: string }): string =>
+  Object.keys(META).find((k) => META[k].type === layer.type && META[k].side === layer.side) ??
+  (layer.type === 'documentation' ? 'doc' : 'unknown')
+
 // Bảng tra theo đuôi file — kiểm tra trước mọi từ khoá.
 /** [DQPCB] Nhận diện theo đuôi file của từng EDA. */
 const EXT_MAP: Record<string, LayerMeta> = {
@@ -304,9 +329,14 @@ export const looksLikeCamData = (content: string) => {
   )
 }
 
-/** File khoan dạng Gerber (X2 Plated/NonPlated) chứ không phải Excellon. */
-/** [DQPCB] */
-export const isGerberContent = (content: string) => /%FS[LT]?[AI]?X\d/i.test(content.slice(0, 4000))
+/**
+ * [DQPCB] File khoan dạng Gerber (X2 Plated/NonPlated, bản vẽ khoan) chứ không phải Excellon.
+ * Header OrCAD Layout có thêm số chữ số mã dòng: `%FSLAN2X34Y34*%`. Luật cũ không cho N
+ * nằm giữa A và X nên bản vẽ khoan .DRD (bo DA82, Dinh Anh Tuan, 22/09/2026) bị coi là
+ * Excellon và đè mất file khoan thật thruhole.tap.
+ */
+export const isGerberContent = (content: string) =>
+  /%FS[LTD]?[AI]?(?:N\d)?(?:G\d)?(?:D\d)?(?:M\d)?X\d/i.test(content.slice(0, 4000))
 
 /**
  * [DQPCB] File khoan này chỉ là MỘT PHẦN của bộ khoan — phải vẽ kèm các file còn lại —

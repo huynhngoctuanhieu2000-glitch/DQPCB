@@ -1,4 +1,4 @@
-import type { ParsedGerberLayer, BoardParsedData } from '../lib/gerber-reader'
+import { GerberParser, type ParsedGerberLayer, type BoardParsedData } from '../lib/gerber-reader'
 
 /** Dữ liệu riêng của MỘT bo. Mở nhiều file thì có nhiều cái như thế này. */
 export interface Board {
@@ -36,6 +36,10 @@ export interface Board {
    * 2 Mặt và ảnh copy gửi khách phải ghi đúng số lớp sẽ đặt, không phải số đọc từ file.
    */
   layersOverride: number | null
+  /** Dữ liệu đọc gốc (còn giữ gói file) — để đọc lại khi chọn tay loại lớp. */
+  parsed: BoardParsedData | null
+  /** Loại lớp chọn tay: tên file → khoá META. */
+  layerOverrides: Record<string, string>
 }
 
 /**
@@ -71,6 +75,8 @@ const emptyBoard = (): Board => ({
   sourceDir: '',
   parseMs: 0,
   layersOverride: null,
+  parsed: null,
+  layerOverrides: {},
 })
 
 let boards: Board[] = []
@@ -126,6 +132,8 @@ const toBoard = (data: BoardParsedData, sourceDir = '', parseMs = 0): Board => (
   sourceDir,
   parseMs,
   layersOverride: null,
+  parsed: data,
+  layerOverrides: data.layerOverrides ?? {},
 })
 
 export const BoardDataModel = {
@@ -226,6 +234,50 @@ export const BoardDataModel = {
     const active = boards.find((b) => b.id === activeBoardId)
     if (!active || active.layersOverride === layers) return
     updateActive((board) => ({ ...board, layersOverride: layers }))
+  },
+
+  /**
+   * Đặt tay loại cho một lớp (khoá META; rỗng = để app tự nhận) rồi đọc lại cả bộ file:
+   * kích thước, file khoan được vẽ, viền chính… đều tính lại theo loại mới. Lớp nào đang
+   * bật/tắt giữ nguyên; lớp vừa đổi thì bật (trừ khi đổi thành tài liệu).
+   */
+  retypeLayer: async (layerId: string, key: string) => {
+    const board = boards.find((b) => b.id === activeBoardId)
+    const layer = board?.layers.find((l) => l.id === layerId)
+    if (!board?.parsed || !layer) return
+    const overrides = { ...board.layerOverrides }
+    if (key) overrides[layer.filename] = key
+    else delete overrides[layer.filename]
+    const data = await GerberParser.rebuildBoard(board.parsed, overrides)
+    const before = new Set(board.layers.map((l) => l.id))
+    const visibleLayers = new Set(
+      data.layers
+        .filter((l) =>
+          l.filename === layer.filename
+            ? l.type !== 'documentation'
+            : before.has(l.id)
+              ? board.visibleLayers.has(l.id)
+              : l.visible,
+        )
+        .map((l) => l.id),
+    )
+    boards = boards.map((b) =>
+      b.id === board.id
+        ? {
+            ...b,
+            layers: data.layers,
+            visibleLayers,
+            bounds: data.bounds,
+            layerCount: data.layerCount,
+            drillCount: data.drillCount,
+            ignoredFiles: data.ignoredFiles ?? [],
+            failedFiles: data.failedFiles ?? [],
+            parsed: data,
+            layerOverrides: overrides,
+          }
+        : b,
+    )
+    commit()
   },
 
   setActiveView: (view: BoardState['activeView']) => {

@@ -28,6 +28,8 @@ export interface ParsedGerberLayer {
   holeCount: number
   /** File khoan chỉ chứa lỗ mạ / lỗ không mạ / cả hai — xem drillPlatingOf. */
   drillPlating?: 'PTH' | 'NPTH' | 'mixed'
+  /** Loại lớp người dùng chọn tay (khoá META), không có nếu app tự nhận diện. */
+  userType?: string
 }
 
 export interface BoardParsedData {
@@ -49,6 +51,10 @@ export interface BoardParsedData {
   ignoredFiles: string[]
   /** File có vẻ là Gerber/Drill nhưng parser không đọc được */
   failedFiles: { name: string; reason: string }[]
+  /** Gói file gốc — giữ để đọc lại khi người dùng chọn tay loại lớp (rebuildBoard). */
+  source?: unknown
+  /** Loại lớp chọn tay: tên file → khoá META. */
+  layerOverrides?: Record<string, string>
 }
 
 

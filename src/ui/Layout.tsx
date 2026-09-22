@@ -4,7 +4,8 @@ import type { CaptureFn } from '../modules/viewer2d/Viewer2D.WebGL'
 import { composeTwoSides, copyPng } from '../modules/viewer2d/captureBoard'
 import { BoardDataModel } from '../models/BoardDataModel'
 import type { BoardState } from '../models/BoardDataModel'
-import { GerberParser } from '../lib/gerber-reader'
+import { GerberParser, LAYER_CHOICES, layerKeyOf } from '../lib/gerber-reader'
+import type { ParsedGerberLayer } from '../lib/gerber-reader'
 import { QuotationPanel } from '../modules/quotation/QuotationPanel'
 import type { QuotationSeed } from '../modules/quotation/QuotationPanel'
 import { PricingCard } from '../modules/pricing/PricingCard'
@@ -878,8 +879,10 @@ export const Layout: React.FC = () => {
                         }}
                         title={layer.filename}
                       >
+                        {layer.userType ? '✎ ' : ''}
                         {layer.shortName || layer.filename}
                       </span>
+                      {isActive && <LayerTypeSelect layer={layer} />}
                     </div>
 
                     {/* Solo Button */}
@@ -1359,6 +1362,64 @@ const BoardBadge: React.FC<{
       <span>
         {bounds.widthMM.toFixed(2)} x {bounds.heightMM.toFixed(2)} mm
       </span>
+    </div>
+  )
+}
+
+/**
+ * Chọn tay loại của một lớp khi app nhận diện sai (file khoan đuôi lạ, viền nằm trong
+ * file tài liệu…). Đổi xong cả bộ file được đọc lại theo loại mới.
+ */
+function LayerTypeSelect({ layer }: { layer: ParsedGerberLayer }) {
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  const current = layer.userType ?? layerKeyOf(layer)
+  const change = async (key: string) => {
+    setBusy(true)
+    setError('')
+    try {
+      await BoardDataModel.retypeLayer(layer.id, key)
+    } catch (e: any) {
+      setError(e?.message || String(e))
+    } finally {
+      setBusy(false)
+    }
+  }
+  return (
+    <div onClick={(e) => e.stopPropagation()} style={{ marginTop: 4, display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>
+      <span style={{ fontSize: 10, color: '#94a3b8' }}>Loại lớp:</span>
+      <select
+        value={current}
+        disabled={busy}
+        onChange={(e) => change(e.target.value)}
+        title="App nhận diện sai thì chọn lại — cả bộ file sẽ được đọc lại theo loại này"
+        style={{
+          fontSize: 11,
+          padding: '1px 4px',
+          borderRadius: 4,
+          border: '1px solid #334155',
+          backgroundColor: '#0f172a',
+          color: '#e2e8f0',
+          cursor: 'pointer',
+        }}
+      >
+        {LAYER_CHOICES.map((c) => (
+          <option key={c.key} value={c.key}>
+            {c.label}
+          </option>
+        ))}
+      </select>
+      {layer.userType && !busy && (
+        <button
+          onClick={() => change('')}
+          title="Bỏ chọn tay, để app tự nhận diện"
+          style={{ fontSize: 10, padding: '1px 5px', borderRadius: 4, border: '1px solid #334155', background: 'transparent', color: '#94a3b8', cursor: 'pointer' }}
+        >
+          ↺ Tự nhận
+        </button>
+      )}
+      {busy && <span style={{ fontSize: 10, color: '#38bdf8' }}>Đang đọc lại…</span>}
+      {error && <span style={{ fontSize: 10, color: '#f87171' }}>{error}</span>}
     </div>
   )
 }

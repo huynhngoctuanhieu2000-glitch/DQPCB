@@ -9,7 +9,16 @@
  */
 export type { BoardParsedData, LayerMeta, ParsedGerberLayer } from './types'
 export { GerberParser } from './reader'
-export { countExcellonHoles, drillPlatingOf, isAuxiliaryFile, isPartialDrillFile, matchLayer, shortenNames } from './identify'
+export {
+  LAYER_CHOICES,
+  countExcellonHoles,
+  drillPlatingOf,
+  isAuxiliaryFile,
+  isPartialDrillFile,
+  layerKeyOf,
+  matchLayer,
+  shortenNames,
+} from './identify'
 export { ESTIMATED_OUTLINE_FILE, extractProfileGerber } from './outline'
 export {
   OUTLINE_CUTOUT_MAX_RATIO,

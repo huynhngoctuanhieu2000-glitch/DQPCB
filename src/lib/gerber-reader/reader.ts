@@ -188,8 +188,20 @@ export class GerberParser {
     return bundles
   }
 
+  /**
+   * [DQPCB] Đọc lại bo với loại lớp chọn tay (tên file → khoá META, xem LAYER_CHOICES).
+   * App nhận diện sai (vd. file khoan đuôi lạ, viền nằm trong file .FAB) thì người dùng
+   * đặt lại ở danh sách lớp; cả bộ đọc lại để kích thước, file khoan được vẽ, viền chính…
+   * tính lại theo đúng loại mới.
+   */
+  static async rebuildBoard(data: BoardParsedData, overrides: Record<string, string>): Promise<BoardParsedData> {
+    if (!data.source) throw new Error('Bo này không còn file gốc để đọc lại.')
+    return GerberParser.buildBoard(data.source as InputBundle, overrides)
+  }
+
   /** Dựng một bo hoàn chỉnh từ một gói file đã giải nén. */
-  private static async buildBoard(bundle: InputBundle): Promise<BoardParsedData> {
+  private static async buildBoard(bundle: InputBundle, overrides: Record<string, string> = {}): Promise<BoardParsedData> {
+    const forced = (name: string) => (overrides[name] && META[overrides[name]] ? overrides[name] : null)
     const { projectName, sourceFile, orcadLisText, orcadGtdText } = bundle
     let rawFiles = bundle.rawFiles
 
@@ -200,8 +212,9 @@ export class GerberParser {
     // Ngoài luật tên/đuôi, bỏ luôn file không nhận ra lớp mà nội dung cũng chẳng giống
     // Gerber/Excellon. Vẫn liệt kê trong ignoredFiles để người dùng thấy, không giấu.
     const isJunk = (f: { name: string; content: string }) =>
-      isAuxiliaryFile(f.name, allInputNames) ||
-      (matchLayer(f.name, allInputNames, f.content).type === 'unknown' && !looksLikeCamData(f.content))
+      !forced(f.name) &&
+      (isAuxiliaryFile(f.name, allInputNames) ||
+      (matchLayer(f.name, allInputNames, f.content).type === 'unknown' && !looksLikeCamData(f.content)))
     const ignoredFiles = rawFiles.filter(isJunk).map((f) => f.name)
     rawFiles = rawFiles.filter((f) => !isJunk(f))
 
@@ -257,7 +270,8 @@ export class GerberParser {
     for (let fileIndex = 0; fileIndex < rawFiles.length; fileIndex++) {
       const raw = rawFiles[fileIndex]
       try {
-        const meta = matchLayer(raw.name, allNames, raw.content)
+        const userType = forced(raw.name)
+        const meta = userType ? { ...META[userType] } : matchLayer(raw.name, allNames, raw.content)
         let fileContent = raw.content
 
         // Skip incremental logic completely for drill files
@@ -406,7 +420,7 @@ export class GerberParser {
           filename: raw.name,
           shortName,
           displayName:
-            meta.type === 'unknown' ? shortName.replace(/\.[^.]+$/, '') || meta.displayName : meta.displayName,
+            meta.type === 'unknown' && !userType ? shortName.replace(/\.[^.]+$/, '') || meta.displayName : meta.displayName,
           type: meta.type,
           side: meta.side,
           color: meta.color,
@@ -421,8 +435,10 @@ export class GerberParser {
           imageTree,
           holeCount: isDrillFile ? countHoles(fileContent) : 0,
           ...(isDrillFile ? { drillPlating: drillPlatingOf(raw.name, raw.content) } : null),
+          ...(userType ? { userType } : null),
         })
-        if (isDrillFile && isGerberContent(raw.content)) gerberDrillIds.add(id)
+        // Người dùng đã chọn tay là file khoan thì không hạ xuống tài liệu.
+        if (isDrillFile && isGerberContent(raw.content) && !userType) gerberDrillIds.add(id)
       } catch (err: any) {
         // Không nuốt lỗi im lặng: người dùng cần biết lớp nào bị mất và vì sao.
         console.warn(`Skipping unparseable file: ${raw.name}`, err)
@@ -509,7 +525,11 @@ export class GerberParser {
         const s = l.units === 'in' ? 25.4 : 1
         return (l.size[2] - l.size[0]) * (l.size[3] - l.size[1]) * s * s
       }
-      outlineLayer = outlineLayers.reduce((prev, current) => (areaMm(current) > areaMm(prev) ? current : prev))
+      // Lớp người dùng chọn tay là viền thì thắng lớp app tự nhận.
+      const chosen = outlineLayers.filter((l) => l.userType === 'outline')
+      outlineLayer = (chosen.length ? chosen : outlineLayers).reduce((prev, current) =>
+        areaMm(current) > areaMm(prev) ? current : prev,
+      )
 
       // [DQPCB] Chỉ MỘT lớp viền dựng thân bo. Altium hay xuất cả .GKO lẫn .GM1, mà GM1 có
       // khi chỉ là khung linh kiện / kích thước: bo "Slaver_Ceiling_ EC" (Le Quoc Huy,
@@ -605,6 +625,8 @@ export class GerberParser {
       drillCount: drillLayers.length,
       ignoredFiles,
       failedFiles,
+      source: bundle,
+      layerOverrides: overrides,
     }
   }
 }

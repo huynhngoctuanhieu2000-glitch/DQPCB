@@ -276,6 +276,8 @@ export const Viewer2DWebGL: React.FC<Viewer2DWebGLProps> = ({
     camMode: boolean
     /** Object luôn bật/tắt theo một object khác (pad cắt theo lỗ mở mask → theo lớp mask). */
     followers: { obj: any; leader: any }[]
+    /** CAM: dựng lớp phụ (tài liệu, không rõ loại…) lúc nó được bật lần đầu. */
+    addExtra: (raw: any) => void
   } | null>(null)
   const [board, setBoard] = useState(BoardDataModel.getState())
   const [status, setStatus] = useState('Chưa tải dữ liệu')
@@ -643,6 +645,50 @@ export const Viewer2DWebGL: React.FC<Viewer2DWebGLProps> = ({
     paintOrder(near.SolderMask, 8)
     paintOrder(pcb.Drill, 9)
 
+    // --- CAM: lớp không có chỗ trong bo (tài liệu, không rõ loại, paste, file khoan
+    // không được chọn vẽ) ---
+    // Trước đây các lớp này bị bỏ hẳn: có trong danh sách, bật lên vẫn trống (DA82 của
+    // OrCAD: .AST, .FAB, .DRD). CAM là chỗ soi file nên vẽ hết. Chỉ dựng khi lớp được
+    // BẬT — lớp tài liệu tắt sẵn mà dựng hết thì mở bo chậm hẳn (ba lớp tài liệu Altium
+    // ~1.1 s) — effect bật/tắt lớp gọi addExtra khi người dùng tích.
+    const extraZ = (pcb.Top.SolderMask?.position?.z ?? 0) + 1
+    const addExtra = (raw: any) => {
+      if (!camMode || byFile.has(raw.filename) || !raw.imageTree) return
+      try {
+        const swatch = parseInt(String(raw.color).replace('#', ''), 16)
+        const color = Number.isNaN(swatch) ? CAM_FALLBACK : swatch
+        const key = [raw.id, 'cam-extra', color].join('|')
+        let hit = built.entries.get(key)
+        if (!hit) {
+          const made = buildLayerObject(raw.imageTree, {
+            color,
+            eraseColor: CAM_BACKGROUND,
+            fillOutline: false,
+            isOutline: false,
+            holeColor: HOLE,
+            copperPoints,
+          })
+          if (!made) return
+          claimGpu(made.obj)
+          built.entries.set(key, made)
+          hit = made
+        }
+        const obj: any = hit.obj.clone()
+        if (raw.imageTree.units === 'in') obj.scale.set(25.4, 25.4, obj.scale.z)
+        obj.position.z = extraZ
+        paintOrder(obj, 10)
+        render.Scene.add(obj)
+        byFile.set(raw.filename, obj)
+      } catch (e) {
+        console.warn('[WebGL] lỗi lớp phụ', raw.filename, e)
+      }
+    }
+    if (camMode) {
+      for (const raw of board.layers) {
+        if (!byFile.has(raw.filename) && board.visibleLayers.has(raw.id)) addExtra(raw)
+      }
+    }
+
     // --- Chỉnh cao độ để pad và lỗ khoan đọc được ở view 3D ---
     // Ở view 2D thứ tự do painter's algorithm quyết định, nhưng 3D bật depth test nên
     // cao độ thật mới là thứ quyết định che khuất. Hai chỗ cần nắn:
@@ -849,7 +895,7 @@ export const Viewer2DWebGL: React.FC<Viewer2DWebGLProps> = ({
       }
     }
 
-    sceneRef.current = { byFile, maskFiles, topOil, bottomOil, camMode, followers }
+    sceneRef.current = { byFile, maskFiles, topOil, bottomOil, camMode, followers, addExtra }
 
     // --- Camera top-down + pan/zoom tự quản (chỉ set số, không tạo object three) ---
     const cam = render.Camera
@@ -1092,6 +1138,8 @@ export const Viewer2DWebGL: React.FC<Viewer2DWebGLProps> = ({
     if (!s) return
     const listed = new Set(board.layers.map((l) => l.id))
     const shown = (file: string) => (listed.has(file) ? board.visibleLayers.has(file) : true)
+
+    if (s.camMode) for (const l of board.layers) if (board.visibleLayers.has(l.id) && !s.byFile.has(l.filename)) s.addExtra(l)
 
     for (const [file, obj] of s.byFile) obj.visible = shown(file)
     for (const { obj, leader } of s.followers) obj.visible = leader.visible

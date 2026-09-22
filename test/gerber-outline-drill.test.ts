@@ -10,6 +10,7 @@
  */
 import { describe, it, expect } from 'vitest'
 import { GerberParser, countExcellonHoles, drillPlatingOf, isPartialDrillFile, matchLayer } from '../src/lib/gerber-reader'
+import { isGerberContent } from '../src/lib/gerber-reader/identify'
 
 const asFile = (name: string, content: string) =>
   ({
@@ -300,5 +301,50 @@ describe('rãnh phay vẽ bằng một nét trong lớp viền', () => {
     expect(parts.filter((pt: any) => pt.millLine).map((pt: any) => pt.millLine.children.length)).toEqual([1, 1])
     expect(b.bounds.widthMM).toBeCloseTo(87.8, 0)
     expect(b.bounds.heightMM).toBeCloseTo(97, 0)
+  })
+})
+
+describe('OrCAD Layout: thruhole.tap + bản vẽ khoan .DRD (bo DA82, Dinh Anh Tuan)', () => {
+  // Header OrCAD Layout: có "N2" (số chữ số mã dòng) giữa A và X.
+  const orcad = (body: string) =>
+    ['%FSLAN2X34Y34*%', '%MOIN*%', '%ADD10C,0.010*%', 'G54D10*', body, 'M02*'].join('\n')
+  const top = orcad('G01X0000000Y0000000D02*\nX0010000D01*\nY0010000D01*\n')
+  // Bản vẽ khoan: ký hiệu vẽ bằng nét, kèm bảng ký hiệu nằm ngoài bo.
+  const drd = orcad('X0002000Y0002000D02*\nX0003000Y0003000D01*\nX0050000Y-0020000D02*\nX0060000Y-0020000D01*\n')
+  // Excellon không header, format 2.4 giữ số 0 đầu.
+  const tap = ['%', 'T1C0.0280F200S100', 'X002500Y002500', 'X007500Y007500', 'M30'].join('\n')
+
+  it('nhận header có N2 là Gerber', () => {
+    expect(isGerberContent(drd)).toBe(true)
+  })
+
+  it('vẽ thruhole.tap, .DRD thành tài liệu', async () => {
+    const [b] = await GerberParser.parseInputFiles([
+      asFile('BO.TOP', top),
+      asFile('BO.DRD', drd),
+      asFile('thruhole.tap', tap),
+    ])
+    const tapLayer = b.layers.find((l) => l.filename === 'thruhole.tap')!
+    expect(tapLayer.type).toBe('drill')
+    expect(tapLayer.holeCount).toBe(2)
+    expect(b.layers.find((l) => l.filename === 'BO.DRD')!.type).toBe('documentation')
+  })
+
+  it('chọn tay loại lớp rồi đọc lại; bỏ chọn tay thì về như cũ', async () => {
+    const [b] = await GerberParser.parseInputFiles([
+      asFile('BO.TOP', top),
+      asFile('BO.DRD', drd),
+      asFile('thruhole.tap', tap),
+    ])
+    const forced = await GerberParser.rebuildBoard(b, { 'BO.DRD': 'drill', 'BO.TOP': 'outline' })
+    const drdLayer = forced.layers.find((l) => l.filename === 'BO.DRD')!
+    expect(drdLayer.type).toBe('drill')
+    expect(drdLayer.userType).toBe('drill')
+    expect(forced.layers.find((l) => l.filename === 'BO.TOP')!.type).toBe('outline')
+    expect(forced.layerOverrides).toEqual({ 'BO.DRD': 'drill', 'BO.TOP': 'outline' })
+
+    const back = await GerberParser.rebuildBoard(forced, {})
+    expect(back.layers.find((l) => l.filename === 'BO.DRD')!.type).toBe('documentation')
+    expect(back.layers.find((l) => l.filename === 'BO.TOP')!.type).toBe('copper')
   })
 })
