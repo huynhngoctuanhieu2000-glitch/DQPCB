@@ -778,13 +778,21 @@ export const QuotationPanel: React.FC<{
               )}
             </div>
           )}
-          <button onClick={onClose} style={S.secondaryBtn}>
-            Đóng
-          </button>
-          {/* Trên web: PDF dựng trong trình duyệt là cách chính (điện thoại chia sẻ
-              thẳng sang Zalo), hộp in của trình duyệt là phụ. Trong app Electron: vẫn
-              in ra file PDF cạnh file gerber. */}
-          {!window.ipcRenderer && (
+          {/* Thứ tự trái→phải: PDF, Excel, In, Đóng. Trên web: PDF dựng trong trình
+              duyệt là cách chính (điện thoại chia sẻ thẳng sang Zalo), hộp in của
+              trình duyệt là phụ nên đứng sau Excel. Trong app Electron: nút "Xuất
+              PDF" TỰ NÓ là nút PDF chính — không có nút In riêng — nên phải đứng
+              trước Excel, không đi theo vị trí "In" ở nhánh web. */}
+          {window.ipcRenderer ? (
+            <button
+              onClick={handleExport}
+              disabled={busy}
+              style={{ ...S.primaryBtn, ...(busy ? S.disabled : null) }}
+              title={board.sourceDir ? `Lưu vào ${board.sourceDir}` : 'Chọn chỗ lưu ở hộp thoại'}
+            >
+              {busy ? 'Đang xuất…' : '⬇ Xuất PDF'}
+            </button>
+          ) : (
             <button
               onClick={handleShare}
               disabled={busy}
@@ -794,20 +802,6 @@ export const QuotationPanel: React.FC<{
               {busy ? 'Đang tạo PDF…' : canShareFiles() ? '📤 Chia sẻ PDF' : '⬇ Tải PDF'}
             </button>
           )}
-          <button
-            onClick={handleExport}
-            disabled={busy}
-            style={{ ...(window.ipcRenderer ? S.primaryBtn : S.secondaryBtn), ...(busy ? S.disabled : null) }}
-            title={
-              window.ipcRenderer
-                ? board.sourceDir
-                  ? `Lưu vào ${board.sourceDir}`
-                  : 'Chọn chỗ lưu ở hộp thoại'
-                : 'Mở hộp in của trình duyệt, chọn "Lưu thành PDF"'
-            }
-          >
-            {busy ? 'Đang xuất…' : window.ipcRenderer ? '⬇ Xuất PDF' : '🖨 In'}
-          </button>
           {/* Bản có thể sửa lại — PDF mới là bản gửi khách, Excel để chỉnh tay khi cần. */}
           <button
             onClick={handleExportExcel}
@@ -822,6 +816,20 @@ export const QuotationPanel: React.FC<{
             }
           >
             {busy ? 'Đang xuất…' : '⬇ Xuất Excel'}
+          </button>
+          {/* Trong Electron, nút "Xuất PDF" ở trên đã lo phần in ra file rồi. */}
+          {!window.ipcRenderer && (
+            <button
+              onClick={handleExport}
+              disabled={busy}
+              style={{ ...S.secondaryBtn, ...(busy ? S.disabled : null) }}
+              title='Mở hộp in của trình duyệt, chọn "Lưu thành PDF"'
+            >
+              {busy ? 'Đang xuất…' : '🖨 In'}
+            </button>
+          )}
+          <button onClick={onClose} style={S.secondaryBtn}>
+            Đóng
           </button>
         </div>
       </div>
