@@ -9,6 +9,7 @@ Mỗi báo cáo gắn với bộ file thật trong `D:\JobDatMach` để kiểm 
 | [2026-09-22-bao-cao-loi.md](2026-09-22-bao-cao-loi.md) | Lỗi đợt 21–22/09/2026: lỗi · nguyên nhân · cách giải quyết · vấn đề còn tồn |
 | [2026-09-22-khao-sat-cong-thuc-gia-L2.md](2026-09-22-khao-sat-cong-thuc-gia-L2.md) | Khảo sát (không sửa code): công thức giá bo 2 lớp mới so với code, ví dụ Anh Toan / Do Huynh, bảng chênh lệch |
 | [2026-09-22-khao-sat-chuyen-bo-cham.md](2026-09-22-khao-sat-chuyen-bo-cham.md) | Khảo sát + đã sửa: chuyển qua lại giữa các bo đang mở chậm 0.5–3.3 s → ~0.05 s (cache theo bo, màn chờ, dựng sẵn ở nền) |
+| [2026-09-22-danh-gia-ux-nut-bam.md](2026-09-22-danh-gia-ux-nut-bam.md) | Đánh giá (không sửa code): nút bấm và thao tác — vùng chạm, nút phá huỷ, tương phản, điện thoại; kèm thứ tự nên sửa |
 | [dinh-dang-file.md](dinh-dang-file.md) | App đang đọc được những định dạng nào, nhận diện lớp theo thứ tự nào |
 | [outline-drill-slot.md](outline-drill-slot.md) | Quan trọng: cách đọc viền bo (outline), lỗ khoan (drill) và lỗ slot/rãnh |
 
