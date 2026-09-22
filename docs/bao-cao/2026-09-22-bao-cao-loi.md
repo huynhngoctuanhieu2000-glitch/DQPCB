@@ -22,7 +22,7 @@ Tóm tắt:
 | 13 | CAM: nét phụ của lớp viền hiện màu xanh mask | (viewer) | Đã sửa · `706ea9f` |
 | 14 | OrCAD Layout: vẽ bản vẽ khoan `.DRD` thay cho `thruhole.tap` | Dinh Anh Tuan — DA82 (+ 252 bộ OrCAD) | Đã sửa · `11dc1bb` |
 | 15 | Lớp tài liệu / không rõ loại bật lên không có gì; không chọn tay được loại lớp | Dinh Anh Tuan — DA82 | Đã sửa · `11dc1bb` |
-| 16 | File khoan không khai định dạng số (lỗ co 10 lần) hoặc lệch gốc so với Gerber | FRIWO — 55807.931-90FE (+ 31 bộ / 1.850 mẫu) | Đã sửa · `c680077`, `3ec37c4` |
+| 16 | File khoan không khai định dạng số (lỗ co 10 lần) hoặc lệch gốc so với Gerber | FRIWO — 55807.931-90FE (+ 302 bộ / 18.496 bộ) | Đã sửa · `c680077`, `3ec37c4` |
 | 17 | 2D / 3D chọn "Bot Side" không thấy mặt dưới | FRIWO — 55807.931-90FE | Đã sửa · `020e8de` |
 | 18 | Chuyển qua lại giữa các bo đang mở chậm 0.5–3.3 s, không báo đang tải | FRIWO, PHAONUOC, CHAT_BOT_4 (mở cùng lúc) | Đã sửa · `71bf3a5` |
 | 19 | 2D / 3D mất lõi bo: vùng tô trong lớp viền làm khung bo bị gán sai kiểu | Anh Nhat — Gerber Anh Nhat (+ 2 bộ) | Đã sửa · `dbbea67` |
@@ -261,7 +261,17 @@ tam giác chéo sai; Rosario: rãnh móc câu nhất quán là lỗ).
 - **Kiểm:** FRIWO — 2641 lỗ về đúng vùng bo (0.90–1.47 in → 9.60–14.63 in), kích thước giữ
   137.4 × 147 mm. PCB_doline, The Cold (Switch_AC, lệch +37.5, +32.7 mm) — dời lại khớp 100%
   pad. Hồi quy corpus, đo bằng **tỉ lệ lỗ trúng pad** (cách đo cũ "lỗ trong khung bo" không
-  thấy được cụm lỗ co về một góc bo): mẫu 1/10 kho (1.850 bộ), so với bản đọc gốc: **31 bộ đổi — cả 31 tốt lên, 0 tệ đi, không bộ nào đổi kích thước**; bộ có lỗ trúng pad < 50% giảm **34 → 3** (3 bộ còn lại là panel nhiều thiết kế, như trước). Trong 31: 21 bộ sai định dạng số (Pulsonix 3.5, OrCAD `.tap`, CS2 khai `FILE_FORMAT=2:4` sai…), 10 bộ lệch gốc (PCB_doline −87.9/−25.5 mm, The Cold +37.5/+32.7, Pedal_edit +1794/+1583, PCB4 −51.7/−45.5…). Bản chỉ dùng khung bo (`c680077`) sửa được 10 bộ. Ca lạ: PCB_TEST (Do Trinh Hoan) là zip lẫn file khoan của 3 thiết kế — trúng pad 15% → 70%. 6 test mới (đọc sai tỉ lệ bo xa gốc / sát gốc,
+  thấy được cụm lỗ co về một góc bo): mẫu 1/10 kho (1.850 bộ), so với bản đọc gốc: **31 bộ đổi — cả 31 tốt lên, 0 tệ đi, không bộ nào đổi kích thước**; bộ có lỗ trúng pad < 50% giảm **34 → 3** (3 bộ còn lại là panel nhiều thiết kế, như trước). **Quét toàn kho (23/09, 18.496 zip, bản cuối):
+  314 bộ đổi — 302 tốt lên, 0 tệ đi**, 12 bộ tỉ lệ trúng pad không đổi (6 bộ lỗ được đưa từ
+  ngoài vào trong khung bo theo khung bo làm thước, bo không có pad để dò; 6 bộ không file khoan
+  nào bị đọc lại — khác do phần viền); bộ trúng pad < 50% giảm **315 → 23**. 8 bộ đổi kích thước nhưng
+  **không bộ nào do phần khoan** (không file khoan nào bị đọc lại): 5 bộ do sửa viền ở các
+  commit sau bản đọc gốc dùng để so (vd `5a8b10f`), 3 bộ (FAB-Controller, BO KEO V2,
+  Mach_bien_ap) chạy riêng thì không đổi — lệch do chạy chung một tiến trình. Hai chốt chặn thêm
+  sau lần quét: (a) khung bo làm thước chỉ nhận khi tỉ lệ trúng pad tăng ≥ 20 điểm (lỗ vẫn nằm
+  trong khung nhưng trúng 0% pad thì không dời bừa); (b) hình > 20 mm (logo, vùng đồng lớn)
+  không tính là pad. File khoan nằm ngoài bo mà không cách đọc nào khớp thì để nguyên và
+  **cảnh báo đỏ** trên giao diện. Trong 31 bộ của mẫu 1/10: 21 bộ sai định dạng số (Pulsonix 3.5, OrCAD `.tap`, CS2 khai `FILE_FORMAT=2:4` sai…), 10 bộ lệch gốc (PCB_doline −87.9/−25.5 mm, The Cold +37.5/+32.7, Pedal_edit +1794/+1583, PCB4 −51.7/−45.5…). Bản chỉ dùng khung bo (`c680077`) sửa được 10 bộ. Ca lạ: PCB_TEST (Do Trinh Hoan) là zip lẫn file khoan của 3 thiết kế — trúng pad 15% → 70%. 6 test mới (đọc sai tỉ lệ bo xa gốc / sát gốc,
   lệch gốc, NPTH theo file cùng bộ, NPTH có khai định dạng giữ nguyên, file đã đúng giữ nguyên).
 - **Còn lại:** file khoan không có pad nào để dò và không có file cùng bộ (bộ chỉ có NPTH,
   hoặc không có lớp đồng) thì chỉ còn cách khung bo: sửa được khi cụm lỗ nằm hẳn ngoài bo,

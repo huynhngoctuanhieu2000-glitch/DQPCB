@@ -37,6 +37,8 @@ export interface ParsedGerberLayer {
    * 'board' (lỗ nằm trong khung bo). Giao diện dùng để cảnh báo người lập.
    */
   drillFix?: { reading: string | null; dxMm: number; dyMm: number; via: 'pad' | 'sibling' | 'board'; padHit?: number }
+  /** File khoan nằm hẳn ngoài bo mà không cách đọc nào khớp — để nguyên, giao diện cảnh báo. */
+  drillUnmatched?: boolean
 }
 
 export interface BoardParsedData {

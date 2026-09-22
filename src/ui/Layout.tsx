@@ -987,7 +987,7 @@ export const Layout: React.FC = () => {
               nên người dùng không biết vì sao thiếu lớp. */}
           {(boardState.failedFiles.length > 0 ||
             boardState.ignoredFiles.length > 0 ||
-            boardState.layers.some((l) => l.drillFix)) && (
+            boardState.layers.some((l) => l.drillFix || l.drillUnmatched)) && (
             <div
               style={{
                 borderTop: '1px solid #282b34',
@@ -1035,6 +1035,14 @@ export const Layout: React.FC = () => {
                     </div>
                   )
                 })}
+              {boardState.layers
+                .filter((l) => l.drillUnmatched)
+                .map((l) => (
+                  <div key={l.id} style={{ color: '#f87171' }} title={l.filename}>
+                    ⚠ {l.filename.split(/[\\/]/).pop()}: lỗ khoan nằm ngoài bo, không cách đọc nào khớp
+                    pad — file khoan có thể sai, kiểm lại với khách.
+                  </div>
+                ))}
               {boardState.ignoredFiles.length > 0 && (
                 <div title={boardState.ignoredFiles.join(' | ')}>
                   ℹ {boardState.ignoredFiles.length} file phụ trợ đã bỏ qua (report / aperture / BOM)

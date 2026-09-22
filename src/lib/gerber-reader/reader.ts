@@ -189,6 +189,9 @@ class PadIndex {
           if (r && (r[2] - r[0]) * k <= 6 && (r[3] - r[1]) * k <= 6) box = r
         }
         if (!box) continue
+        // Pad thật không to quá 20 mm; hình flash khổng lồ (logo, khung vẽ bằng flash) chỉ
+        // làm "trúng pad" giả và làm vòng chia lưới bên dưới chạy rất lâu.
+        if ((box[2] - box[0]) * k > 20 || (box[3] - box[1]) * k > 20) continue
         this.add([box[0] * k, box[1] * k, box[2] * k, box[3] * k])
       }
     }
@@ -800,8 +803,7 @@ export class GerberParser {
           }
         }
       }
-      // 3. Khung bo làm thước — chỉ khi cụm lỗ nằm hẳn ngoài bo (chắc chắn sai), nên đưa
-      //    vào trong bo không bao giờ tệ hơn giữ nguyên.
+      // 3. Khung bo làm thước — chỉ khi cụm lỗ nằm hẳn ngoài bo (chắc chắn sai).
       if (!ref || !outside) continue
       let best: { key: string; tree: any; area: number } | null = null
       for (const r of readings) {
@@ -816,7 +818,22 @@ export class GerberParser {
           /* bỏ qua */
         }
       }
-      if (best) apply(layer, best.tree, { reading: best.key, dxMm: 0, dyMm: 0, via: 'board' })
+      // Có pad để kiểm mà cách đọc theo khung bo không làm lỗ trúng pad hơn hẳn thì đừng
+      // nhận: lỗ lọt vào trong bo nhưng sai chỗ còn tệ hơn để nguyên — trông như đúng.
+      // Quét kho: 5/10 lần sửa theo khung bo ra 0% trúng pad (vd Dragonfruit_V8).
+      const holesNow = holeCenters(layer.imageTree)
+      const checkable = pads.count >= 10 && holesNow.length >= 5 && layer.drillPlating !== 'NPTH'
+      if (best && checkable) {
+        const gain = pads.hitRate(holeCenters(best.tree)) - pads.hitRate(holesNow)
+        if (gain < 0.2) best = null
+      }
+      if (best) {
+        const padHit = checkable ? pads.hitRate(holeCenters(best.tree)) : undefined
+        apply(layer, best.tree, { reading: best.key, dxMm: 0, dyMm: 0, via: 'board', ...(padHit !== undefined ? { padHit } : null) })
+      } else {
+        // Không cách nào khớp: để nguyên, nhưng báo để người lập kiểm với khách.
+        layer.drillUnmatched = true
+      }
     }
     // Không có viền thì ô bao cả bo cộng dồn trong vòng đọc đã lẫn toạ độ khoan sai —
     // tính lại. Có viền thì phía dưới lấy thẳng từ viền nên khỏi làm.
