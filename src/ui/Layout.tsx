@@ -183,6 +183,32 @@ export const Layout: React.FC = () => {
   const openPicker = async (folder: boolean) => {
     const ipc = window.ipcRenderer
     if (!ipc) {
+      // Bản web: hộp chọn của trình duyệt KHÔNG theo thư mục vừa mở. Chrome/Edge có File
+      // System Access API — cùng một `id` thì trình duyệt tự mở lại thư mục lần trước.
+      // Trình duyệt khác (Firefox, Safari, điện thoại) chưa có → input như cũ.
+      const w = window as unknown as {
+        showOpenFilePicker?: (o: object) => Promise<{ getFile(): Promise<File> }[]>
+        showDirectoryPicker?: (o: object) => Promise<any>
+      }
+      try {
+        if (!folder && w.showOpenFilePicker) {
+          const handles = await w.showOpenFilePicker({ id: 'dqpcb-gerber', multiple: true })
+          const files = await Promise.all(handles.map((h) => h.getFile()))
+          if (files.length) processFiles(files)
+          return
+        }
+        if (folder && w.showDirectoryPicker) {
+          const dir = await w.showDirectoryPicker({ id: 'dqpcb-gerber' })
+          const files: File[] = []
+          for await (const entry of dir.values()) if (entry.kind === 'file') files.push(await entry.getFile())
+          if (files.length) processFiles(files)
+          return
+        }
+      } catch (err: any) {
+        // Bấm Huỷ thì trình duyệt ném AbortError — không phải lỗi.
+        if (err?.name === 'AbortError') return
+        // Bị chặn (iframe, chính sách) thì rơi xuống input.
+      }
       ;(folder ? folderInputRef : fileInputRef).current?.click()
       return
     }
@@ -195,7 +221,7 @@ export const Layout: React.FC = () => {
       }
       if (res.canceled || res.files.length === 0) return
       const files = res.files.map((f) => new File([f.data], f.name))
-      const dirs = new Map(res.files.map((f) => [f.name, f.path.replace(/[\/][^\/]*$/, '')]))
+      const dirs = new Map(res.files.map((f) => [f.name, f.path.replace(/[\\/][^\\/]*$/, '')]))
       processFiles(files, dirs)
     } catch (err: any) {
       setErrorMessage(err?.message || 'Không mở được hộp chọn file')
