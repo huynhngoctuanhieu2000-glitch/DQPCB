@@ -16,7 +16,7 @@ import type { QuotationSeed } from '../quotation/QuotationPanel'
 import { panelNote, stencilSideFromBoard, stencilSizeLabel, type StencilSide } from '../quotation/QuotationModel'
 import { PricingStore } from './PricingStore'
 import { PanelPreview, type BoardShape, type PanelKind } from './PanelPreview'
-import { copperSamplePoints, countBoards, loopPolygon, splitOutlineLoops } from '../../lib/gerber-reader'
+import { copperSamplePoints, detectPanel, loopPolygon, splitOutlineLoops } from '../../lib/gerber-reader'
 import {
   COPPER_CHOICES,
   FINISHES,
@@ -374,10 +374,14 @@ export const PricingCard: React.FC<{
     return { body: gerberShape.body.map(fit), holes: gerberShape.holes.map(fit) }
   }, [gerberShape, size])
 
-  // Viền có nhiều bo = khách gửi file đã ghép. Bảng tra chỉ cho bo lẻ, và số lượng phải
-  // nhập theo set — nhắc để người lập không báo giá theo bảng tra như một bo đơn.
-  const boardsInFile = useMemo(() => countBoards(board.layers), [board.layers])
-  const multiBoards = boardsInFile && boardsInFile.count >= 2 ? boardsInFile : null
+  // File có nhiều bo = khách gửi file đã ghép. Bảng tra chỉ cho bo lẻ, và số lượng phải
+  // nhập theo set — nhắc để người lập không báo giá theo bảng tra như một bo đơn. Nhận biết
+  // bằng viền rời HOẶC bo lặp lại (panel chỉ ngăn bằng rãnh / V-cut) — xem detectPanel.
+  const boardsInFile = useMemo(
+    () => (board.layers.length ? detectPanel(board.layers, { names: [board.projectName], bounds: board.bounds }) : null),
+    [board.layers, board.projectName, board.bounds],
+  )
+  const multiBoards = boardsInFile && boardsInFile.verdict === 'yes' && boardsInFile.count >= 2 ? boardsInFile : null
   /** Bật chế độ "file ghép sẵn" với đúng số bo đọc được trong viền. */
   const useAsPrePanel = () => {
     if (!multiBoards) return
@@ -488,16 +492,23 @@ export const PricingCard: React.FC<{
       {smallBoardWarn && <div style={S.warn}>⚠ {smallBoardWarn}</div>}
       {multiBoards && !panelOn && (
         <div style={S.warn}>
-          ⚠ File có <b>{multiBoards.count} bo</b> trong viền — có vẻ đã ghép sẵn. Bảng tra chỉ cho bo lẻ;
-          tính theo file ghép sẵn thì nhập số set.
+          ⚠ File có <b>{multiBoards.count}{multiBoards.partial ? '+' : ''} bo</b> (
+          {multiBoards.method === 'outline' ? 'viền rời' : 'bo lặp lại'}) — có vẻ đã ghép sẵn. Bảng tra chỉ cho bo
+          lẻ; tính theo file ghép sẵn thì nhập số set.
+          {multiBoards.partial && ' Có bo khác mẫu / xoay nên số bo có thể nhiều hơn — kiểm lại.'}
           <button style={S.warnBtn} onClick={useAsPrePanel}>
             Dùng: file ghép sẵn {multiBoards.count} bo/set
           </button>
         </div>
       )}
+      {!multiBoards && !panelOn && boardsInFile?.verdict === 'maybe' && boardsInFile.method === 'repeat' && (
+        <div style={S.warn}>
+          ⚠ Có thể là file ghép: {boardsInFile.detail}. Nếu đúng là ghép sẵn thì tích Ghép panel và nhập số set.
+        </div>
+      )}
       {multiBoards && panelOn && fromSets && perSet !== multiBoards.count && (
         <div style={S.warn}>
-          ⚠ Viền có {multiBoards.count} bo nhưng đang tính {perSet} bo/set — kiểm lại số bo mỗi cạnh.
+          ⚠ File có {multiBoards.count}{multiBoards.partial ? '+' : ''} bo nhưng đang tính {perSet} bo/set — kiểm lại số bo mỗi cạnh.
         </div>
       )}
 

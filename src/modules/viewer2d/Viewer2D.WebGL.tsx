@@ -1,7 +1,7 @@
-import React, { useEffect, useRef, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { BoardDataModel } from '../../models/BoardDataModel'
 import { realPalette, HOLE, MASK_OPENING, BASE_BOARD } from '../../models/RealPalette'
-import { copperSamplePoints, isPartialDrillFile, splitOutlineLoops } from '../../lib/gerber-reader'
+import { copperSamplePoints, detectPanel, isPartialDrillFile, minDrill, splitOutlineLoops } from '../../lib/gerber-reader'
 // @ts-ignore - web-gerber typings for named exports are incomplete
 import {
   createParser,
@@ -283,6 +283,16 @@ export const Viewer2DWebGL: React.FC<Viewer2DWebGLProps> = ({
   const [status, setStatus] = useState('Chưa tải dữ liệu')
   const [totalMs, setTotalMs] = useState<number | null>(null)
   const [failed, setFailed] = useState<string[]>([])
+  // Badge: file có ghép không (và nhận ra bằng cách nào), mũi khoan nhỏ nhất. Tính một lần
+  // cho mỗi bộ lớp (detectPanel tự nhớ kết quả).
+  const panel = useMemo(
+    () =>
+      board.layers.length
+        ? detectPanel(board.layers, { names: [board.projectName], bounds: board.bounds })
+        : null,
+    [board.layers, board.projectName, board.bounds],
+  )
+  const smallest = useMemo(() => minDrill(board.layers.filter((l) => l.holeCount > 0)), [board.layers])
 
   useEffect(() => BoardDataModel.subscribe(setBoard), [])
 
@@ -1198,6 +1208,32 @@ export const Viewer2DWebGL: React.FC<Viewer2DWebGLProps> = ({
               dựng mất bao lâu. */}
           <div>Viền: {outlineFile}</div>
           <div>Khoan: {status}</div>
+          {(smallest.hole || smallest.slot) && (
+            <div>
+              Mũi nhỏ nhất:{' '}
+              {smallest.hole && `Ø${smallest.hole.d.toFixed(2)} mm (${smallest.hole.count} lỗ)`}
+              {smallest.hole && smallest.slot ? ' · ' : ''}
+              {smallest.slot && `rãnh ${smallest.slot.toFixed(2)} mm`}
+            </div>
+          )}
+          {panel && (
+            <div
+              title={`Cách nhận biết: ${panel.detail}.
+1. Viền có nhiều bo tách rời → có ghép.
+2. Cả bo lặp lại theo một bước cỡ một bo — chấm bằng chữ in lụa (tên linh kiện lặp y hệt), bo không có lụa thì bằng đồng: khớp ≥ 90% → có; 60–90% → có thể (có bo xoay/khác mẫu, hoặc chỉ là các kênh giống nhau trong một bo).
+3. Chỉ có tên file chứa "ghep", "panel"… → có thể.`}
+              style={{ color: panel.verdict === 'yes' ? '#fbbf24' : panel.verdict === 'maybe' ? '#fde68a' : undefined }}
+            >
+              Ghép:{' '}
+              {panel.verdict === 'yes'
+                ? `Có — ${panel.count}${panel.partial ? '+' : ''} bo${panel.cols * panel.rows === panel.count && panel.count > 1 ? ` (${panel.cols}×${panel.rows})` : ''} · ${panel.method === 'outline' ? 'viền rời' : 'bo lặp lại'}`
+                : panel.verdict === 'maybe'
+                  ? panel.method === 'repeat'
+                    ? `có thể — ${panel.count}+ bo giống nhau (một phần lặp lại)`
+                    : 'có thể — chỉ theo tên file'
+                  : 'không'}
+            </div>
+          )}
           {totalMs !== null && <div>Load: {loadMs} ms</div>}
           {threeDMode && (
             <div style={{ color: '#93c5fd', marginTop: 4 }}>

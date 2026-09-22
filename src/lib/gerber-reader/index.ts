@@ -29,3 +29,5 @@ export {
   pointInPolygon,
   splitOutlineLoops,
 } from './outlineLoops'
+export { detectPanel, minDrill } from './panelDetect'
+export type { MinDrill, PanelInfo } from './panelDetect'
