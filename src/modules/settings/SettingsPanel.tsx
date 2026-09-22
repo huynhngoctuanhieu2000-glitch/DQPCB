@@ -718,7 +718,17 @@ const S: Record<string, React.CSSProperties> = {
     zIndex: 110,
   },
   /** Điện thoại: hộp thoại chiếm trọn màn hình. */
-  modalMobile: { width: '100vw', height: '100dvh', maxHeight: 'none', borderRadius: 0, border: 'none' },
+  /** Điện thoại: hộp thoại chiếm trọn màn hình. Hộp là position:fixed nên KHÔNG hưởng
+      lề an toàn của khung gốc — phải tự lùi khỏi thanh trạng thái và vạch home iPhone. */
+  modalMobile: {
+    width: '100vw',
+    height: '100dvh',
+    maxHeight: 'none',
+    borderRadius: 0,
+    border: 'none',
+    paddingTop: 'env(safe-area-inset-top)',
+    paddingBottom: 'env(safe-area-inset-bottom)',
+  },
   /** Bảng rộng hơn màn điện thoại thì cuộn ngang ngay tại chỗ, không kéo cả thân hộp. */
   tableWrap: { overflowX: 'auto', maxWidth: '100%' },
   modal: {

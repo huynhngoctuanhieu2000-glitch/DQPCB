@@ -465,7 +465,17 @@ export const QuotationPanel: React.FC<{
           </div>
 
           {/* Dòng hàng */}
-          <div style={{ ...S.sectionTitle, display: 'flex', alignItems: 'center', gap: '8px' }}>
+          {/* Điện thoại: nhãn nút rút gọn, không xuống dòng; dãy nút dài quá màn thì
+              cuộn ngang trong hàng này chứ không gãy thành 2–3 tầng. */}
+          <div
+            style={{
+              ...S.sectionTitle,
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              ...(isMobile ? { overflowX: 'auto', whiteSpace: 'nowrap', paddingBottom: '4px' } : null),
+            }}
+          >
             <span>Dòng hàng</span>
             <div style={{ position: 'relative' }}>
               <button
@@ -480,7 +490,7 @@ export const QuotationPanel: React.FC<{
                       : 'Thêm dòng điền sẵn tên, số lớp, kích thước, màu phủ lấy từ bo đã mở'
                 }
               >
-                ⤓ Lấy từ bo đang mở
+                {isMobile ? '⤓ Từ bo' : '⤓ Lấy từ bo đang mở'}
                 {board.boards.length > 1 && ` (${board.boards.length})`}
               </button>
 
@@ -519,7 +529,7 @@ export const QuotationPanel: React.FC<{
                 style={S.smallBtn}
                 title="Thêm dòng stencil, giá lấy theo cỡ khung trong Cài đặt → Stencil"
               >
-                + Thêm stencil
+                {isMobile ? '+ Stencil' : '+ Thêm stencil'}
               </button>
 
               {stencilMenu && (
@@ -549,8 +559,8 @@ export const QuotationPanel: React.FC<{
                 </div>
               )}
             </div>
-            <button onClick={addItem} style={S.smallBtn}>
-              + Thêm dòng trống
+            <button onClick={addItem} style={S.smallBtn} title="Thêm một dòng trống để gõ tay">
+              {isMobile ? '+ Dòng' : '+ Thêm dòng trống'}
             </button>
             <button
               onClick={addDiscount}
@@ -558,7 +568,7 @@ export const QuotationPanel: React.FC<{
               style={{ ...S.smallBtn, ...(q.items.some((it) => it.discount) ? S.disabled : null) }}
               title="Thêm dòng giảm giá ở cuối bảng, số tiền giảm được trừ vào tổng"
             >
-              + Thêm giảm giá
+              {isMobile ? '+ Giảm giá' : '+ Thêm giảm giá'}
             </button>
           </div>
 
@@ -781,10 +791,12 @@ export const QuotationPanel: React.FC<{
         </div>
 
         {/* Chân form */}
-        <div style={S.footer}>
+        {/* className: trên điện thoại CSS (index.css) xếp chân hộp thành lưới 2 cột —
+            8 nút xếp hàng ngang tự gãy thành ba dòng lởm chởm. */}
+        <div style={S.footer} className="quote-footer">
           {/* Nhập liệu / Xem trước ở chân form, cạnh các nút xuất: mặc định là nhập
               liệu, bấm Xem trước để kiểm lại trước khi tải — không phải kéo lên đầu hộp. */}
-          <div style={S.viewSwitch}>
+          <div style={S.viewSwitch} className="span2">
             {([
               { key: 'form', label: '✎ Nhập liệu' },
               { key: 'preview', label: '👁 Xem trước' },
@@ -800,6 +812,7 @@ export const QuotationPanel: React.FC<{
           </div>
           {status && (
             <div
+              className="span2"
               style={{
                 display: 'flex',
                 alignItems: 'center',
@@ -1054,7 +1067,17 @@ const S: Record<string, React.CSSProperties> = {
   body: { padding: '12px', overflowY: 'auto', flex: 1 },
   bodyPreview: { flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' },
   /** Điện thoại: hộp thoại chiếm trọn màn hình, không viền không bo góc. */
-  modalMobile: { width: '100vw', height: '100dvh', maxHeight: 'none', borderRadius: 0, border: 'none' },
+  /** Điện thoại: hộp thoại chiếm trọn màn hình. Hộp là position:fixed nên KHÔNG hưởng
+      lề an toàn của khung gốc — phải tự lùi khỏi thanh trạng thái và vạch home iPhone. */
+  modalMobile: {
+    width: '100vw',
+    height: '100dvh',
+    maxHeight: 'none',
+    borderRadius: 0,
+    border: 'none',
+    paddingTop: 'env(safe-area-inset-top)',
+    paddingBottom: 'env(safe-area-inset-bottom)',
+  },
   footer: {
     display: 'flex',
     alignItems: 'center',
@@ -1129,6 +1152,8 @@ const S: Record<string, React.CSSProperties> = {
   },
   toggleOn: { backgroundColor: '#2563eb', color: '#ffffff', borderColor: '#60a5fa' },
   smallBtn: {
+    flexShrink: 0,
+    whiteSpace: 'nowrap',
     backgroundColor: '#1e293b',
     color: '#cbd5e1',
     border: '1px solid #334155',

@@ -40,3 +40,13 @@ html, body, #root {
 html { touch-action: manipulation; -webkit-text-size-adjust: 100%; }
 /* Ô nhập/chọn không tự kế thừa font của trang — select trên điện thoại hiện font hệ thống lệch hẳn. */
 button, input, select, textarea { font-family: inherit; }
+
+/* Chân hộp Báo giá trên điện thoại: lưới 2 cột, nút nào cũng đầy ô; công tắc
+   Nhập liệu/Xem trước và dòng trạng thái chiếm cả hàng. */
+@media (max-width: 768px) {
+  .quote-footer { display: grid !important; grid-template-columns: 1fr 1fr; justify-content: stretch; }
+  .quote-footer > * { width: 100%; min-width: 0; margin: 0 !important; }
+  .quote-footer > button { padding-left: 6px; padding-right: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .quote-footer > .span2 { grid-column: 1 / -1; }
+  .quote-footer > .span2 > button { flex: 1; }
+}

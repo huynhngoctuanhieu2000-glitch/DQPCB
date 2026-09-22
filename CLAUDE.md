@@ -7,3 +7,8 @@ Khi được yêu cầu "khảo sát", "kiểm tra", "xem lại", "so sánh" th�
 - KHÔNG sửa `src/`, `src/config/*.json` hay bất cứ thứ gì app đang chạy dùng, kể cả khi thấy lỗi rõ ràng. Ghi lỗi và đề xuất vào báo cáo, chờ đồng ý rồi mới sửa.
 - Báo cáo để ở `docs/bao-cao/` theo quy ước trong `docs/bao-cao/README.md`.
 - Script tạm dùng để tính hoặc đối chiếu thì để ở scratchpad, không để trong repo. Chạy xong phải xoá.
+
+## Giao diện điện thoại
+
+Sửa bất cứ gì hiện trên màn hình thì đọc `docs/ui-dien-thoai.md` trước và chạy
+checklist ở cuối file đó ở khung 375px trước khi báo xong.
