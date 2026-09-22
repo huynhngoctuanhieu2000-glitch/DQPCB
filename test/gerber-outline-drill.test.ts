@@ -241,3 +241,40 @@ describe('stitchOutline — panel V-cut: hai bo chung cạnh', () => {
     })
   }
 })
+
+describe('Excellon khai ;FILE_FORMAT (Altium)', () => {
+  // Bo "ESP32_DR" (Nguyen Van Quang, 22/09/2026): METRIC, LZ, 4:3 — X0050419 là 50.419 mm.
+  // web-gerber không đọc dòng chú thích FILE_FORMAT, đọc ra 0.50419 mm: lỗ co 100 lần.
+  const board = gbr('G01X0Y0D02*\nG01X6700000Y0D01*\nG01X6700000Y9000000D01*\nG01X0Y9000000D01*\nG01X0Y0D01*')
+  const round = ['M48', ';FILE_FORMAT=4:3', 'METRIC,LZ', ';TYPE=PLATED', 'T01F00S00C0.400', '%', 'T01', 'X0050419Y0024003', 'X0055245Y0031623', 'M30'].join('\n')
+  // Lỗ chữ nhật phay: toạ độ nằm sau G00/G01, không đứng đầu dòng.
+  const rect = ['M48', ';FILE_FORMAT=4:3', 'METRIC,LZ', ';TYPE=PLATED', 'T02F00S00C1.000', '%', 'G90', 'G05', 'T02', 'G00X0027000Y0016500', 'M15', 'G01X0041000', 'M16', 'M30'].join('\n')
+
+  it('đặt lỗ đúng chỗ theo format đã khai, kể cả toạ độ sau lệnh phay', async () => {
+    const [b] = await parse([['PCB2.GTL', copper], ['PCB2.GKO', board], ['PCB2.TXT', round], ['PCB2-RectHoles.TXT', rect]])
+    const drill = (name: string) => b.layers.find((l: any) => l.filename === name)
+    const hole = drill('PCB2.TXT').imageTree.children.find((c: any) => c.type === 'imageShape').shape
+    expect(hole.cx).toBeCloseTo(50.419, 3)
+    expect(hole.cy).toBeCloseTo(24.003, 3)
+    const [x0, , x1] = drill('PCB2-RectHoles.TXT').size
+    expect(x0).toBeGreaterThan(26)
+    expect(x1).toBeLessThan(42)
+  })
+})
+
+describe('nhiều lớp viền (Altium .GKO + .GM1)', () => {
+  // Bo "Slaver_Ceiling_ EC" (Le Quoc Huy, 21/09/2026): GM1 chỉ là khung linh kiện nằm
+  // trong bo. Viewer lấy lớp viền dựng sau cùng làm thân bo → thân bo chỉ còn cái khung.
+  const edge = gbr('G01X0Y0D02*\nG01X10000000Y0D01*\nG01X10000000Y8000000D01*\nG01X0Y8000000D01*\nG01X0Y0D01*')
+  const frame = gbr('G01X2000000Y2000000D02*\nG01X4000000Y2000000D01*\nG01X4000000Y3000000D01*\nG01X2000000Y3000000D01*\nG01X2000000Y2000000D01*')
+
+  it('chỉ lớp có ô bao lớn nhất là viền; lớp kia thành tài liệu', async () => {
+    const [b] = await parse([['PCB.GTL', copper], ['PCB.GKO', edge], ['PCB.GM1', frame]])
+    const outlines = b.layers.filter((l: any) => l.type === 'outline')
+    expect(outlines.map((l: any) => l.filename)).toEqual(['PCB.GKO'])
+    const gm1 = b.layers.find((l: any) => l.filename === 'PCB.GM1')
+    expect(gm1.type).toBe('documentation')
+    expect(gm1.displayName).toContain('viền phụ')
+    expect(b.bounds.widthMM).toBeCloseTo(100, 0)
+  })
+})

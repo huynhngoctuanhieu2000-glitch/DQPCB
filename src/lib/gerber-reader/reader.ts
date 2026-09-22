@@ -280,7 +280,28 @@ export class GerberParser {
             !coordLines.some((l) => l.includes('.')) &&
             !/FILE_FORMAT|;\s*FORMAT/i.test(fileContent)
 
-          if (ambiguousMetric) {
+          // [DQPCB] Format KHAI BÁO trong chú thích (Altium: ";FILE_FORMAT=4:3" + "METRIC,LZ").
+          // web-gerber không đọc dòng chú thích này mà áp mặc định của nó — inch 2:4 thì
+          // trùng nên vẫn đúng, còn metric 4:3 thì X0050419 (50.419 mm) thành 0.50419 mm:
+          // cả cụm lỗ co 100 lần dồn về một góc (bo "ESP32_DR", Nguyen Van Quang,
+          // 22/09/2026). Có đủ số chữ số và kiểu số 0 thì tự chèn dấu thập phân.
+          //   LZ = giữ số 0 đầu, bỏ số 0 cuối → thiếu thì bù ĐUÔI.
+          //   TZ = giữ số 0 cuối, bỏ số 0 đầu → thiếu thì bù ĐẦU.
+          const declared = fileContent.match(/;\s*FILE_FORMAT\s*=\s*(\d)\s*:\s*(\d)/i)
+          const zeros = fileContent.match(/^\s*(?:METRIC|INCH)\s*,\s*(LZ|TZ)/im)?.[1]?.toUpperCase()
+          // Toạ độ có thể nằm sau lệnh phay (G00X…/G01Y… của SlotHoles/RectHoles), không
+          // đứng đầu dòng — dò trên mọi toạ độ X/Y chứ không chỉ dòng bắt đầu bằng X/Y.
+          const coordTokens = fileContent.replace(/;[^\n]*/g, '').match(/[XY][+-]?[\d.]+/g) || []
+          if (declared && zeros && coordTokens.length > 0 && !coordTokens.some((t) => t.includes('.'))) {
+            const intDigits = Number(declared[1])
+            const decDigits = Number(declared[2])
+            const total = intDigits + decDigits
+            fileContent = fileContent.replace(/([XY])([+-]?)(\d+)(?=\D|$)/g, (whole, axis, sign, digits) => {
+              if (digits.length > total) return whole
+              const full = zeros === 'LZ' ? digits.padEnd(total, '0') : digits.padStart(total, '0')
+              return axis + sign + full.slice(0, intDigits) + '.' + full.slice(intDigits)
+            })
+          } else if (ambiguousMetric) {
             fileContent = fileContent.replace(
               /([XY])([+-]?)(\d+)(?=\D|$)/g,
               (whole, axis, sign, digits) => {
@@ -482,12 +503,24 @@ export class GerberParser {
     const outlineLayers = parsedLayers.filter((l) => l.type === 'outline')
     let outlineLayer = undefined;
     if (outlineLayers.length > 0) {
-      // Pick the outline layer with the largest bounding box area
-      outlineLayer = outlineLayers.reduce((prev, current) => {
-        const prevArea = (prev.size[2] - prev.size[0]) * (prev.size[3] - prev.size[1])
-        const currArea = (current.size[2] - current.size[0]) * (current.size[3] - current.size[1])
-        return currArea > prevArea ? current : prev
-      })
+      // Pick the outline layer with the largest bounding box area (so sánh bằng mm — lớp
+      // inch và lớp mm trong cùng bộ thì số thô không so được với nhau).
+      const areaMm = (l: ParsedGerberLayer) => {
+        const s = l.units === 'in' ? 25.4 : 1
+        return (l.size[2] - l.size[0]) * (l.size[3] - l.size[1]) * s * s
+      }
+      outlineLayer = outlineLayers.reduce((prev, current) => (areaMm(current) > areaMm(prev) ? current : prev))
+
+      // [DQPCB] Chỉ MỘT lớp viền dựng thân bo. Altium hay xuất cả .GKO lẫn .GM1, mà GM1 có
+      // khi chỉ là khung linh kiện / kích thước: bo "Slaver_Ceiling_ EC" (Le Quoc Huy,
+      // 21/09/2026) có GM1 là hai khung rơ-le bên trong bo. Viewer lấy lớp viền dựng
+      // SAU CÙNG làm thân bo, nên thân bo chỉ còn hai khung đó. Lớp viền còn lại chuyển
+      // thành tài liệu (vẫn bật xem được ở CAM). Trên corpus 34/614 bộ có nhiều lớp viền:
+      // 21 bộ trùng khít lớp chính, 13 bộ nằm trong.
+      for (const l of outlineLayers) {
+        if (l === outlineLayer) continue
+        Object.assign(l, { ...META.doc, displayName: `${l.displayName} (viền phụ)`, visible: false })
+      }
     }
     
     if (
