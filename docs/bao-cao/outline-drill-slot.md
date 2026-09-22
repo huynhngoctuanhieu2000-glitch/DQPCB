@@ -28,12 +28,14 @@ nằm trong `src/lib/gerber-reader/` (`geometry.ts`, `outlineLoops.ts`, `identif
 | **Rãnh một nét** | Nét thẳng 1–2 đoạn, nằm hẳn trong bo (cách mép ≥ 1 mm), rộng ≥ 0.3 mm, đứng riêng, bề rộng không dùng cho đường vẽ nhiều khúc → dựng hình thuôn rộng bằng nét, thành lỗ khoét *(22/09, `706ea9f`, CHAT_BOT_4)* |
 | Kích thước | Ô bao của các vòng đã nối + nửa nét — không dùng số thô (chấm lẻ Edge_Cuts KiCad làm bo 41.5 mm thành 89.68 mm) |
 | Kiểu phần tử | Mỗi đoạn viền đã nối bọc theo **nét vẽ đầu tiên** của lớp, không theo vùng tô: vùng tô G36 đứng trước khung bo làm khung thành "vùng tô một đoạn", 2D/3D mất lõi bo *(22/09, `dbbea67`, Anh Nhat)* |
+| Aperture chưa khai | Lớp viền dùng `Dnn` không có `%AD` → khai nét 0.1 mm (web-gerber tự cho 1.75 mm: khung viền dày, kích thước cộng nửa nét) *(22/09, `5a8b10f`, Dao Quoc Thai)* |
 
 ### A3. Vòng nào là thân bo, lỗ khoét hay nét phay (`splitOutlineLoops`)
 
 | Loại | Luật |
 |---|---|
 | **Nét phay** (chỉ vẽ nét) | Chuỗi hở, nằm trong một vòng khác, khoảng hở ≥ nửa chiều dài nét (đường phay gấp khúc, vạch cắt) |
+| **Khấc mép** | Vòng nhỏ (≤ 10% vòng bị vắt qua) có đỉnh nằm hẳn trong và đỉnh nằm hẳn ngoài (cách mép > 0.2 mm) một vòng lớn hơn → **lỗ khoét**, không tính vào kích thước *(22/09, `5a8b10f`, Dao Quoc Thai: 70.01 → 66.28 mm)* |
 | **"Nằm trong"** | Tâm ô bao nằm trong vòng lớn hơn **và** ≥ 50% ô bao chồng lên (khấc lấn mép vài phần trăm mm vẫn tính là trong) |
 | Không nằm trong vòng nào | **Thân bo** nếu to (≥ 5% vòng lớn nhất) hoặc dài như rail (≥ nửa một cạnh của cả tấm); vòng nhỏ khác (lỗ mouse-bite giữa các bo) → **lỗ khoét** |
 | Nằm trong, < 5% vòng lớn nhất | **Lỗ khoét** |
@@ -64,6 +66,9 @@ nằm trong `src/lib/gerber-reader/` (`geometry.ts`, `outlineLoops.ts`, `identif
 - Có Excellon thì bản Gerber khoan (KiCad/Altium xuất đôi, bản vẽ khoan `.DRD` của OrCAD
   Layout) thành tài liệu — tránh đếm đôi / vẽ nhầm ký hiệu. *(OrCAD: 22/09, `11dc1bb`, 252 bộ)*
 - Chọn tay "Drill" ở danh sách lớp thì file đó luôn là file khoan.
+- File khoan **chỉ có rãnh phay** (`isSlotOnlyDrill`, bất kể tên) luôn vẽ kèm file gộp, trừ khi file
+  gộp đã có rãnh *(22/09, `5a8b10f`: `SqDrl.txt` của Dao Quoc Thai; `Slot.txt`, `SlotHoles.TXT`,
+  `RectHoles.TXT` của 3 bộ khác trước bị bỏ khi bộ có file gộp)*.
 - Tất cả file khoan là con của một khung rỗng (trước đây file thứ hai bị nhân inch hai lần).
 
 ### B3. Đọc số — xem `dinh-dang-file.md` mục 4

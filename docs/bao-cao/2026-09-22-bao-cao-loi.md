@@ -26,6 +26,7 @@ Tóm tắt:
 | 17 | 2D / 3D chọn "Bot Side" không thấy mặt dưới | FRIWO — 55807.931-90FE | Đã sửa · `020e8de` |
 | 18 | Chuyển qua lại giữa các bo đang mở chậm 0.5–3.3 s, không báo đang tải | FRIWO, PHAONUOC, CHAT_BOT_4 (mở cùng lúc) | Đã sửa · `71bf3a5` |
 | 19 | 2D / 3D mất lõi bo: vùng tô trong lớp viền làm khung bo bị gán sai kiểu | Anh Nhat — Gerber Anh Nhat (+ 2 bộ) | Đã sửa · `dbbea67` |
+| 20 | Mất rãnh của file khoan chỉ có rãnh; khấc mép tính là thân bo (bo rộng thêm); nét viền dày | Dao Quoc Thai 5pcs (+ Ghep, Gateway, Thu Van, 5 bộ đổi kích thước) | Đã sửa · `5a8b10f` |
 
 ---
 
@@ -324,6 +325,28 @@ tam giác chéo sai; Rosario: rãnh móc câu nhất quán là lỗ).
   bộ đổi (Anh Nhat, Dao Quoc Thai 5pcs, CM5-gerber), cả 3 từ lõi bo rỗng → có lõi; kích thước và
   cách tách vòng giữ nguyên; 154 bộ còn lại không đổi. Chi tiết: `2026-09-22-khao-sat-anh-nhat.md`.
 
+## 20. Dao Quoc Thai 5pcs — mất rãnh, khấc mép, nét viền dày
+
+- **Bộ file:** `D:\JobDatMach\Dao Quoc Thai\2025\01-11\Dao Quoc Thai 5pcs.zip`
+- **Hiện tượng / nguyên nhân / cách sửa:**
+  1. **Mất 3 rãnh phay.** `SqDrl.txt` chỉ chứa rãnh (M15/M16, dao 0.8 mm); tên không khớp luật
+     round/slot/rect/square nên bị coi là file gộp, thua `Drl.txt` (54 lỗ) → không vẽ. Sửa:
+     file khoan **chỉ có rãnh** (`isSlotOnlyDrill`) luôn vẽ kèm file gộp, trừ khi file gộp đã có
+     rãnh. Cùng lỗi ở bộ khác: file tách theo tên (`Slot.txt`, `SlotHoles.TXT`, `RectHoles.TXT`)
+     cũng bị bỏ khi bộ có file gộp — giờ vẽ (Ghep, Gateway, Thu Van).
+  2. **Khấc mép thành thân bo.** Vùng 6.3 × 18 mm vắt ngang mép phải (lấn vào 2.7 mm, thò ra
+     3.6 mm) bị coi là thân bo thứ hai → bo 70.01 mm. Sửa: vòng **nhỏ (≤ 10%) vắt ngang mép** một
+     vòng lớn hơn là **khấc phay bỏ** (lỗ khoét), không tính vào kích thước → **66.28 mm**.
+  3. **Nét viền dày 1.75 mm.** Viền dùng aperture D37 không khai báo; web-gerber tự cho 0.069 in.
+     Sửa: lớp viền dùng aperture chưa khai thì khai bằng nét 0.1 mm (`defineMissingApertures`).
+- **Kiểm:** Dao Quoc Thai: 66.28 × 33.14 mm, khoan "Drl.txt, SqDrl.txt · 57 lỗ", 2D có 3 rãnh ở
+  các pad oval, khấc khoét ở mép phải. Hồi quy **523 bộ**: 505 không đổi; 18 đổi — 4 bộ giờ vẽ
+  thêm file rãnh / lỗ chữ nhật trước bị bỏ; 5 bộ kích thước bỏ phần lỗ khoét thò ra ngoài mép, ra
+  số tròn (90 × 80, 130 × 95, 110 × 100, 203.2 × 88.9 = 8 × 3.5 in, 85.73 × 84.84); 6 bộ chỉ đổi
+  thứ tự file khoan. Bản đầu (không giới hạn 10%) nhận nhầm 2 bộ (panel PHAONUOC V3.9, Driver_Lift)
+  — đã loại. 3 test mới.
+- **Còn lại:** phần khấc thò ra ngoài mép vẫn vẽ thành ô trắng nhạt ngoài bo ở 2D (chỉ là hình).
+
 ## Tính năng mới (22/09): nhận biết file ghép, mũi khoan nhỏ nhất — `6249b00`
 
 Khung thông báo ở góc khung xem thêm hai dòng:
@@ -369,7 +392,7 @@ tưởng mất logo. Tải lại tab là hết. Từ nay kiểm clipboard/ảnh 
 
 ## Cách kiểm lại
 
-- `npx vitest run test/*.test.ts` — 151 test.
+- `npx vitest run test/*.test.ts` — 154 test.
 - `npm run build` — build thật (`tsc -b` chặt hơn `tsc --noEmit`; lỗi build Vercel ở
   `f12b339` là do chỉ chạy lệnh nhẹ).
 - Hồi quy corpus: script trong `test/_scratch/` (không commit) so bản cũ/mới trên

@@ -105,6 +105,7 @@ children.push(
       ['17', '2D / 3D chọn "Bot Side" không thấy mặt dưới', 'FRIWO — 55807.931-90FE', 'Đã sửa · 020e8de'],
       ['18', 'Chuyển qua lại giữa các bo đang mở chậm 0.5–3.3 s, không báo đang tải', 'FRIWO, PHAONUOC, CHAT_BOT_4', 'Đã sửa · 71bf3a5'],
       ['19', '2D / 3D mất lõi bo: vùng tô trong lớp viền làm khung bo bị gán sai kiểu', 'Anh Nhat — Gerber Anh Nhat (+ 2 bộ)', 'Đã sửa · dbbea67'],
+      ['20', 'Mất rãnh của file khoan chỉ có rãnh; khấc mép tính là thân bo; nét viền dày', 'Dao Quoc Thai 5pcs (+ 3 bộ thiếu rãnh, 5 bộ đổi kích thước)', 'Đã sửa · 5a8b10f'],
     ],
     [5, 42, 30, 23],
   ),
@@ -292,6 +293,17 @@ const bugs = [
       ['Kiểm', 'Thân bo 0 → 756 đỉnh, 2D phủ kín bo, rãnh khoét vẫn là lỗ. Hồi quy 157 bộ: đúng 3 bộ đổi (Anh Nhat, Dao Quoc Thai 5pcs, CM5-gerber), cả 3 từ lõi bo rỗng → có lõi; kích thước, cách tách vòng giữ nguyên; 154 bộ không đổi.'],
     ],
   },
+  {
+    t: 'Lỗi 20 — Dao Quoc Thai 5pcs: mất rãnh, khấc mép, nét viền dày',
+    rows: [
+      ['Bộ file', 'D:\\JobDatMach\\Dao Quoc Thai\\2025\\01-11\\Dao Quoc Thai 5pcs.zip'],
+      ['Mất rãnh', 'SqDrl.txt chỉ chứa 3 rãnh phay (dao 0.8 mm); tên không khớp luật round/slot/rect/square nên bị coi là file gộp, thua Drl.txt → không vẽ. Sửa: file khoan chỉ có rãnh luôn vẽ kèm file gộp (trừ khi file gộp đã có rãnh). Cùng lỗi ở Ghep (Slot.txt), Gateway (SlotHoles.TXT), Thu Van (RectHoles.TXT) — giờ vẽ.'],
+      ['Khấc mép', 'Vùng 6.3 × 18 mm vắt ngang mép phải bị coi là thân bo thứ hai → bo 70.01 mm. Sửa: vòng nhỏ (≤ 10%) vắt ngang mép vòng lớn hơn là khấc phay bỏ (lỗ khoét), không tính vào kích thước → **66.28 mm**.'],
+      ['Nét viền dày', 'Viền dùng aperture D37 không khai báo, web-gerber tự cho 1.75 mm. Sửa: aperture chưa khai trong lớp viền → nét 0.1 mm.'],
+      ['Kiểm', 'Hồi quy 523 bộ: 505 không đổi; 18 đổi — 4 bộ vẽ thêm file rãnh / lỗ chữ nhật trước bị bỏ, 5 bộ kích thước bỏ phần lỗ khoét thò ra ngoài mép ra số tròn (90 × 80, 130 × 95, 110 × 100, 203.2 × 88.9…), 6 bộ chỉ đổi thứ tự file khoan. Bản đầu bắt nhầm panel PHAONUOC V3.9 và Driver_Lift → thêm giới hạn 10%. 3 test mới.'],
+      ['Còn lại', 'Phần khấc thò ra ngoài mép vẫn vẽ thành ô trắng nhạt ngoài bo ở 2D (chỉ là hình).'],
+    ],
+  },
 ]
 for (const b of bugs) children.push(H2(b.t), bugTable(b.rows), gap())
 children.push(H2('Ghi chú — "mất logo" khi chụp (không phải lỗi app)'))
@@ -441,6 +453,7 @@ children.push(H3('Vòng nào là thân bo, lỗ khoét hay nét phay'))
 children.push(T([
   ['Loại', 'Luật'],
   ['Nét phay', 'Chuỗi hở, nằm trong vòng khác, khoảng hở ≥ nửa chiều dài → chỉ vẽ nét'],
+  ['Khấc mép', 'Vòng nhỏ (≤ 10%) vắt ngang mép vòng lớn hơn → lỗ khoét, không tính vào kích thước (Dao Quoc Thai 70.01 → 66.28 mm)'],
   ['"Nằm trong"', 'Tâm ô bao trong vòng lớn hơn và ≥ 50% ô bao chồng lên'],
   ['Không nằm trong vòng nào', 'To (≥ 5% vòng lớn nhất) hoặc dài như rail → thân bo; vòng nhỏ khác (mouse-bite) → lỗ khoét'],
   ['Nằm trong, < 5%', 'Lỗ khoét'],
@@ -449,7 +462,7 @@ children.push(T([
 children.push(H2('4.2 Drill (lỗ khoan)'))
 children.push(B('**Đếm lỗ**: mỗi dòng toạ độ (cả dòng chỉ có Y… hay X…), G85 một dòng, mỗi M15 của lệnh phay; Gerber khoan: D03 + chuỗi D02→D01.'))
 children.push(B('**File một phần** (PTH, NPTH, -PTH/-NPTH KiCad, Round/Slot/Rect/SquareHoles, Slot.txt) → vẽ tất cả; còn lại là file **gộp** → chỉ vẽ file gộp nhiều lỗ nhất.'))
-children.push(B('Có Excellon thì bản Gerber khoan xuất đôi (và bản vẽ khoan .DRD của OrCAD Layout) thành tài liệu. Chọn tay "Drill" thì luôn là file khoan. Mọi file khoan là con của một khung rỗng.'))
+children.push(B('Có Excellon thì bản Gerber khoan xuất đôi (và bản vẽ khoan .DRD của OrCAD Layout) thành tài liệu. Chọn tay "Drill" thì luôn là file khoan. File khoan chỉ có rãnh phay (bất kể tên) luôn vẽ kèm file gộp. Lớp viền dùng aperture chưa khai → nét 0.1 mm. Mọi file khoan là con của một khung rỗng.'))
 children.push(B('Lỗi nặng nhất đợt này: Altium metric **FILE_FORMAT=4:3** đọc nhỏ 100 lần (5/171 bộ Altium trong corpus bị).'))
 children.push(B('File khoan **không khai định dạng số** (Pulsonix INCH trơn, 3.5) hoặc **lệch gốc** so với Gerber: **dò theo pad** — lấy cách đọc + độ dời cho nhiều tâm lỗ trúng pad đồng nhất; NPTH theo file khoan cùng bộ; khung bo là phương án cuối. Lớp được sửa có cảnh báo trên giao diện.'))
 children.push(B('Vẽ: 2D ép cụm khoan thành lát mỏng ngay mặt đang nhìn; 3D trụ cao đúng bề dày bo + lượng rất nhỏ.'))
@@ -492,7 +505,7 @@ for (const s of [
 children.push(H2('5.2 Checklist khi sửa luật đọc file'))
 for (const s of [
   'Viết test trong test/ dựng lại đúng dáng file thật gây lỗi.',
-  'Chạy **npm run build** (tsc -b chặt hơn tsc --noEmit — lỗi build Vercel ở f12b339 là do chỉ chạy lệnh nhẹ) và npx vitest run (151 test).',
+  'Chạy **npm run build** (tsc -b chặt hơn tsc --noEmit — lỗi build Vercel ở f12b339 là do chỉ chạy lệnh nhẹ) và npx vitest run (154 test).',
   'Hồi quy corpus D:\\JobDatMach: so bản cũ/mới — kích thước bo, số vòng + thân/lỗ/nét, số lỗ và tỉ lệ lỗ nằm trong bo; xem hình cũ/mới các bộ bị đổi trước khi chốt.',
   'Mở lại bộ mẫu: FC_F405RGT6_Wing (KiCad 6 lớp), BOAD NUT NHAN (EasyEDA), AGVH7 (Altium inch, slot), Ceiling / Dynamic Master (panel inch), Slaver_Ceiling bản lẻ (GKO + GM1), ESP32_DR (Altium metric 4:3, RectHoles), CHAT_BOT_1 (panel 4 bo), DA82 (OrCAD Layout, thruhole.tap + .DRD), FRIWO 55807 (Pulsonix, khoan INCH không khai format), PCB_doline (Altium, khoan lệch gốc), 5395_1 (EasyEDA, NPTH phải giữ nguyên), CHAT_BOT_4 (rãnh một nét), PHAONUOC (đường vẽ 0.8 mm không thành rãnh), 3W NHUA XANH (CAM350, RAR).',
 ]) children.push(B(s))
