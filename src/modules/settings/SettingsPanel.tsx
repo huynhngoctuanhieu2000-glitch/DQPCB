@@ -12,6 +12,8 @@ import React, { useMemo, useState } from 'react'
 import { NumberInput } from '../../ui/NumberInput'
 import { PricingStore } from '../pricing/PricingStore'
 import { useIsMobile } from '../../ui/useIsMobile'
+import { Icon } from '../../ui/Icon'
+import { useBackToClose } from '../../ui/useBackToClose'
 import { CaptureSettings, DEFAULT_CAPTURE_SETTINGS, type CaptureSettingsData } from './CaptureSettings'
 import {
   DEFAULT_CONFIG,
@@ -79,13 +81,17 @@ export const SettingsPanel: React.FC<{ onClose: () => void }> = ({ onClose }) =>
   const T = F.tiered
 
   const isMobile = useIsMobile()
+  // Back / vuốt lùi của điện thoại đóng hộp thay vì rời trang.
+  useBackToClose(true, onClose)
 
   return (
     <div style={S.backdrop} onClick={onClose}>
       <div style={{ ...S.modal, ...(isMobile ? S.modalMobile : null) }} onClick={(e) => e.stopPropagation()}>
         {/* Điện thoại: bỏ phụ đề, tiêu đề không xuống dòng — chừa chỗ cho ba tab. */}
         <div style={S.header}>
-          <span style={{ ...S.headerTitle, whiteSpace: 'nowrap' }}>⚙ Cài đặt</span>
+          <span style={{ ...S.headerTitle, whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+            <Icon name="settings" size={16} /> Cài đặt
+          </span>
           {!isMobile && (
             <span style={S.headerSub}>{page === 'capture' ? 'Ảnh chụp' : 'Công thức tính tiền'}</span>
           )}
@@ -106,8 +112,8 @@ export const SettingsPanel: React.FC<{ onClose: () => void }> = ({ onClose }) =>
               </button>
             ))}
           </div>
-          <button style={S.close} onClick={onClose}>
-            ✕
+          <button style={S.close} onClick={onClose} title="Đóng" aria-label="Đóng cài đặt">
+            <Icon name="x" size={18} />
           </button>
         </div>
 
@@ -206,9 +212,10 @@ export const SettingsPanel: React.FC<{ onClose: () => void }> = ({ onClose }) =>
                       <button
                         style={S.rowDel}
                         title="Xoá mốc này"
+                        aria-label="Xoá mốc này"
                         onClick={() => edit((d) => void d.table.tiers.splice(i, 1))}
                       >
-                        ✕
+                        <Icon name="x" size={14} />
                       </button>
                     </td>
                   </tr>
@@ -549,6 +556,9 @@ export const SettingsPanel: React.FC<{ onClose: () => void }> = ({ onClose }) =>
           <button
             style={S.btnGhost}
             onClick={() => {
+              // Nằm ngay cạnh nút Lưu: bấm nhầm rồi Lưu là mất bảng giá tự nhập — hỏi trước.
+              const what = page === 'capture' ? 'cài đặt ảnh chụp' : page === 'stencil' ? 'bảng giá stencil' : 'bảng giá PCB'
+              if (!window.confirm(`Đưa ${what} về mặc định? Các số đang sửa sẽ bị thay (chưa lưu thì bấm Đóng để huỷ).`)) return
               if (page === 'capture') setCapture({ ...DEFAULT_CAPTURE_SETTINGS })
               else setCfg(JSON.parse(JSON.stringify(DEFAULT_CONFIG)))
               setSaved(false)
@@ -661,9 +671,10 @@ const StencilSection: React.FC<{
                 <button
                   style={S.rowDel}
                   title="Xoá cỡ này"
+                  aria-label="Xoá cỡ này"
                   onClick={() => edit((d) => void d.stencil.tiers.splice(i, 1))}
                 >
-                  ✕
+                  <Icon name="x" size={14} />
                 </button>
               </td>
             </tr>
@@ -777,11 +788,17 @@ const S: Record<string, React.CSSProperties> = {
   times: { color: '#475569', fontSize: 11 },
   close: {
     marginLeft: 'auto',
-    background: 'none',
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: 32,
+    height: 32,
+    padding: 0,
+    backgroundColor: 'transparent',
     border: 'none',
-    color: '#94a3b8',
+    borderRadius: 4,
+    color: '#cbd5e1',
     cursor: 'pointer',
-    fontSize: 14,
   },
   body: { padding: 14, overflowY: 'auto', flex: 1 },
   version: { marginRight: 'auto', fontSize: 11, color: '#64748b', fontVariantNumeric: 'tabular-nums' },
@@ -837,12 +854,17 @@ const S: Record<string, React.CSSProperties> = {
     textAlign: 'right',
   },
   rowDel: {
-    background: 'none',
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: 24,
+    height: 24,
+    backgroundColor: 'transparent',
     border: 'none',
-    color: '#64748b',
+    borderRadius: 4,
+    color: '#94a3b8',
     cursor: 'pointer',
-    fontSize: 11,
-    padding: 2,
+    padding: 0,
   },
   addRow: {
     marginTop: 6,

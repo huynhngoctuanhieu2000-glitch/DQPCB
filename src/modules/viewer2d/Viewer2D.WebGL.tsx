@@ -10,6 +10,7 @@ import {
   assemblyPCBToThreeJS,
   NewRenderByElement,
 } from 'web-gerber'
+import { Icon } from '../../ui/Icon'
 
 /**
  * web-gerber bundle three.js 0.175 vào trong dist của nó (không import ngoài).
@@ -1397,7 +1398,11 @@ export const Viewer2DWebGL: React.FC<Viewer2DWebGLProps> = ({
           right: 10,
           bottom: 10,
           zIndex: 5,
-          padding: '5px 12px',
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: 6,
+          minHeight: 32,
+          padding: '0 12px',
           fontSize: 12,
           fontWeight: 600,
           borderRadius: 6,
@@ -1407,7 +1412,7 @@ export const Viewer2DWebGL: React.FC<Viewer2DWebGLProps> = ({
           border: '1px solid #334155',
         }}
       >
-        ⤢ Fit
+        <Icon name="fit" size={15} /> Vừa khung
       </button>
       {hideBadge ? (
         <div style={faceTag} title={fromBelow ? 'Mặt Bot, nhìn từ dưới lên (đã lật gương)' : 'Mặt Top, nhìn từ trên xuống'}>{fromBelow ? 'BOT' : 'TOP'}</div>

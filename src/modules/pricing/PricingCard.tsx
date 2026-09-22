@@ -15,6 +15,7 @@ import { MASK_COLORS } from '../../models/MaskColors'
 import type { QuotationSeed } from '../quotation/QuotationPanel'
 import { panelNote, stencilSideFromBoard, stencilSizeLabel, type StencilSide } from '../quotation/QuotationModel'
 import { PricingStore } from './PricingStore'
+import { Icon } from '../../ui/Icon'
 import { NumberInput } from '../../ui/NumberInput'
 import { PanelPreview, type BoardShape, type PanelKind } from './PanelPreview'
 import { copperSamplePoints, detectPanel, loopPolygon, splitOutlineLoops } from '../../lib/gerber-reader'
@@ -780,7 +781,10 @@ export const PricingCard: React.FC<{
             {MASK_COLORS.map((c) => (
               <button
                 key={c.hex}
+                className="swatch"
                 title={c.label}
+                aria-label={`Màu bo ${c.label}`}
+                aria-pressed={board.maskColor === c.hex}
                 onClick={() => BoardDataModel.setMaskColor(c.hex)}
                 style={{
                   ...S.swatch,
@@ -855,8 +859,8 @@ export const PricingCard: React.FC<{
             </button>
           </div>
         )}
-        <button style={S.gear} onClick={onOpenSettings} title="Cài đặt → Công thức tính tiền">
-          ⚙
+        <button style={S.gear} onClick={onOpenSettings} title="Cài đặt → Công thức tính tiền" aria-label="Cài đặt công thức tính tiền">
+          <Icon name="settings" size={16} />
         </button>
       </div>
 
@@ -893,7 +897,7 @@ export const PricingCard: React.FC<{
       )}
 
       {onTablePath && (
-        <div style={S.chips}>
+        <div style={S.chips} className="tap-dense">
           {cfg.table.tiers.map((t) => (
             <button
               key={t.qty}
@@ -1004,7 +1008,7 @@ export const PricingCard: React.FC<{
         disabled={!canSend}
         onClick={() => canSend && onSendToQuotation()}
       >
-        ↑ Đưa vào báo giá
+        <Icon name="arrowUp" size={15} /> Đưa vào báo giá
       </button>
       {canSend && !priced && (
         <div style={{ ...S.stencilNote, textAlign: 'center' }}>
@@ -1014,7 +1018,8 @@ export const PricingCard: React.FC<{
 
       {/* ── Tuỳ chọn nâng cao ───────────────────────────── */}
       <button style={S.disclosure} onClick={() => setAdvanced((v) => !v)}>
-        {advanced ? '▾' : '▸'} Tuỳ chọn {!advanced && onTablePath ? '(không cần cho bảng tra)' : ''}
+        <Icon name="chevronDown" size={14} style={{ transform: advanced ? 'none' : 'rotate(-90deg)' }} /> Tuỳ chọn{' '}
+        {!advanced && onTablePath ? '(không cần cho bảng tra)' : ''}
       </button>
 
       {advanced && (
@@ -1202,14 +1207,15 @@ const S: Record<string, React.CSSProperties> = {
   },
   pathToggle: { display: 'flex', gap: 2, padding: 2, borderRadius: 999, backgroundColor: '#14161b', border: '1px solid #2c313c' },
   pathBtn: {
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: 600,
-    padding: '2px 8px',
+    minHeight: 24,
+    padding: '2px 10px',
     borderRadius: 999,
     border: '1px solid transparent',
     // backgroundColor, không phải shorthand: badgeFormula đè bằng backgroundColor.
     backgroundColor: 'transparent',
-    color: '#64748b',
+    color: '#94a3b8',
     cursor: 'pointer',
   },
   pathBtnOff: { opacity: 0.35, cursor: 'not-allowed' },
@@ -1217,11 +1223,13 @@ const S: Record<string, React.CSSProperties> = {
   badgeFormula: { backgroundColor: '#3b2c09', color: '#fcd34d', border: '1px solid #57410d' },
   gear: {
     marginLeft: 'auto',
-    background: 'none',
+    width: 28,
+    height: 28,
+    backgroundColor: 'transparent',
     border: 'none',
-    color: '#64748b',
+    borderRadius: 4,
+    color: '#94a3b8',
     cursor: 'pointer',
-    fontSize: 13,
     padding: 0,
   },
   row: { display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 },
@@ -1254,19 +1262,21 @@ const S: Record<string, React.CSSProperties> = {
     fontSize: 10,
     padding: 0,
   },
-  chips: { display: 'flex', flexWrap: 'wrap', gap: 3, marginTop: 2, marginBottom: 8 },
+  chips: { display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 2, marginBottom: 8 },
   chip: {
     backgroundColor: '#1c2029',
     border: '1px solid #2c313c',
     borderRadius: 4,
-    color: '#94a3b8',
+    color: '#cbd5e1',
     cursor: 'pointer',
-    fontSize: 11,
-    padding: '2px 6px',
-    minWidth: 26,
+    fontSize: 12,
+    minHeight: 26,
+    padding: '2px 8px',
+    minWidth: 34,
   },
+  // #0369a1: chữ trắng 5.9:1 (màu cũ #0ea5e9 chỉ 2.8:1).
   chipOn: {
-    backgroundColor: '#0ea5e9',
+    backgroundColor: '#0369a1',
     border: '1px solid #38bdf8',
     color: '#ffffff',
     fontWeight: 600,
@@ -1335,23 +1345,32 @@ const S: Record<string, React.CSSProperties> = {
   breakValue: { color: '#cbd5e1', fontSize: 10, padding: '2px 0', textAlign: 'right' },
   sendBtn: {
     width: '100%',
-    backgroundColor: '#0ea5e9',
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    minHeight: 34,
+    backgroundColor: '#0369a1',
     border: 'none',
     borderRadius: 4,
     color: '#ffffff',
     cursor: 'pointer',
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: 600,
     padding: '6px 0',
   },
   sendBtnOff: { backgroundColor: '#1c2029', color: '#475569', cursor: 'not-allowed' },
   disclosure: {
-    background: 'none',
+    display: 'flex',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'transparent',
     border: 'none',
-    color: '#64748b',
+    color: '#94a3b8',
     cursor: 'pointer',
-    fontSize: 10,
-    padding: '8px 0 0',
+    fontSize: 12,
+    minHeight: 30,
+    padding: '6px 0 0',
     width: '100%',
     textAlign: 'left',
   },
@@ -1372,10 +1391,11 @@ const S: Record<string, React.CSSProperties> = {
     backgroundColor: 'transparent',
     border: 'none',
     borderRadius: 3,
-    color: '#64748b',
+    color: '#94a3b8',
     cursor: 'pointer',
-    fontSize: 10,
-    padding: '2px 6px',
+    fontSize: 11,
+    minHeight: 22,
+    padding: '2px 8px',
   },
   segBtnOn: { backgroundColor: '#334155', color: '#e2e8f0' },
   check: {

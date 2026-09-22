@@ -11,10 +11,15 @@ import type { QuotationSeed } from '../modules/quotation/QuotationPanel'
 import { PricingCard } from '../modules/pricing/PricingCard'
 import { SettingsPanel } from '../modules/settings/SettingsPanel'
 import { useIsMobile } from './useIsMobile'
+import { Icon, IconLabel } from './Icon'
+import { UndoToast, showUndo } from './undo'
+import { useBackToClose } from './useBackToClose'
 
 export const Layout: React.FC = () => {
   const isMobile = useIsMobile()
   const [drawer, setDrawer] = useState<'layers' | 'info' | null>(null)
+  // Nút Back / vuốt lùi của điện thoại đóng bảng trượt thay vì rời trang.
+  useBackToClose(isMobile && drawer !== null, () => setDrawer(null))
   const [boardState, setBoardState] = useState(BoardDataModel.getState())
   const [isDraggingOver, setIsDraggingOver] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
@@ -30,6 +35,12 @@ export const Layout: React.FC = () => {
    * Chưa có thì bật màn chờ TRƯỚC rồi mới chuyển: dựng hình chạy đồng bộ, chặn cả giao
    * diện 1–3 s — không có màn chờ thì khung đứng im với bo cũ, người dùng tưởng treo.
    */
+  /** Đóng một bo, kèm thanh Hoàn tác — nút ✕ nằm sát tên bo, bấm nhầm là chuyện thường. */
+  const closeBoardWithUndo = (id: string) => {
+    const closed = BoardDataModel.closeBoard(id)
+    if (closed) showUndo(`Đã đóng ${closed.board.projectName}`, () => BoardDataModel.restoreBoards([closed]))
+  }
+
   const switchBoard = (id: string) => {
     const s = BoardDataModel.getState()
     const target = s.boards.find((b) => b.id === id)
@@ -280,10 +291,11 @@ export const Layout: React.FC = () => {
     <button
       onClick={() => openPicker(false)}
       title="Mở thêm file Gerber (ZIP, RAR hoặc file lẻ)"
+      aria-label="Mở thêm bo"
       style={{
         flexShrink: 0,
-        width: 24,
-        height: 24,
+        width: 26,
+        height: 26,
         padding: 0,
         borderRadius: '4px',
         border: '1px dashed #475569',
@@ -294,7 +306,7 @@ export const Layout: React.FC = () => {
         cursor: 'pointer',
       }}
     >
-      +
+      <Icon name="plus" size={16} />
     </button>
   )
 
@@ -332,17 +344,18 @@ export const Layout: React.FC = () => {
       <button
         onClick={() => setDrawer(null)}
         title="Đóng bảng"
+        aria-label="Đóng bảng"
         style={{
-          padding: '10px 14px',
-          background: 'transparent',
+          minWidth: 48,
+          padding: '0 14px',
+          backgroundColor: 'transparent',
           border: 'none',
           borderLeft: '1px solid #282b34',
-          color: '#94a3b8',
-          fontSize: '15px',
+          color: '#cbd5e1',
           cursor: 'pointer',
         }}
       >
-        ✕
+        <Icon name="x" size={18} />
       </button>
     </div>
   )
@@ -387,10 +400,11 @@ export const Layout: React.FC = () => {
 
       {/* 1. TOP MENU BAR */}
       <div
+        className="tap-bar"
         style={{
           display: 'flex',
           alignItems: 'center',
-          height: isMobile ? '40px' : '32px',
+          height: isMobile ? '48px' : '34px',
           backgroundColor: '#1a1c22',
           borderBottom: '1px solid #282b34',
           padding: '0 8px',
@@ -401,25 +415,25 @@ export const Layout: React.FC = () => {
       >
         <div style={{ display: 'flex', gap: '8px', color: '#94a3b8', alignItems: 'center' }}>
           <div style={{ position: 'relative' }}>
-            <span
+            <button
+              aria-haspopup="menu"
+              aria-expanded={fileMenuOpen}
               style={{
-                cursor: 'pointer',
-                padding: '2px 6px',
-                borderRadius: '3px',
+                ...S_BAR.ghost,
                 backgroundColor: fileMenuOpen ? '#334155' : 'transparent',
-                color: fileMenuOpen ? '#e2e8f0' : undefined,
+                color: fileMenuOpen ? '#e2e8f0' : '#cbd5e1',
               }}
               onClick={() => setFileMenuOpen((v) => !v)}
             >
-              File
-            </span>
+              Tệp <Icon name="chevronDown" size={13} />
+            </button>
             {fileMenuOpen && (
               <>
                 {/* Bấm ra ngoài là đóng menu */}
                 <div style={{ position: 'fixed', inset: 0, zIndex: 90 }} onClick={() => setFileMenuOpen(false)} />
                 <div style={S_MENU.panel}>
                   <MenuItem
-                    label="📂 Mở file Gerber…"
+                    label="Mở file Gerber…"
                     hint="ZIP, RAR hoặc file lẻ"
                     onClick={() => {
                       setFileMenuOpen(false)
@@ -427,7 +441,7 @@ export const Layout: React.FC = () => {
                     }}
                   />
                   <MenuItem
-                    label="🗂 Mở thư mục…"
+                    label="Mở thư mục…"
                     hint="Cả thư mục Gerber chưa nén"
                     onClick={() => {
                       setFileMenuOpen(false)
@@ -436,76 +450,65 @@ export const Layout: React.FC = () => {
                   />
                   <div style={S_MENU.sep} />
                   <MenuItem
-                    label="✕ Đóng bo đang xem"
+                    label="Đóng bo đang xem"
                     disabled={!boardState.activeBoardId}
                     onClick={() => {
                       setFileMenuOpen(false)
-                      if (boardState.activeBoardId) BoardDataModel.closeBoard(boardState.activeBoardId)
+                      if (boardState.activeBoardId) closeBoardWithUndo(boardState.activeBoardId)
                     }}
                   />
                   <MenuItem
-                    label="✕ Đóng tất cả bo"
+                    label="Đóng tất cả bo"
+                    danger
                     hint={boardState.boards.length ? `${boardState.boards.length} bo đang mở` : undefined}
                     disabled={boardState.boards.length === 0}
                     onClick={() => {
                       setFileMenuOpen(false)
-                      BoardDataModel.reset()
+                      // Đóng hết là thao tác lớn, hiếm khi làm: hỏi trước, rồi vẫn cho Hoàn tác.
+                      const n = boardState.boards.length
+                      if (!window.confirm(`Đóng cả ${n} bo đang mở?`)) return
+                      const closed = BoardDataModel.reset()
+                      showUndo(`Đã đóng ${n} bo`, () => BoardDataModel.restoreBoards(closed))
                     }}
                   />
                 </div>
               </>
             )}
           </div>
-          <span
+          <button
             onClick={() => setShowSettings(true)}
             title="Cài đặt — công thức tính tiền"
-            style={{ cursor: 'pointer', padding: '2px 6px', borderRadius: '3px' }}
+            aria-label="Cài đặt"
+            style={{ ...S_BAR.ghost, color: '#cbd5e1' }}
           >
-            {isMobile ? '⚙' : 'Cài đặt'}
-          </span>
+            {isMobile ? <Icon name="settings" size={18} /> : 'Cài đặt'}
+          </button>
         </div>
 
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: isMobile ? '6px' : '8px' }}>
+          {/* Một nút chính duy nhất: Mở Gerber (nền đặc). Báo giá là nút phụ (viền) —
+              hai nút đặc màu cạnh nhau thì mắt không biết đâu là việc chính. */}
           <button
             onClick={() => setShowQuotation(true)}
             title="Lập báo giá Excel từ bo đang mở"
-            style={{
-              backgroundColor: '#0ea5e9',
-              color: '#ffffff',
-              border: 'none',
-              borderRadius: '4px',
-              padding: '3px 12px',
-              fontSize: '12px',
-              cursor: 'pointer',
-              fontWeight: 600,
-            }}
+            aria-label="Báo giá"
+            style={S_BAR.secondary}
           >
-            {isMobile ? '📄' : '📄 Báo giá'}
+            <IconLabel icon="file" size={15}>{isMobile ? null : 'Báo giá'}</IconLabel>
           </button>
-          <button
-            onClick={() => openPicker(false)}
-            style={{
-              backgroundColor: '#10b981',
-              color: '#ffffff',
-              border: 'none',
-              borderRadius: '4px',
-              padding: '3px 12px',
-              fontSize: '12px',
-              cursor: 'pointer',
-              fontWeight: 600,
-            }}
-          >
-            {isMobile ? '+ Mở' : '+ Open Gerber ZIP'}
+          <button onClick={() => openPicker(false)} title="Mở file Gerber (ZIP, RAR hoặc file lẻ)" style={S_BAR.primary}>
+            <IconLabel icon="plus" size={15}>{isMobile ? 'Mở' : 'Mở Gerber'}</IconLabel>
           </button>
         </div>
       </div>
 
       {/* 2. SUB-TOOLBAR / TAB ROW */}
       <div
+        className="tap-bar"
         style={{
           display: 'flex',
           alignItems: 'center',
-          height: '38px',
+          height: isMobile ? '52px' : '40px',
           backgroundColor: '#16181e',
           borderBottom: '1px solid #282b34',
           padding: '0 12px',
@@ -597,38 +600,22 @@ export const Layout: React.FC = () => {
                 minWidth: 0,
                 appearance: 'none',
                 WebkitAppearance: 'none',
-                paddingRight: '40px',
+                paddingRight: '32px',
                 lineHeight: 1.2,
                 textOverflow: 'ellipsis',
               }}
             >
               {boardState.boards.map((b) => (
                 <option key={b.id} value={b.id}>
-                  📁 {b.projectName}
+                  {b.projectName}
                 </option>
               ))}
             </select>
-            <span style={{ position: 'absolute', right: 26, top: '50%', transform: 'translateY(-55%)', pointerEvents: 'none', fontSize: 10, color: '#94a3b8' }}>
-              ▼
+            {/* Không đặt ✕ đóng bo ở đây: nằm sát ô chọn và nút + thì ngón tay bấm nhầm.
+                Điện thoại đóng bo qua menu Tệp → Đóng bo đang xem (có Hoàn tác). */}
+            <span style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', color: '#94a3b8', display: 'flex' }}>
+              <Icon name="chevronDown" size={14} />
             </span>
-            <button
-              onClick={() => boardState.activeBoardId && BoardDataModel.closeBoard(boardState.activeBoardId)}
-              title="Đóng bo đang xem"
-              style={{
-                position: 'absolute',
-                right: 4,
-                top: '50%',
-                transform: 'translateY(-50%)',
-                background: 'transparent',
-                border: 'none',
-                color: '#94a3b8',
-                fontSize: '12px',
-                padding: '2px 4px',
-                cursor: 'pointer',
-              }}
-            >
-              ✕
-            </button>
           </span>
         )}
         {isMobile && boardState.boards.length > 1 && addBoardBtn}
@@ -641,13 +628,22 @@ export const Layout: React.FC = () => {
               return (
                 <div
                   key={b.id}
+                  role="button"
+                  tabIndex={0}
+                  aria-pressed={isActive}
                   onClick={() => switchBoard(b.id)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault()
+                      switchBoard(b.id)
+                    }
+                  }}
                   title={b.projectName}
                   style={{
                     display: 'flex',
                     alignItems: 'center',
                     gap: '6px',
-                    padding: '3px 6px 3px 10px',
+                    padding: '2px 2px 2px 10px',
                     borderRadius: '4px',
                     fontSize: '12px',
                     cursor: 'pointer',
@@ -658,25 +654,28 @@ export const Layout: React.FC = () => {
                   }}
                 >
                   <span style={{ maxWidth: '180px', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                    📁 {b.projectName}
+                    {b.projectName}
                   </span>
                   <button
                     onClick={(e) => {
                       e.stopPropagation()
-                      BoardDataModel.closeBoard(b.id)
+                      closeBoardWithUndo(b.id)
                     }}
-                    title="Đóng bo này"
+                    title="Đóng bo này (có Hoàn tác)"
+                    aria-label={`Đóng ${b.projectName}`}
                     style={{
-                      background: 'transparent',
+                      backgroundColor: 'transparent',
                       border: 'none',
-                      color: '#64748b',
+                      borderRadius: '3px',
+                      color: '#94a3b8',
                       cursor: 'pointer',
-                      fontSize: '11px',
-                      padding: '0 2px',
-                      lineHeight: 1,
+                      width: 24,
+                      height: 24,
+                      padding: 0,
+                      marginLeft: '2px',
                     }}
                   >
-                    ✕
+                    <Icon name="x" size={14} />
                   </button>
                 </div>
               )
@@ -692,7 +691,7 @@ export const Layout: React.FC = () => {
             onClick={() => setDrawer((d) => (d ? null : 'info'))}
             style={{ ...drawerBtn(drawer !== null), marginLeft: 'auto' }}
           >
-            {drawer ? '✕ Đóng' : '☰ Lớp · Thông tin'}
+            <IconLabel icon={drawer ? 'x' : 'layers'} size={15}>{drawer ? 'Đóng' : 'Lớp · Thông tin'}</IconLabel>
           </button>
         )}
       </div>
@@ -732,7 +731,7 @@ export const Layout: React.FC = () => {
                 borderBottom: '2px solid #38bdf8',
               }}
             >
-              Layers ({boardState.layers.length})
+              Lớp ({boardState.layers.length})
             </div>
           </div>
           )}
@@ -740,10 +739,11 @@ export const Layout: React.FC = () => {
           {/* Side Filter Tabs (All / Top / Bottom) */}
           {boardState.layers.length > 0 && (
             <div
+              className="tap-dense"
               style={{
                 display: 'flex',
                 padding: '6px 8px',
-                gap: '4px',
+                gap: '6px',
                 backgroundColor: '#16181e',
                 borderBottom: '1px solid #282b34',
               }}
@@ -760,15 +760,15 @@ export const Layout: React.FC = () => {
                       color: isActive ? '#ffffff' : '#94a3b8',
                       border: 'none',
                       borderRadius: '4px',
+                      minHeight: '26px',
                       padding: '3px 0',
-                      fontSize: '11px',
+                      fontSize: '12px',
                       fontWeight: isActive ? 600 : 400,
                       cursor: 'pointer',
-                      textTransform: 'capitalize',
                       transition: 'all 0.15s ease',
                     }}
                   >
-                    {side === 'all' ? 'All' : side === 'top' ? 'Top Side' : 'Bot Side'}
+                    {side === 'all' ? 'Tất cả' : side === 'top' ? 'Mặt Top' : 'Mặt Bot'}
                   </button>
                 )
               })}
@@ -778,28 +778,22 @@ export const Layout: React.FC = () => {
           {/* Quick Visibility Controls */}
           {boardState.layers.length > 0 && (
             <div
+              className="tap-dense"
               style={{
                 display: 'flex',
-                justifyContent: 'space-between',
-                padding: '4px 10px',
+                gap: '6px',
+                padding: '4px 8px',
                 borderBottom: '1px solid #282b34',
-                fontSize: '11px',
-                color: '#94a3b8',
                 backgroundColor: '#121418',
               }}
             >
-              <span
-                style={{ cursor: 'pointer', color: '#38bdf8' }}
-                onClick={() => BoardDataModel.setAllLayersVisible(true)}
-              >
-                ✓ All On
-              </span>
-              <span
-                style={{ cursor: 'pointer', color: '#94a3b8' }}
-                onClick={() => BoardDataModel.setAllLayersVisible(false)}
-              >
-                ✕ All Off
-              </span>
+              {/* Trước là hai chữ 11px cao 14px, gần như không bấm trúng trên điện thoại. */}
+              <button style={S_LAYERS.quick} onClick={() => BoardDataModel.setAllLayersVisible(true)}>
+                Hiện tất cả
+              </button>
+              <button style={S_LAYERS.quick} onClick={() => BoardDataModel.setAllLayersVisible(false)}>
+                Ẩn tất cả
+              </button>
             </div>
           )}
 
@@ -807,7 +801,7 @@ export const Layout: React.FC = () => {
           <div style={{ flex: 1, overflowY: 'auto', padding: '4px' }}>
             {boardState.layers.length === 0 ? (
               <div style={{ padding: '20px 10px', textAlign: 'center', color: '#64748b', fontSize: '12px' }}>
-                No layers loaded yet.
+                Chưa mở bo nào.
               </div>
             ) : (
               boardState.layers.map((layer, index) => {
@@ -847,16 +841,19 @@ export const Layout: React.FC = () => {
                       {index + 1}
                     </span>
 
-                    {/* Visibility Checkbox */}
-                    <input
-                      type="checkbox"
-                      checked={isVisible}
-                      onChange={(e) => {
-                        e.stopPropagation()
-                        BoardDataModel.toggleLayer(layer.id)
-                      }}
-                      style={{ cursor: 'pointer', accentColor: layer.color }}
-                    />
+                    {/* Visibility Checkbox — bọc trong label có đệm để vùng bấm to hơn ô 15px. */}
+                    <label
+                      onClick={(e) => e.stopPropagation()}
+                      style={{ display: 'flex', alignItems: 'center', padding: '4px', margin: '-4px', cursor: 'pointer' }}
+                    >
+                      <input
+                        type="checkbox"
+                        aria-label={`Hiện lớp ${label}`}
+                        checked={isVisible}
+                        onChange={() => BoardDataModel.toggleLayer(layer.id)}
+                        style={{ margin: 0, accentColor: layer.color }}
+                      />
+                    </label>
 
                     {/* Ô màu — bấm để đổi màu lớp (áp dụng cho chế độ CAM 2D) */}
                     <label
@@ -936,17 +933,19 @@ export const Layout: React.FC = () => {
                       }}
                       style={{
                         backgroundColor: 'transparent',
-                        color: '#64748b',
+                        color: '#94a3b8',
                         border: 'none',
                         borderRadius: '3px',
                         padding: '2px 4px',
-                        fontSize: '11px',
+                        fontSize: '12px',
                         cursor: 'pointer',
-                        opacity: 0.7,
+                        flexShrink: 0,
                       }}
-                      title="Solo this layer (Chỉ xem lớp này)"
+                      title="Chỉ xem lớp này (ẩn các lớp khác)"
+                      aria-label={`Chỉ xem lớp ${label}`}
                     >
-                      🎯
+                      {/* Điện thoại không rê chuột xem được chú thích → hiện chữ. */}
+                      {isMobile ? <IconLabel icon="target" size={15}>Riêng</IconLabel> : <Icon name="target" size={15} />}
                     </button>
                   </div>
                 )
@@ -1046,12 +1045,12 @@ export const Layout: React.FC = () => {
               }}
               onClick={() => openPicker(false)}
             >
-              <div style={{ fontSize: '48px', marginBottom: '12px' }}>📁</div>
+              <div style={{ marginBottom: '12px', color: '#38bdf8' }}><Icon name="folder" size={48} /></div>
               <h2 style={{ margin: '0 0 8px 0', fontSize: '18px', color: '#f1f5f9' }}>
-                Drop Gerber ZIP file here
+                Thả file Gerber vào đây
               </h2>
               <p style={{ margin: 0, fontSize: '13px', color: '#64748b' }}>
-                Supports Altium, KiCad, Eagle, EasyEDA (.ZIP, .GTL, .GBL, .GKO, .DRL)
+                Altium, KiCad, Eagle, EasyEDA — file .ZIP, .RAR hoặc file lẻ (.GTL, .GBL, .GKO, .DRL…)
               </p>
               <div style={{ display: 'flex', gap: '10px', marginTop: '16px' }}>
                 <button
@@ -1070,7 +1069,7 @@ export const Layout: React.FC = () => {
                     cursor: 'pointer',
                   }}
                 >
-                  Browse Files
+                  Chọn file…
                 </button>
               </div>
             </div>
@@ -1120,16 +1119,20 @@ export const Layout: React.FC = () => {
                   onClick={captureTwoSides}
                   disabled={capturing}
                   title="Copy ảnh hai mặt bo vào clipboard, đúng khung đang nhìn (nét gấp đôi màn hình)"
+                  aria-label="Chụp ảnh hai mặt"
                   style={{
                     position: 'absolute',
                     top: 10,
                     right: 10,
                     zIndex: 6,
-                    width: 34,
-                    height: 30,
-                    padding: 0,
-                    fontSize: 16,
-                    lineHeight: 1,
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 6,
+                    minWidth: 36,
+                    height: 32,
+                    padding: '0 10px',
+                    fontSize: 12,
+                    fontWeight: 600,
                     borderRadius: 6,
                     cursor: capturing ? 'wait' : 'pointer',
                     color: '#e2e8f0',
@@ -1137,7 +1140,9 @@ export const Layout: React.FC = () => {
                     border: '1px solid #334155',
                   }}
                 >
-                  {capturing ? '⏳' : copied ? '✓' : '📷'}
+                  {/* Có chữ bên cạnh icon: điện thoại không rê chuột xem chú thích được. */}
+                  <Icon name="camera" size={16} />
+                  {capturing ? 'Đang chụp…' : copied ? 'Đã copy' : 'Chụp'}
                 </button>
 
                 {/* Nhãn kích thước nổi giữa hai khung, sát bo — thanh chạy hết chiều
@@ -1258,6 +1263,8 @@ export const Layout: React.FC = () => {
       )}
 
       {showSettings && <SettingsPanel onClose={() => setShowSettings(false)} />}
+
+      <UndoToast />
     </div>
   )
 }
@@ -1302,36 +1309,102 @@ const S_MENU: Record<string, React.CSSProperties> = {
   sep: { height: 1, margin: '4px 6px', backgroundColor: '#334155' },
 }
 
-const MenuItem: React.FC<{ label: string; hint?: string; disabled?: boolean; onClick: () => void }> = ({
+const MenuItem: React.FC<{ label: string; hint?: string; disabled?: boolean; danger?: boolean; onClick: () => void }> = ({
   label,
   hint,
   disabled,
+  danger,
   onClick,
 }) => {
   const [hover, setHover] = useState(false)
   return (
-    <div
-      onClick={disabled ? undefined : onClick}
+    <button
+      role="menuitem"
+      disabled={disabled}
+      onClick={onClick}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
       style={{
         display: 'flex',
+        width: '100%',
         alignItems: 'baseline',
         justifyContent: 'space-between',
         gap: 16,
+        minHeight: 32,
         padding: '6px 10px',
+        border: 'none',
         borderRadius: 4,
         fontSize: 13,
+        textAlign: 'left',
         cursor: disabled ? 'default' : 'pointer',
-        color: disabled ? '#475569' : '#e2e8f0',
-        backgroundColor: hover && !disabled ? '#2563eb' : 'transparent',
+        color: disabled ? '#475569' : danger ? '#fca5a5' : '#e2e8f0',
+        backgroundColor: hover && !disabled ? (danger ? '#7f1d1d' : '#2563eb') : 'transparent',
         whiteSpace: 'nowrap',
       }}
     >
       <span>{label}</span>
-      {hint && <span style={{ fontSize: 11, color: hover && !disabled ? '#dbeafe' : '#64748b' }}>{hint}</span>}
-    </div>
+      {hint && <span style={{ fontSize: 11, color: hover && !disabled ? '#dbeafe' : '#94a3b8' }}>{hint}</span>}
+    </button>
   )
+}
+
+const S_LAYERS: Record<'quick', React.CSSProperties> = {
+  quick: {
+    flex: 1,
+    minHeight: 26,
+    padding: '2px 6px',
+    borderRadius: 4,
+    border: '1px solid #2c313c',
+    backgroundColor: 'transparent',
+    color: '#cbd5e1',
+    fontSize: 12,
+    cursor: 'pointer',
+  },
+}
+
+/** Nút của thanh trên cùng: chữ phụ trong suốt, nút phụ viền, nút chính nền đặc. */
+const S_BAR: Record<'ghost' | 'secondary' | 'primary', React.CSSProperties> = {
+  ghost: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: 4,
+    minHeight: 28,
+    padding: '0 8px',
+    border: 'none',
+    backgroundColor: 'transparent',
+    borderRadius: 4,
+    fontSize: 13,
+    cursor: 'pointer',
+  },
+  secondary: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 28,
+    minWidth: 28,
+    padding: '0 10px',
+    borderRadius: 4,
+    border: '1px solid #475569',
+    backgroundColor: 'transparent',
+    color: '#e2e8f0',
+    fontSize: 13,
+    fontWeight: 600,
+    cursor: 'pointer',
+  },
+  // #047857: chữ trắng 5.5:1. Màu cũ #10b981 chỉ 2.5:1, dưới mức 4.5:1.
+  primary: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    minHeight: 28,
+    padding: '0 12px',
+    borderRadius: 4,
+    border: 'none',
+    backgroundColor: '#047857',
+    color: '#ffffff',
+    fontSize: 13,
+    fontWeight: 600,
+    cursor: 'pointer',
+  },
 }
 
 /**

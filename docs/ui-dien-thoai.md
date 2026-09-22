@@ -67,13 +67,36 @@ giao diện cũng phải đối chiếu danh sách này TRƯỚC khi commit.
 - Chữ trong tờ: font Times trên iPhone rộng hơn Times New Roman một chút — dòng
   nào không được gãy thì `whiteSpace: nowrap` và để cỡ dư ~10%.
 
-## 6. Nút chạm được (đang nợ)
+## 6. Nút bấm
 
-Skill `ui-ux-pro-max` (`.claude/skills/`) khuyến nghị vùng chạm 44pt (iOS) /
-48dp (Android), tối thiểu 24px theo WCAG cho web, cách nhau ≥ 8px. Đo ngày
-22/9/2026: phần lớn nút nhỏ của app (📄, + Mở, tab Cài đặt, ✕ xoá dòng, nút hàng
-"Dòng hàng") cao 22–23px — **chưa đạt**. Nút mới trên điện thoại: cao ≥ 32px;
-khi sửa khu vực nào thì nâng luôn nút ở đó.
+Đã làm đợt 22/09/2026 (xem `docs/bao-cao/2026-09-22-danh-gia-ux-nut-bam.md`):
+
+- **Sàn vùng chạm ở `index.css`**, không đặt tay từng nút: máy tính mọi `button`,
+  `[role=button]`, `select` cao ≥ 24px; điện thoại ≥ 40px (`!important` — nhiều nút
+  tự đặt `minHeight` inline, mà inline thắng CSS thường; đây chỉ là sàn nên không nút
+  nào bị thu lại). Hàng dày đặc thì thêm `className="tap-dense"` (36px), thanh trên
+  cùng / thanh dưới `className="tap-bar"` (36px). Nút chỉ có icon: vuông 40×40.
+  Ô chọn màu bo: `className="swatch"` (22 / 32px).
+  **Đừng đặt `minHeight` inline lớn hơn 40px** — sàn điện thoại sẽ không kéo được.
+- **Icon:** dùng `<Icon name=… />` / `<IconLabel icon=…>chữ</IconLabel>` trong
+  `src/ui/Icon.tsx` (nét SVG, theo màu chữ). Không dùng emoji làm icon nút.
+- **Nút chỉ có icon phải có `aria-label`** (và `title` cho máy tính). Trên điện thoại
+  không rê chuột được → nút ít gặp (Chụp, Riêng) thì hiện thêm chữ cạnh icon.
+- **Phần tử bấm được phải là `<button>`**; bắt buộc dùng `div` (vd tab bo có nút ✕
+  bên trong) thì thêm `role="button" tabIndex={0}` và bắt Enter/Space.
+- **Vòng focus:** `:focus-visible` chung trong `index.css`; không tắt `outline`.
+- **Thao tác phá huỷ:**
+  - làm thường xuyên (đóng bo, xoá dòng báo giá) → làm ngay + `showUndo(text, onUndo)`
+    (`src/ui/undo.tsx`, thanh Hoàn tác 6 giây);
+  - hiếm và lớn (Đóng tất cả bo, Cài đặt → Mặc định) → `window.confirm` trước.
+- **Tương phản:** chữ trắng chỉ đặt trên nền đủ đậm — xanh lá `#047857`, xanh dương
+  `#0369a1` (≥ 5.5:1). `#10b981` / `#0ea5e9` chỉ 2.5–2.8:1, không dùng làm nền chữ trắng.
+- **Một nút chính mỗi vùng:** thanh trên chỉ "Mở Gerber" là nền đặc; "Báo giá" là nút viền.
+- **Hộp thoại / bảng trượt:** gọi `useBackToClose(open, onClose)` (`src/ui/useBackToClose.ts`)
+  để nút Back / vuốt lùi của điện thoại đóng hộp chứ không rời trang.
+- **Bảng nhiều cột trên điện thoại:** đổi thành thẻ bằng CSS (xem `.q-items` trong
+  `index.css`): `data-label` trên từng `td`, `q-wide` cho ô chiếm cả hàng, `q-del` cho
+  nút xoá góc thẻ, `q-idx`/`q-empty` để ẩn.
 
 Tra thêm quy tắc: `python .claude/skills/ui-ux-pro-max/scripts/search.py "<vấn đề>" --domain ux`
 (ví dụ `"touch target spacing"`, `"safe area notch"`, `"horizontal scroll mobile"`).

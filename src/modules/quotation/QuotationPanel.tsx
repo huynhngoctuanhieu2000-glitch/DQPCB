@@ -39,6 +39,9 @@ import { computePrice, pickStencil, type PriceBasis, type StencilTier } from '..
 import { PricingStore } from '../pricing/PricingStore'
 import { QuotationPreview } from './QuotationPreview'
 import { useIsMobile } from '../../ui/useIsMobile'
+import { Icon, IconLabel } from '../../ui/Icon'
+import { showUndo } from '../../ui/undo'
+import { useBackToClose } from '../../ui/useBackToClose'
 import { NumberInput } from '../../ui/NumberInput'
 
 const money = (n: number) => n.toLocaleString('vi-VN')
@@ -173,6 +176,21 @@ export const QuotationPanel: React.FC<{
       ...prev,
       items: prev.items.map((it) => (it.id === id ? { ...it, ...normalizeStrings(change) } : it)),
     }))
+
+  /** Xoá dòng kèm thanh Hoàn tác: nút xoá nhỏ nằm cuối dòng, bấm nhầm là mất dòng đã gõ tay. */
+  const removeItemWithUndo = (id: string) => {
+    const index = q.items.findIndex((it) => it.id === id)
+    const item = q.items[index]
+    if (!item) return
+    removeItem(id)
+    showUndo(`Đã xoá dòng ${item.name || index + 1}`, () =>
+      setQ((prev) =>
+        prev.items.some((it) => it.id === id)
+          ? prev
+          : { ...prev, items: [...prev.items.slice(0, index), item, ...prev.items.slice(index)] }
+      )
+    )
+  }
 
   const removeItem = (id: string) =>
     setQ((prev) => ({
@@ -362,6 +380,9 @@ export const QuotationPanel: React.FC<{
     }
   }
 
+  // Back / vuốt lùi của điện thoại đóng hộp thay vì rời trang.
+  useBackToClose(true, onClose)
+
   return (
     <div style={S.backdrop} onClick={onClose}>
       <div style={{ ...S.modal, ...(isMobile ? S.modalMobile : null) }} onClick={(e) => e.stopPropagation()}>
@@ -382,8 +403,8 @@ export const QuotationPanel: React.FC<{
               </button>
             ))}
           </div>
-          <button onClick={onClose} style={S.close} title="Đóng">
-            ✕
+          <button onClick={onClose} style={S.close} title="Đóng" aria-label="Đóng hộp báo giá">
+            <Icon name="x" size={18} />
           </button>
         </div>
 
@@ -393,13 +414,14 @@ export const QuotationPanel: React.FC<{
           {tab === 'preview' ? (
             <>
               <div style={S.previewBar}>
-                <span>👁 Xem trước{isMobile ? '' : ' — dựng đúng bố cục sẽ in ra PDF'}</span>
+                <IconLabel icon="eye" size={14}>Xem trước{isMobile ? '' : ' — dựng đúng bố cục sẽ in ra PDF'}</IconLabel>
                 <button
                   onClick={() => setTab('form')}
                   style={S.previewClose}
                   title="Đóng xem trước, quay lại nhập liệu"
+                  aria-label="Đóng xem trước"
                 >
-                  ✕
+                  <Icon name="x" size={16} />
                 </button>
               </div>
               <QuotationPreview q={q} />
@@ -465,15 +487,17 @@ export const QuotationPanel: React.FC<{
           </div>
 
           {/* Dòng hàng */}
-          {/* Điện thoại: nhãn nút rút gọn, không xuống dòng; dãy nút dài quá màn thì
-              cuộn ngang trong hàng này chứ không gãy thành 2–3 tầng. */}
+          {/* Điện thoại: nhãn nút rút gọn; tiêu đề một hàng, bốn nút lưới 2×2 (CSS .q-actions). */}
           <div
+            className="q-actions"
             style={{
               ...S.sectionTitle,
               display: 'flex',
               alignItems: 'center',
               gap: '8px',
-              ...(isMobile ? { overflowX: 'auto', whiteSpace: 'nowrap', paddingBottom: '4px' } : null),
+              // Điện thoại: xuống dòng thành lưới 2 cột. Cuộn ngang thì nút cuối bị cắt nửa
+              // và người dùng không biết còn nút phía sau.
+              ...(isMobile ? { display: 'grid', gridTemplateColumns: '1fr 1fr' } : null),
             }}
           >
             <span>Dòng hàng</span>
@@ -490,7 +514,7 @@ export const QuotationPanel: React.FC<{
                       : 'Thêm dòng điền sẵn tên, số lớp, kích thước, màu phủ lấy từ bo đã mở'
                 }
               >
-                {isMobile ? '⤓ Từ bo' : '⤓ Lấy từ bo đang mở'}
+                <IconLabel icon="arrowDown" size={14}>{isMobile ? 'Từ bo' : 'Lấy từ bo đang mở'}</IconLabel>
                 {board.boards.length > 1 && ` (${board.boards.length})`}
               </button>
 
@@ -498,7 +522,7 @@ export const QuotationPanel: React.FC<{
                 <div style={S.menu}>
                   {board.boards.map((b) => (
                     <button key={b.id} onClick={() => addBoards([b])} style={S.menuItem}>
-                      <span>📁 {b.projectName}</span>
+                      <IconLabel icon="folder" size={14}>{b.projectName}</IconLabel>
                       <span style={{ color: '#64748b', fontSize: '10px' }}>
                         {b.layerCount} lớp
                         {b.bounds
@@ -529,7 +553,7 @@ export const QuotationPanel: React.FC<{
                 style={S.smallBtn}
                 title="Thêm dòng stencil, giá lấy theo cỡ khung trong Cài đặt → Stencil"
               >
-                {isMobile ? '+ Stencil' : '+ Thêm stencil'}
+                <IconLabel icon="plus" size={14}>{isMobile ? 'Stencil' : 'Thêm stencil'}</IconLabel>
               </button>
 
               {stencilMenu && (
@@ -560,7 +584,7 @@ export const QuotationPanel: React.FC<{
               )}
             </div>
             <button onClick={addItem} style={S.smallBtn} title="Thêm một dòng trống để gõ tay">
-              {isMobile ? '+ Dòng' : '+ Thêm dòng trống'}
+              <IconLabel icon="plus" size={14}>{isMobile ? 'Dòng' : 'Thêm dòng trống'}</IconLabel>
             </button>
             <button
               onClick={addDiscount}
@@ -568,13 +592,14 @@ export const QuotationPanel: React.FC<{
               style={{ ...S.smallBtn, ...(q.items.some((it) => it.discount) ? S.disabled : null) }}
               title="Thêm dòng giảm giá ở cuối bảng, số tiền giảm được trừ vào tổng"
             >
-              {isMobile ? '+ Giảm giá' : '+ Thêm giảm giá'}
+              <IconLabel icon="plus" size={14}>{isMobile ? 'Giảm giá' : 'Thêm giảm giá'}</IconLabel>
             </button>
           </div>
 
-          {/* Bảng dòng hàng rộng hơn màn điện thoại: cuộn ngang trong khung riêng. */}
-          <div style={{ overflowX: 'auto' }}>
-          <table style={S.table}>
+          {/* Máy tính: bảng. Điện thoại: CSS (index.css, .q-items) đổi mỗi dòng thành một
+              thẻ — tên chiếm cả hàng, các ô khác lưới 2 cột, nhãn lấy từ data-label. */}
+          <div style={{ overflowX: isMobile ? 'visible' : 'auto' }}>
+          <table style={S.table} className="q-items">
             <thead>
               <tr>
                 {['#', q.hasVat ? 'Tên hàng hoá' : 'Tên file', 'Số lớp', 'Kích thước', 'Màu phủ', 'SL', 'Thành tiền', 'Đơn giá', 'Ghi chú', ''].map(
@@ -595,15 +620,15 @@ export const QuotationPanel: React.FC<{
                   // Dòng giảm giá: chỉ có tên, số tiền giảm và ghi chú.
                   return (
                     <tr key={it.id}>
-                      <td style={{ ...S.td, textAlign: 'center', color: '#64748b' }}>{i + 1}</td>
-                      <td style={S.td} colSpan={5}>
+                      <td className="q-idx" style={{ ...S.td, textAlign: 'center', color: '#64748b' }}>{i + 1}</td>
+                      <td className="q-wide" data-label="Giảm giá" style={S.td} colSpan={5}>
                         <input
                           style={S.cellInput}
                           value={it.name}
                           onChange={(e) => patchItem(it.id, { name: e.target.value })}
                         />
                       </td>
-                      <td style={S.td}>
+                      <td data-label="Số tiền giảm" style={S.td}>
                         <NumberInput
                           style={{ ...S.cellInput, width: '112px', textAlign: 'right', color: '#f87171' }}
                           placeholder="Số tiền giảm"
@@ -612,13 +637,18 @@ export const QuotationPanel: React.FC<{
                           onChange={(v) => patchItem(it.id, { amount: v === null ? null : -v })}
                         />
                       </td>
-                      <td style={S.td} />
-                      <td style={S.td}>
+                      <td className="q-empty" style={S.td} />
+                      <td data-label="Ghi chú" style={S.td}>
                         <NoteCell value={it.note} onChange={(note) => patchItem(it.id, { note })} />
                       </td>
-                      <td style={S.td}>
-                        <button onClick={() => removeItem(it.id)} style={S.removeBtn} title="Xoá dòng">
-                          ✕
+                      <td className="q-del" style={S.td}>
+                        <button
+                          onClick={() => removeItemWithUndo(it.id)}
+                          style={S.removeBtn}
+                          title="Xoá dòng (có Hoàn tác)"
+                          aria-label="Xoá dòng giảm giá"
+                        >
+                          <Icon name="trash" size={15} />
                         </button>
                       </td>
                     </tr>
@@ -626,22 +656,22 @@ export const QuotationPanel: React.FC<{
                 }
                 return (
                   <tr key={it.id}>
-                    <td style={{ ...S.td, textAlign: 'center', color: '#64748b' }}>{i + 1}</td>
-                    <td style={S.td}>
+                    <td className="q-idx" style={{ ...S.td, textAlign: 'center', color: '#64748b' }}>{i + 1}</td>
+                    <td className="q-wide" data-label={`${i + 1}. ${q.hasVat ? 'Tên hàng hoá' : 'Tên file'}`} style={S.td}>
                       <input
                         style={S.cellInput}
                         value={it.name}
                         onChange={(e) => patchItem(it.id, { name: e.target.value })}
                       />
                     </td>
-                    <td style={S.td}>
+                    <td data-label="Số lớp" style={S.td}>
                       <input
                         style={{ ...S.cellInput, width: '48px', textAlign: 'center' }}
                         value={it.layers}
                         onChange={(e) => patchItem(it.id, { layers: e.target.value })}
                       />
                     </td>
-                    <td style={S.td}>
+                    <td data-label={it.stencil ? 'Cỡ khung' : 'Kích thước'} style={S.td}>
                       {it.stencil ? (
                         // Dòng stencil: cỡ khung là một trong các cỡ nhà máy có, nên cho
                         // chọn lại bao nhiêu lần cũng được thay vì gõ tay.
@@ -675,7 +705,7 @@ export const QuotationPanel: React.FC<{
                         />
                       )}
                     </td>
-                    <td style={S.td}>
+                    <td data-label="Màu phủ" style={S.td}>
                       <input
                         style={{ ...S.cellInput, width: '92px' }}
                         list="mask-color-labels"
@@ -683,14 +713,14 @@ export const QuotationPanel: React.FC<{
                         onChange={(e) => patchItem(it.id, { maskColor: e.target.value })}
                       />
                     </td>
-                    <td style={S.td}>
+                    <td data-label="Số lượng" style={S.td}>
                       <NumberInput
                         style={{ ...S.cellInput, width: '60px', textAlign: 'right' }}
                         value={it.quantity}
                         onChange={(v) => changeQuantity(it, v)}
                       />
                     </td>
-                    <td style={S.td}>
+                    <td data-label="Thành tiền" style={S.td}>
                       <NumberInput
                         style={{ ...S.cellInput, width: '112px', textAlign: 'right' }}
                         placeholder="0"
@@ -700,23 +730,24 @@ export const QuotationPanel: React.FC<{
                       />
                     </td>
                     {/* Đơn giá là công thức trong Excel; ở đây chỉ xem trước. */}
-                    <td style={{ ...S.td, textAlign: 'right', color: '#64748b', fontSize: '11px' }}>
+                    <td data-label="Đơn giá" style={{ ...S.td, textAlign: 'right', color: '#94a3b8', fontSize: '12px' }}>
                       {unit === null ? '--' : money(unit)}
                     </td>
-                    <td style={S.td}>
+                    <td data-label="Ghi chú" style={S.td}>
                       <NoteCell
                         value={it.note}
                         onChange={(note) => patchItem(it.id, { note })}
                       />
                     </td>
-                    <td style={S.td}>
+                    <td className="q-del" style={S.td}>
                       <button
-                        onClick={() => removeItem(it.id)}
+                        onClick={() => removeItemWithUndo(it.id)}
                         disabled={!canRemove}
                         style={{ ...S.removeBtn, ...(!canRemove ? S.disabled : null) }}
-                        title="Xoá dòng"
+                        title="Xoá dòng (có Hoàn tác)"
+                        aria-label={`Xoá dòng ${i + 1}`}
                       >
-                        ✕
+                        <Icon name="trash" size={15} />
                       </button>
                     </td>
                   </tr>
@@ -798,8 +829,8 @@ export const QuotationPanel: React.FC<{
               liệu, bấm Xem trước để kiểm lại trước khi tải — không phải kéo lên đầu hộp. */}
           <div style={S.viewSwitch} className="span2">
             {([
-              { key: 'form', label: '✎ Nhập liệu' },
-              { key: 'preview', label: '👁 Xem trước' },
+              { key: 'form', label: <IconLabel icon="edit" size={14}>Nhập liệu</IconLabel> },
+              { key: 'preview', label: <IconLabel icon="eye" size={14}>Xem trước</IconLabel> },
             ] as const).map((t) => (
               <button
                 key={t.key}
@@ -836,7 +867,7 @@ export const QuotationPanel: React.FC<{
                   style={{ ...S.smallBtn, flexShrink: 0 }}
                   title="Mở thư mục chứa file vừa lưu"
                 >
-                  📂 Mở thư mục
+                  <IconLabel icon="folder" size={14}>Mở thư mục</IconLabel>
                 </button>
               )}
             </div>
@@ -859,7 +890,7 @@ export const QuotationPanel: React.FC<{
               style={{ ...S.primaryBtn, ...(busy ? S.disabled : null) }}
               title={board.sourceDir ? `Lưu vào ${board.sourceDir}` : 'Chọn chỗ lưu ở hộp thoại'}
             >
-              {busy ? 'Đang xuất…' : '⬇ Xuất PDF'}
+              {busy ? 'Đang xuất…' : <IconLabel icon="download" size={15}>Xuất PDF</IconLabel>}
             </button>
           ) : (
             <>
@@ -869,7 +900,7 @@ export const QuotationPanel: React.FC<{
                 style={{ ...S.primaryBtn, ...(busy ? S.disabled : null) }}
                 title="Tải file PDF về máy"
               >
-                {busy ? 'Đang tạo PDF…' : '⬇ Tải PDF'}
+                {busy ? 'Đang tạo PDF…' : <IconLabel icon="download" size={15}>Tải PDF</IconLabel>}
               </button>
               {canShareFiles() && (
                 <button
@@ -878,7 +909,7 @@ export const QuotationPanel: React.FC<{
                   style={{ ...S.secondaryBtn, ...(busy ? S.disabled : null) }}
                   title="Mở bảng chia sẻ: Zalo, Messenger, Lưu vào Tệp…"
                 >
-                  📤 Chia sẻ PDF
+                  <IconLabel icon="share" size={15}>Chia sẻ PDF</IconLabel>
                 </button>
               )}
             </>
@@ -891,7 +922,7 @@ export const QuotationPanel: React.FC<{
               style={{ ...S.secondaryBtn, ...(busy ? S.disabled : null) }}
               title={board.sourceDir ? `Lưu vào ${board.sourceDir}` : 'Chọn chỗ lưu ở hộp thoại'}
             >
-              {busy ? 'Đang xuất…' : '⬇ Xuất Excel'}
+              {busy ? 'Đang xuất…' : <IconLabel icon="download" size={15}>Xuất Excel</IconLabel>}
             </button>
           ) : (
             <>
@@ -901,7 +932,7 @@ export const QuotationPanel: React.FC<{
                 style={{ ...S.secondaryBtn, ...(busy ? S.disabled : null) }}
                 title="Tải file Excel về máy"
               >
-                {busy ? 'Đang xuất…' : '⬇ Tải Excel'}
+                {busy ? 'Đang xuất…' : <IconLabel icon="download" size={15}>Tải Excel</IconLabel>}
               </button>
               {/* Kiểm tra riêng với PDF: có máy nhận PDF mà không nhận .xlsx. */}
               {canShareXlsxFiles() && (
@@ -911,7 +942,7 @@ export const QuotationPanel: React.FC<{
                   style={{ ...S.secondaryBtn, ...(busy ? S.disabled : null) }}
                   title="Mở bảng chia sẻ: Zalo, Messenger, Lưu vào Tệp…"
                 >
-                  📤 Chia sẻ Excel
+                  <IconLabel icon="share" size={15}>Chia sẻ Excel</IconLabel>
                 </button>
               )}
             </>
@@ -924,7 +955,7 @@ export const QuotationPanel: React.FC<{
               style={{ ...S.secondaryBtn, ...(busy ? S.disabled : null) }}
               title='Mở hộp in của trình duyệt, chọn "Lưu thành PDF"'
             >
-              {busy ? 'Đang xuất…' : '🖨 In'}
+              {busy ? 'Đang xuất…' : <IconLabel icon="printer" size={15}>In</IconLabel>}
             </button>
           )}
           <button onClick={onClose} style={S.secondaryBtn}>
@@ -996,9 +1027,10 @@ const NoteCell: React.FC<{ value: string; onChange: (v: string) => void }> = ({
       <button
         onClick={() => setMenu((open) => !open)}
         title="Chọn ghi chú hay dùng"
+        aria-label="Chọn ghi chú hay dùng"
         style={S.noteMenuBtn}
       >
-        ▾
+        <Icon name="chevronDown" size={14} />
       </button>
 
       {menu && (
@@ -1158,21 +1190,28 @@ const S: Record<string, React.CSSProperties> = {
     color: '#cbd5e1',
     border: '1px solid #334155',
     borderRadius: '4px',
-    padding: '3px 9px',
-    fontSize: '11px',
+    minHeight: '28px',
+    padding: '3px 10px',
+    fontSize: '12px',
     cursor: 'pointer',
     fontWeight: 500,
   },
   removeBtn: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '28px',
+    height: '28px',
     backgroundColor: 'transparent',
     color: '#f87171',
     border: 'none',
+    borderRadius: '4px',
     cursor: 'pointer',
-    fontSize: '12px',
-    padding: '2px 4px',
+    padding: 0,
   },
+  // #047857: chữ trắng 5.5:1 (màu cũ #10b981 chỉ 2.5:1).
   primaryBtn: {
-    backgroundColor: '#10b981',
+    backgroundColor: '#047857',
     color: '#ffffff',
     border: 'none',
     borderRadius: '4px',
@@ -1191,11 +1230,17 @@ const S: Record<string, React.CSSProperties> = {
     cursor: 'pointer',
   },
   close: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '32px',
+    height: '32px',
+    padding: 0,
     backgroundColor: 'transparent',
-    color: '#94a3b8',
+    color: '#cbd5e1',
     border: 'none',
+    borderRadius: '4px',
     cursor: 'pointer',
-    fontSize: '14px',
   },
   viewSwitch: {
     display: 'flex',
@@ -1231,11 +1276,13 @@ const S: Record<string, React.CSSProperties> = {
     color: '#94a3b8',
     border: '1px solid #334155',
     borderRadius: '4px',
-    width: '26px',
-    height: '26px',
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '30px',
+    height: '30px',
+    padding: 0,
     cursor: 'pointer',
-    fontSize: '13px',
-    lineHeight: 1,
   },
   menu: {
     position: 'absolute',

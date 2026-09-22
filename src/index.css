@@ -50,3 +50,102 @@ button, input, select, textarea { font-family: inherit; }
   .quote-footer > .span2 { grid-column: 1 / -1; }
   .quote-footer > .span2 > button { flex: 1; }
 }
+
+/* ===== Nút bấm: vùng chạm và vòng focus (docs/ui-dien-thoai.md mục 6) =====
+   Nút trong app được vẽ bằng style inline ở từng file, cỡ rất khác nhau (18–28px).
+   Thay vì sửa từng cái, đặt sàn chung ở đây: min-height/min-width thắng height/width
+   inline, nên nút nhỏ tự nở ra mà không phải đụng vào style riêng của nó. */
+
+/* Vòng focus khi dùng bàn phím (Tab) — chuột/ngón tay bấm thì không hiện. */
+:focus-visible {
+  outline: 2px solid #38bdf8;
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* Máy tính: sàn 24px (WCAG 2.5.8). */
+button, [role="button"], select {
+  min-height: 24px;
+}
+button:has(> svg:only-child), .icon-btn {
+  min-width: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+input[type="checkbox"] {
+  width: 15px;
+  height: 15px;
+  cursor: pointer;
+}
+/* Ô chọn màu bo: vuông, không để sàn chung kéo thành que dọc. */
+button.swatch { min-width: 22px; min-height: 22px; }
+
+/* Điện thoại: sàn 40px cao, nút chỉ có icon vuông 40×40. */
+/* !important vì nhiều nút tự đặt minHeight inline (26–34px), mà inline thắng CSS thường.
+   Đây chỉ là mức SÀN: không có nút nào tự đặt cao hơn 40px nên không nút nào bị thu lại. */
+@media (max-width: 768px) {
+  button, [role="button"], select {
+    min-height: 40px !important;
+  }
+  button:has(> svg:only-child), .icon-btn {
+    min-width: 40px !important;
+  }
+  input[type="checkbox"] {
+    width: 22px;
+    height: 22px;
+  }
+  /* Nút nằm trong hàng dày đặc (dãy số lượng, tab lọc lớp): cao 36px là đủ,
+     40px thì một hàng 11 nút chiếm nửa màn hình. */
+  .tap-dense button, .tap-dense [role="button"] { min-height: 36px !important; }
+  /* Nút thanh trên cùng và thanh dưới: 36px để hai thanh không ăn quá nhiều chỗ. */
+  .tap-bar button, .tap-bar [role="button"], .tap-bar select { min-height: 36px !important; }
+  .tap-bar button:has(> svg:only-child) { min-width: 36px !important; }
+  /* Ô chọn màu bo: vuông 32×32, không kéo cao thành que dọc. */
+  button.swatch { min-height: 32px !important; min-width: 32px !important; }
+}
+
+/* ===== Dòng hàng Báo giá dạng thẻ trên điện thoại =====
+   Bảng 9 cột cuộn ngang bóp cột Tên file còn ~30px. Trên điện thoại mỗi dòng thành
+   một thẻ: tên chiếm cả hàng, các ô khác xếp lưới 2 cột, nhãn cột hiện trên ô
+   (lấy từ data-label). Chỉ đổi CSS, JSX và ô nhập dùng chung với máy tính. */
+@media (max-width: 768px) {
+  .q-items, .q-items tbody { display: block; width: 100%; }
+  .q-items thead { display: none; }
+  .q-items tr {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px 10px;
+    position: relative;
+    padding: 10px 10px 12px;
+    margin-bottom: 10px;
+    border: 1px solid #2c313c;
+    border-radius: 8px;
+    background: #14161b;
+  }
+  .q-items td {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    padding: 0 !important;
+    border: none !important;
+    min-width: 0;
+    text-align: left !important;
+  }
+  .q-items td[data-label]::before {
+    content: attr(data-label);
+    font-size: 11px;
+    color: #94a3b8;
+  }
+  .q-items td.q-wide { grid-column: 1 / -1; padding-right: 44px !important; }
+  .q-items td.q-idx { display: none; }
+  .q-items td.q-del { position: absolute; top: 4px; right: 4px; }
+  .q-items td.q-empty { display: none; }
+  .q-items input, .q-items select, .q-items textarea { width: 100% !important; min-height: 36px; font-size: 14px !important; }
+}
+
+/* Hàng nút "Dòng hàng" của Báo giá trên điện thoại: tiêu đề chiếm cả hàng, nút đầy ô. */
+@media (max-width: 768px) {
+  .q-actions > span { grid-column: 1 / -1; }
+  .q-actions > div > button, .q-actions > button { width: 100%; justify-content: center; display: inline-flex; align-items: center; }
+}

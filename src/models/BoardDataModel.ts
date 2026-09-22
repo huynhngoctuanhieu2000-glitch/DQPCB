@@ -161,14 +161,33 @@ export const BoardDataModel = {
     commit()
   },
 
-  closeBoard: (id: string) => {
+  /** Đóng một bo. Trả lại bo vừa đóng và vị trí của nó để còn Hoàn tác. */
+  closeBoard: (id: string): { board: Board; index: number } | null => {
     const index = boards.findIndex((b) => b.id === id)
-    if (index === -1) return
+    if (index === -1) return null
+    const board = boards[index]
     boards = boards.filter((b) => b.id !== id)
     if (activeBoardId === id) {
       // Chuyển sang bo bên cạnh, ưu tiên bo phía trước.
       activeBoardId = (boards[index - 1] ?? boards[index] ?? null)?.id ?? null
     }
+    commit()
+    return { board, index }
+  },
+
+  /**
+   * Hoàn tác đóng bo: đặt lại đúng object cũ vào đúng chỗ và mở nó ra. Giữ nguyên id
+   * nên phần nhập giá (nhớ theo id) và cache dựng hình của bo đó quay về theo.
+   */
+  restoreBoards: (items: { board: Board; index: number }[]) => {
+    if (items.length === 0) return
+    const next = [...boards]
+    for (const { board, index } of [...items].sort((a, b) => a.index - b.index)) {
+      if (next.some((b) => b.id === board.id)) continue
+      next.splice(Math.min(index, next.length), 0, board)
+    }
+    boards = next
+    activeBoardId = items[items.length - 1].board.id
     commit()
   },
 
@@ -287,12 +306,14 @@ export const BoardDataModel = {
 
   setActiveLayer: (id: string | null) => updateActive((board) => ({ ...board, activeLayerId: id })),
 
-  /** Đóng hết, về màn hình trống. */
-  reset: () => {
+  /** Đóng hết, về màn hình trống. Trả lại danh sách vừa đóng để còn Hoàn tác. */
+  reset: (): { board: Board; index: number }[] => {
+    const closed = boards.map((board, index) => ({ board, index }))
     boards = []
     activeBoardId = null
     activeView = 'CAM'
     commit()
+    return closed
   },
 
   subscribe: (listener: Listener) => {
