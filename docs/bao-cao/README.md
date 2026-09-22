@@ -7,6 +7,7 @@ Mỗi báo cáo gắn với bộ file thật trong `D:\JobDatMach` để kiểm 
 |---|---|
 | **[Bao-cao-DQPCB-2026-09-22.docx](Bao-cao-DQPCB-2026-09-22.docx)** | **Bản Word đầy đủ**: báo cáo lỗi, tính năng hiện có, định dạng file, outline/drill/slot, vấn đề còn tồn. Dựng bằng `build-docx.js` |
 | [2026-09-22-bao-cao-loi.md](2026-09-22-bao-cao-loi.md) | Lỗi đợt 21–22/09/2026: lỗi · nguyên nhân · cách giải quyết · vấn đề còn tồn |
+| [2026-09-22-khao-sat-cong-thuc-gia-L2.md](2026-09-22-khao-sat-cong-thuc-gia-L2.md) | Khảo sát (không sửa code): công thức giá bo 2 lớp mới so với code, ví dụ Anh Toan / Do Huynh, bảng chênh lệch |
 | [dinh-dang-file.md](dinh-dang-file.md) | App đang đọc được những định dạng nào, nhận diện lớp theo thứ tự nào |
 | [outline-drill-slot.md](outline-drill-slot.md) | Quan trọng: cách đọc viền bo (outline), lỗ khoan (drill) và lỗ slot/rãnh |
 
