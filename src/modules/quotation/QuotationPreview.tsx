@@ -301,10 +301,13 @@ export const QuotationSheet: React.FC<{ q: Quotation }> = ({ q }) => {
           </tr>
           {/* Mỗi số tài khoản kèm mã QR của chính nó ngay bên dưới, xếp cạnh nhau —
               để một dòng dài rồi thả hai mã QR bên dưới thì không biết mã nào của
-              ngân hàng nào, mà dòng đó cũng bị ngắt lung tung. */}
-          <tr>
+              ngân hàng nào, mà dòng đó cũng bị ngắt lung tung.
+              Form VAT không có mã QR: hàng này khi đó chỉ cao một dòng chữ, chữ ký dính
+              sát ngay dưới "Khách hàng" — nên giữ chiều cao tối thiểu làm chỗ ký, và đặt
+              số tài khoản lên đầu hàng thay vì lơ lửng giữa khoảng trống đó. */}
+          <tr style={{ height: branding.qr.length > 0 ? undefined : '110px' }}>
             <td style={plain} />
-            <td style={plain}>
+            <td style={{ ...plain, verticalAlign: 'top' }}>
               <div style={{ display: 'flex', gap: '26px', alignItems: 'flex-start' }}>
                 {q.bank.lines.map((line, i) => (
                   <div

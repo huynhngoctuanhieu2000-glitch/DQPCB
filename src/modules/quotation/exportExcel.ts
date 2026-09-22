@@ -399,8 +399,9 @@ export const buildQuotationWorkbook = (q: Quotation): ExcelJS.Workbook => {
 
   // Chừa chỗ ký — dòng ký tên phải nằm dưới cả khối tài khoản, ngang mã QR
   // (khớp QuotationSheet: chữ ký nằm cùng hàng với mã, căn đáy).
-  const qrRows = branding.qr.length > 0 ? 7 : 0
-  const sigFoot = sigHead + Math.max(q.bank.lines.length, 2) + qrRows
+  // Không có mã QR (form VAT) thì vẫn chừa 4 dòng trống để ký, như bản xem trước.
+  const gapRows = branding.qr.length > 0 ? 7 : 4
+  const sigFoot = sigHead + Math.max(q.bank.lines.length, 2) + gapRows
   for (let r = sigHead + 1; r < sigFoot; r++) ws.getRow(r).height = 18
   ws.getRow(sigFoot).height = 20
   style(ws.getCell(sigFoot, 7), { text: '(Kí và ghi rõ họ tên)', size: 13, align: 'center' })
