@@ -292,7 +292,7 @@ const featureGroups = [
     'Danh sách lớp: bật/tắt từng lớp, All On / All Off, lọc Top Side / Bot Side (ở 2D/3D, Bot Side **nhìn từ dưới lên**, lật gương), **solo** 🎯 một lớp, đổi màu lớp ở CAM. Lớp đồng giữa bo 4/6 lớp hiện ở CAM/3D. Ở CAM **mọi lớp** (tài liệu, không rõ loại, paste) bật lên đều vẽ.',
     '**Chọn tay loại lớp**: bấm vào lớp → ô "Loại lớp" (đồng / mask / lụa / paste / Outline / Drill / tài liệu). App đọc lại cả bộ theo loại mới; dấu ✎ và nút ↺ Tự nhận.',
     '**7 màu bo kiểu JLC** (Xanh lá, Xanh dương, Đỏ, Đen, Tím, Vàng, Trắng); pad màu đồng trong lỗ mở mask; lỗ khoan trắng.',
-    'Zoom / kéo, nút **Fit**. Badge góc khung: **Viền** lấy từ file nào · **Khoan** file nào, bao nhiêu lỗ · **Load** thời gian mở thật (đọc + dựng lần đầu).',
+    'Zoom / kéo, nút **Fit**. Badge góc khung: **Viền** lấy từ file nào · **Khoan** file nào, bao nhiêu lỗ · **Mũi nhỏ nhất** (lỗ tròn + số lỗ, rãnh hẹp nhất) · **Ghép** có / có thể / không, bao nhiêu bo, nhận ra bằng cách nào · **Load** thời gian mở thật (đọc + dựng lần đầu).',
     'Hiển thị đúng: slot/lỗ chữ nhật, lỗ khoét trong viền, **rãnh phay vẽ một nét** (CAM hiện nét như file, 2D/3D khoét thủng), panel nhiều bo chung cạnh, rail, đường phay; lấp khe dải phủ đồng CAM350.',
   ]],
   ['2.3 Chụp ảnh 2 mặt', [
@@ -311,7 +311,7 @@ const featureGroups = [
     '**Sơ đồ tấm** vẽ đúng hình viền thật của bo lặp X × Y, rail xám, vạch V-cut / chấm mouse bite, ghi kích thước tấm.',
     'Số lượng: nhập **số PCB → ra số set**; nút **⇅** cho file khách đã ghép sẵn: nhập **số set → ra số PCB** (Gerber chính là tấm panel). Tiền luôn = số set × diện tích tấm.',
     'Nhắc nhở: cạnh bo **< 15 mm** phải ghép V-cut; ghép V-cut mà tấm có cạnh **< 70 mm** (không nhắc với mouse bite).',
-    '**Nhắc file nhiều bo ghép**: viền có từ 2 bo rời trở lên (bỏ rail, mảnh vụn, khung) → cảnh báo bảng tra chỉ cho bo lẻ, nút **Dùng: file ghép sẵn N bo/set** tự bật Ghép panel theo X × Y đọc được và quy số PCB ra số set; đã ghép mà số bo/set khác số bo trong viền cũng nhắc.',
+    '**Nhắc file nhiều bo ghép**: viền có từ 2 bo rời trở lên, hoặc cả bo lặp lại (panel chỉ ngăn bằng rãnh / V-cut, xem 4.4) → cảnh báo bảng tra chỉ cho bo lẻ, nút **Dùng: file ghép sẵn N bo/set** tự bật Ghép panel theo X × Y đọc được và quy số PCB ra số set; đã ghép mà số bo/set khác số bo trong viền cũng nhắc.',
   ]],
   ['2.6 Tính giá', [
     '**Bảng tra** nhà máy cho bo đơn lẻ ≤ 10 × 10 cm (bấm mốc số lượng); ngoài mốc → gợi ý mốc gần nhất và ô nhập tay thành tiền.',
@@ -442,6 +442,17 @@ children.push(T([
   ['Rãnh một nét trong lớp viền', 'Một nét thẳng = đường tâm dao', 'CAM vẽ đúng nét; 2D/3D khoét hình thuôn rộng bằng nét'],
 ], [30, 32, 38]))
 children.push(P('Lưu ý: rect hole Altium là rãnh phay bằng dao tròn (góc bo theo bán kính dao); toạ độ slot nằm SAU G00/G01 — mọi luật đọc số phải dò cả ở đó.'))
+children.push(H2('4.4 Nhận biết file ghép (6249b00)'))
+children.push(T([
+  ['Thứ tự', 'Dấu hiệu', 'Kết luận'],
+  ['1', '**Viền rời**: lớp viền có ≥ 2 bo tách nhau (bỏ rail, mảnh vụn, khung ngoài)', 'Có'],
+  ['2', '**Cả bo lặp lại** theo một bước cỡ một bo. Chấm bằng **chữ in lụa** (bo ghép lặp y hệt cả tên linh kiện; kênh giống nhau trong một bo thì tên mỗi kênh khác nhau), bo không có lụa thì bằng đồng. Bước ≥ 15% cạnh ngắn của tấm. Không dùng lỗ khoan (toạ độ lỗ có thể là đoán).', 'Khớp ≥ 90% → Có; 60–90% → Có thể'],
+  ['3', 'Tên file chứa "ghep", "panel", "array"…', 'Có thể'],
+  ['—', 'Không có dấu hiệu nào', 'Không'],
+], [10, 62, 28]))
+children.push(B('Kết quả: FRIWO 55807 Có — 8 bo (4×2); PHAONUOC Có — 8 bo (2×4); CHAT_BOT_1 Có — 4 bo, viền rời; CHAT_BOT_4 có thể — 3+ bo (bo thứ 4 xoay); ESP32_DR, AGVH7 không.'))
+children.push(B('400 bộ ngẫu nhiên trong corpus: 11 Có (8 viền rời, 3 bo lặp lại), 4 Có thể (đa số có lẽ là bo lẻ nhiều kênh). Bản đầu nhận nhầm bo có bước 10.2 / 15.2 mm (hàng chân linh kiện) — đã loại nhờ chấm bằng lụa. Mỗi bo dò tối đa ~0.3 s.'))
+children.push(B('**Mũi khoan nhỏ nhất**: lỗ tròn nhỏ nhất + số lỗ cỡ đó; rãnh hẹp nhất = 2 × bán kính cung đầu rãnh.'))
 children.push(breakPage())
 
 // ═══ 5. VẤN ĐỀ CÒN TỒN & CHECKLIST ═══
@@ -450,7 +461,7 @@ children.push(H2('5.1 Vấn đề còn tồn'))
 for (const s of [
   '**Bộ OrCAD chỉ có .DRD** (không có thruhole.tap): vẫn vẽ bản vẽ khoan làm lỗ — xem có file khoan thật không, hoặc chọn tay. (.DRD cạnh .tap đã sửa ở lỗi 14.)',
   '**Tam giác chéo sai** ở một số panel (Rail.zip, GWLRWEX-CELLULAR, ph_analyzer…): đa giác viền tô lệch. Bản cũ cũng bị.',
-  '**Bo ghép chỉ ngăn bằng rãnh / V-cut** (CHAT_BOT_4, FRIWO 55807) vẫn đếm là 1 bo nên chưa có nhắc "nhiều bo ghép" (706ea9f đã nhắc cho file nhiều viền bo rời như CHAT_BOT_1).',
+  '**Nhận biết file ghép mức "Có thể"** (khớp 60–90%): app không tự phân biệt bo ghép có một bo xoay (CHAT_BOT_4) với bo lẻ có nhiều kênh giống nhau (DAQ 6AI…) — người lập tự xem. (Panel chỉ ngăn bằng rãnh / V-cut như FRIWO đã nhận được từ 6249b00.)',
   '**V-cut / mouse bite chưa vào giá**: chỉ nhắc nhở; công thức chưa có phí V-cut.',
   '**Bo 6 lớp chưa có đơn giá** (phương án L6).',
   '**DFM chưa có**: đồng / lỗ khoan ngoài hoặc quá sát viền (như J11 ESP32_DR), trace/space, annular ring, đo kích thước.',
@@ -458,7 +469,7 @@ for (const s of [
 children.push(H2('5.2 Checklist khi sửa luật đọc file'))
 for (const s of [
   'Viết test trong test/ dựng lại đúng dáng file thật gây lỗi.',
-  'Chạy **npm run build** (tsc -b chặt hơn tsc --noEmit — lỗi build Vercel ở f12b339 là do chỉ chạy lệnh nhẹ) và npx vitest run (146 test).',
+  'Chạy **npm run build** (tsc -b chặt hơn tsc --noEmit — lỗi build Vercel ở f12b339 là do chỉ chạy lệnh nhẹ) và npx vitest run (150 test).',
   'Hồi quy corpus D:\\JobDatMach: so bản cũ/mới — kích thước bo, số vòng + thân/lỗ/nét, số lỗ và tỉ lệ lỗ nằm trong bo; xem hình cũ/mới các bộ bị đổi trước khi chốt.',
   'Mở lại bộ mẫu: FC_F405RGT6_Wing (KiCad 6 lớp), BOAD NUT NHAN (EasyEDA), AGVH7 (Altium inch, slot), Ceiling / Dynamic Master (panel inch), Slaver_Ceiling bản lẻ (GKO + GM1), ESP32_DR (Altium metric 4:3, RectHoles), CHAT_BOT_1 (panel 4 bo), DA82 (OrCAD Layout, thruhole.tap + .DRD), FRIWO 55807 (Pulsonix, khoan INCH không khai format), PCB_doline (Altium, khoan lệch gốc), 5395_1 (EasyEDA, NPTH phải giữ nguyên), CHAT_BOT_4 (rãnh một nét), PHAONUOC (đường vẽ 0.8 mm không thành rãnh), 3W NHUA XANH (CAM350, RAR).',
 ]) children.push(B(s))

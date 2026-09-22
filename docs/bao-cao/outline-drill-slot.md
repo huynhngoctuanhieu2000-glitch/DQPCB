@@ -107,6 +107,22 @@ Lưu ý:
 
 ---
 
+## E. Nhận biết file ghép — `panelDetect.ts` (22/09, `6249b00`)
+
+| Thứ tự | Dấu hiệu | Kết luận |
+|---|---|---|
+| 1 | **Viền rời**: lớp viền có ≥ 2 bo tách nhau (bỏ rail, mảnh vụn, khung ngoài) | Có |
+| 2 | **Cả bo lặp lại** theo một bước cỡ một bo. Chấm bằng **chữ in lụa** (bo ghép lặp y hệt cả tên linh kiện; kênh giống nhau trong một bo thì tên mỗi kênh khác nhau), bo không có lụa thì bằng đồng. Bước ≥ 15% cạnh ngắn của tấm (loại hàng chân linh kiện bội 2.54 mm). Không dùng lỗ khoan (file khoan không khai định dạng thì toạ độ lỗ là đoán) | Khớp ≥ 90% → Có · 60–90% → Có thể |
+| 3 | Tên file chứa "ghep", "panel", "array"… | Có thể |
+| — | Không có dấu hiệu nào | Không |
+
+- Số bo theo mỗi hướng = độ trải của các điểm khớp / bước + 1, không quá (bề ngang tấm / bước) + 1.
+- Hướng thứ hai tìm riêng trong các bước không song song với hướng thứ nhất (panel dài theo
+  một chiều thì bước chiều đó chiếm hết phiếu — FRIWO 4×2).
+- Mũi khoan nhỏ nhất (`minDrill`): lỗ tròn nhỏ nhất + số lỗ; rãnh hẹp nhất = 2 × bán kính cung.
+
+---
+
 ## D. Checklist khi sửa luật đọc file
 
 1. Viết test trong `test/` dựng lại đúng dáng file thật gây lỗi.

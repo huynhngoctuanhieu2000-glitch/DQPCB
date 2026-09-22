@@ -287,11 +287,40 @@ tam giác chéo sai; Rosario: rãnh móc câu nhất quán là lỗ).
    xem có file khoan thật không, hoặc chọn tay. (`.DRD` cạnh `.tap` đã sửa ở lỗi 14.)
 2. **Tam giác chéo sai** ở một số panel (Rail.zip, GWLRWEX-CELLULAR, ph_analyzer…): đa giác
    viền tô lệch. Bản cũ cũng bị y hệt.
-3. **Bo ghép chỉ ngăn bằng rãnh / V-cut** (CHAT_BOT_4, FRIWO 55807) vẫn đếm là 1 bo nên không có nhắc nhở "nhiều
-   bo ghép" (`706ea9f` đã nhắc cho file có nhiều viền bo rời như CHAT_BOT_1).
+3. **Nhận biết file ghép mức "Có thể"** (khớp 60–90%): app không tự phân biệt bo ghép có một
+   bo xoay (CHAT_BOT_4) với bo lẻ có nhiều kênh giống nhau (DAQ 6AI…) — người lập tự xem.
+   (Panel chỉ ngăn bằng rãnh / V-cut như FRIWO đã nhận được từ `6249b00`.)
 4. **V-cut / mouse bite chưa vào giá:** chỉ nhắc nhở (cạnh < 15 mm, tấm V-cut < 70 mm), công
    thức chưa có phí V-cut.
 5. **DFM chưa có:** đồng/lỗ khoan ngoài hoặc quá sát viền (như J11 của ESP32_DR) chưa tự báo.
+
+## Tính năng mới (22/09): nhận biết file ghép, mũi khoan nhỏ nhất — `6249b00`
+
+Khung thông báo ở góc khung xem thêm hai dòng:
+
+- **Mũi nhỏ nhất:** lỗ tròn nhỏ nhất trong các file khoan và số lỗ cỡ đó; có rãnh phay thì
+  ghi thêm rãnh hẹp nhất (bề rộng = 2 × bán kính cung đầu rãnh). Vd CHAT_BOT_4
+  "Ø0.40 mm (16 lỗ) · rãnh 1.10 mm", FRIWO "Ø0.25 mm (2104 lỗ)".
+- **Ghép:** có / có thể / không, bao nhiêu bo, nhận ra bằng cách nào (rê chuột xem giải thích).
+
+Cách nhận biết (`panelDetect.ts`, xét lần lượt, gặp dấu hiệu nào trước thì dừng):
+
+| Thứ tự | Dấu hiệu | Kết luận |
+|---|---|---|
+| 1 | **Viền rời**: lớp viền có ≥ 2 bo tách nhau (bỏ rail, mảnh vụn, khung ngoài) | Có |
+| 2 | **Cả bo lặp lại** theo một bước cỡ một bo. Chấm bằng **chữ in lụa** (bo ghép lặp y hệt cả tên linh kiện; kênh giống nhau trong một bo thì tên mỗi kênh khác nhau), bo không có lụa thì bằng đồng. Bước ≥ 15% cạnh ngắn của tấm (loại hàng chân linh kiện bội 2.54 mm). Không dùng lỗ khoan (file khoan không khai định dạng thì toạ độ lỗ là đoán) | Khớp ≥ 90% → Có · 60–90% → Có thể |
+| 3 | Tên file chứa "ghep", "panel", "array"… | Có thể |
+| — | Không có dấu hiệu nào | Không |
+
+Kết quả: FRIWO 55807 "Có — 8 bo (4×2)" · PHAONUOC "Có — 8 bo (2×4)" · CHAT_BOT_1 "Có — 4 bo,
+viền rời" · CHAT_BOT_4 "có thể — 3+ bo giống nhau" (bo thứ 4 xoay) · ESP32_DR, AGVH7 "không".
+400 bộ ngẫu nhiên trong corpus: 11 "Có" (8 viền rời, 3 bo lặp lại: arduinanoto 2×5, Terminal
+6×3, PCB_BUTTON 4×4), 4 "Có thể" (DAQ 6AI, 7seg, NICHIA, Pan 8 — đa số có lẽ là bo lẻ nhiều
+kênh). Bản đầu nhận nhầm các bo có bước 10.2 / 15.2 mm (hàng chân linh kiện) — đã loại hết
+nhờ chấm bằng lụa. Mỗi bo dò tối đa ~0.3 s, tính một lần.
+
+Thẻ giá dùng chung cách dò: "Có" → nhắc kèm nút "file ghép sẵn N bo/set" (giờ có cả FRIWO);
+"Có thể" → chỉ nhắc nhẹ, không tự điền.
 
 ## Đã chốt: báo giá ghép panel ghi theo SỐ SET (22/09)
 
@@ -306,7 +335,7 @@ tưởng mất logo. Tải lại tab là hết. Từ nay kiểm clipboard/ảnh 
 
 ## Cách kiểm lại
 
-- `npx vitest run test/*.test.ts` — 146 test.
+- `npx vitest run test/*.test.ts` — 150 test.
 - `npm run build` — build thật (`tsc -b` chặt hơn `tsc --noEmit`; lỗi build Vercel ở
   `f12b339` là do chỉ chạy lệnh nhẹ).
 - Hồi quy corpus: script trong `test/_scratch/` (không commit) so bản cũ/mới trên
