@@ -360,31 +360,23 @@ export const QuotationPanel: React.FC<{
           </button>
         </div>
 
-        <div style={S.tabs}>
-          {([
-            { key: 'form', label: '✎ Nhập liệu' },
-            { key: 'preview', label: '👁 Xem trước' },
-          ] as const).map((t) => (
-            <button
-              key={t.key}
-              onClick={() => setTab(t.key)}
-              style={{ ...S.tab, ...(tab === t.key ? S.tabOn : null) }}
-            >
-              {t.label}
-            </button>
-          ))}
-          {!isMobile && (
-            <span style={S.tabHint}>
-              Xem trước dựng đúng bố cục sẽ in ra PDF.
-            </span>
-          )}
-        </div>
-
         {/* Tab xem trước: ZoomBox tự cuộn và zoom, nên thân hộp không cuộn và bỏ lề
             trên điện thoại để trang xem trước dùng hết bề ngang. */}
         <div style={tab === 'preview' ? { ...S.bodyPreview, padding: isMobile ? 0 : '12px' } : S.body}>
           {tab === 'preview' ? (
-            <QuotationPreview q={q} />
+            <>
+              <div style={S.previewBar}>
+                <span>👁 Xem trước{isMobile ? '' : ' — dựng đúng bố cục sẽ in ra PDF'}</span>
+                <button
+                  onClick={() => setTab('form')}
+                  style={S.previewClose}
+                  title="Đóng xem trước, quay lại nhập liệu"
+                >
+                  ✕
+                </button>
+              </div>
+              <QuotationPreview q={q} />
+            </>
           ) : (
           <>
           {/* Thông tin khách */}
@@ -764,6 +756,22 @@ export const QuotationPanel: React.FC<{
 
         {/* Chân form */}
         <div style={S.footer}>
+          {/* Nhập liệu / Xem trước ở chân form, cạnh các nút xuất: mặc định là nhập
+              liệu, bấm Xem trước để kiểm lại trước khi tải — không phải kéo lên đầu hộp. */}
+          <div style={S.viewSwitch}>
+            {([
+              { key: 'form', label: '✎ Nhập liệu' },
+              { key: 'preview', label: '👁 Xem trước' },
+            ] as const).map((t) => (
+              <button
+                key={t.key}
+                onClick={() => setTab(t.key)}
+                style={{ ...S.viewBtn, ...(tab === t.key ? S.viewBtnOn : null) }}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
           {status && (
             <div
               style={{
@@ -1138,34 +1146,46 @@ const S: Record<string, React.CSSProperties> = {
     cursor: 'pointer',
     fontSize: '14px',
   },
-  tabs: {
+  viewSwitch: {
     display: 'flex',
-    alignItems: 'center',
-    gap: '4px',
-    padding: '8px 12px 0',
-    backgroundColor: '#181a20',
+    borderRadius: '4px',
+    overflow: 'hidden',
+    border: '1px solid #334155',
+    // Đẩy các nút xuất sang phải khi không có dòng trạng thái chen giữa.
+    marginRight: 'auto',
   },
-  tab: {
+  viewBtn: {
     backgroundColor: 'transparent',
     color: '#94a3b8',
-    // Viết dạng dài: S.tabOn chỉ đổi màu viền, trộn với `border` viết tắt thì
-    // React cảnh báo và màu viền nhấp nháy giữa các lần render.
-    borderWidth: '1px',
-    borderStyle: 'solid',
-    borderColor: 'transparent',
-    borderRadius: '4px 4px 0 0',
-    padding: '5px 14px',
+    border: 'none',
+    padding: '6px 12px',
     fontSize: '12px',
-    cursor: 'pointer',
     fontWeight: 500,
+    cursor: 'pointer',
   },
-  tabOn: {
-    backgroundColor: '#0f172a',
+  viewBtnOn: {
+    backgroundColor: '#1e293b',
     color: '#e2e8f0',
-    borderColor: '#334155',
-    borderBottomColor: '#0f172a',
   },
-  tabHint: { marginLeft: '8px', fontSize: '11px', color: '#475569' },
+  previewBar: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: '4px 4px 8px',
+    fontSize: '12px',
+    color: '#94a3b8',
+  },
+  previewClose: {
+    backgroundColor: 'transparent',
+    color: '#94a3b8',
+    border: '1px solid #334155',
+    borderRadius: '4px',
+    width: '26px',
+    height: '26px',
+    cursor: 'pointer',
+    fontSize: '13px',
+    lineHeight: 1,
+  },
   menu: {
     position: 'absolute',
     top: 'calc(100% + 4px)',
