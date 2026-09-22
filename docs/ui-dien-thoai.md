@@ -67,7 +67,18 @@ giao diện cũng phải đối chiếu danh sách này TRƯỚC khi commit.
 - Chữ trong tờ: font Times trên iPhone rộng hơn Times New Roman một chút — dòng
   nào không được gãy thì `whiteSpace: nowrap` và để cỡ dư ~10%.
 
-## 6. Cách kiểm tra (bắt buộc trước khi báo xong)
+## 6. Nút chạm được (đang nợ)
+
+Skill `ui-ux-pro-max` (`.claude/skills/`) khuyến nghị vùng chạm 44pt (iOS) /
+48dp (Android), tối thiểu 24px theo WCAG cho web, cách nhau ≥ 8px. Đo ngày
+22/9/2026: phần lớn nút nhỏ của app (📄, + Mở, tab Cài đặt, ✕ xoá dòng, nút hàng
+"Dòng hàng") cao 22–23px — **chưa đạt**. Nút mới trên điện thoại: cao ≥ 32px;
+khi sửa khu vực nào thì nâng luôn nút ở đó.
+
+Tra thêm quy tắc: `python .claude/skills/ui-ux-pro-max/scripts/search.py "<vấn đề>" --domain ux`
+(ví dụ `"touch target spacing"`, `"safe area notch"`, `"horizontal scroll mobile"`).
+
+## 7. Cách kiểm tra (bắt buộc trước khi báo xong)
 
 Trình duyệt trong app đặt khung 375×812 (Viewport → Mobile). Ảnh chụp của pane
 hay bị treo, nên **đo bằng DOM** thay vì nhìn:
@@ -86,6 +97,19 @@ JSON.stringify({
     .filter(b => b.getBoundingClientRect().height > 40).map(b => b.textContent),
 })
 ```
+
+Chạy ở **đủ 4 cỡ máy** (trình duyệt trong app: `resize_window` với width/height
+tuỳ ý; menu Viewport của pane chỉ có sẵn Mobile 375×812 và Tablet):
+
+| Máy | Kích thước |
+|-----|-----------|
+| Android nhỏ (Galaxy A) | 360 × 740 |
+| iPhone SE / mini | 375 × 667 |
+| iPhone 15 / 16 | 393 × 852 |
+| iPhone Pro Max | 430 × 932 |
+
+360px là cỡ hay vỡ nhất (lỗi đã gặp: nút "Mặc định" của Cài đặt gãy dòng ở 360
+nhưng lành ở 375).
 
 Checklist:
 1. `bodyOverflow[0] === bodyOverflow[1]` (không cuộn ngang).

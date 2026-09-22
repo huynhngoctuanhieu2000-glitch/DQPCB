@@ -865,6 +865,7 @@ const S: Record<string, React.CSSProperties> = {
   checkStripBad: { backgroundColor: '#2a1416', color: '#fca5a5', border: '1px solid #5b2326' },
   savedTag: { color: '#5eead4', fontSize: 11, marginRight: 'auto' },
   btnGhost: {
+    whiteSpace: 'nowrap',
     backgroundColor: '#1c2029',
     border: '1px solid #2c313c',
     borderRadius: 4,
@@ -874,6 +875,7 @@ const S: Record<string, React.CSSProperties> = {
     padding: '5px 12px',
   },
   btnPrimary: {
+    whiteSpace: 'nowrap',
     backgroundColor: '#0ea5e9',
     border: 'none',
     borderRadius: 4,
