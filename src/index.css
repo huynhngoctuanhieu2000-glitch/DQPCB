@@ -43,7 +43,7 @@ button, input, select, textarea { font-family: inherit; }
 
 /* Chân hộp Báo giá trên điện thoại: lưới 2 cột, nút nào cũng đầy ô; công tắc
    Nhập liệu/Xem trước và dòng trạng thái chiếm cả hàng. */
-@media (max-width: 768px) {
+@media (max-width: 1023.98px) {
   .quote-footer { display: grid !important; grid-template-columns: 1fr 1fr; justify-content: stretch; }
   .quote-footer > * { width: 100%; min-width: 0; margin: 0 !important; }
   .quote-footer > button { padding-left: 6px; padding-right: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -84,7 +84,7 @@ button.swatch { min-width: 22px; min-height: 22px; }
 /* Điện thoại: sàn 40px cao, nút chỉ có icon vuông 40×40. */
 /* !important vì nhiều nút tự đặt minHeight inline (26–34px), mà inline thắng CSS thường.
    Đây chỉ là mức SÀN: không có nút nào tự đặt cao hơn 40px nên không nút nào bị thu lại. */
-@media (max-width: 768px) {
+@media (max-width: 1023.98px) {
   button, [role="button"], select {
     min-height: 40px !important;
   }
@@ -113,7 +113,7 @@ button.swatch { min-width: 22px; min-height: 22px; }
    Bảng 9 cột cuộn ngang bóp cột Tên file còn ~30px. Trên điện thoại mỗi dòng thành
    một thẻ: tên chiếm cả hàng, các ô khác xếp lưới 2 cột, nhãn cột hiện trên ô
    (lấy từ data-label). Chỉ đổi CSS, JSX và ô nhập dùng chung với máy tính. */
-@media (max-width: 768px) {
+@media (max-width: 1023.98px) {
   .q-items, .q-items tbody { display: block; width: 100%; }
   .q-items thead { display: none; }
   .q-items tr {
@@ -152,7 +152,7 @@ button.swatch { min-width: 22px; min-height: 22px; }
 }
 
 /* Hàng nút "Dòng hàng" của Báo giá trên điện thoại: tiêu đề chiếm cả hàng, nút đầy ô. */
-@media (max-width: 768px) {
+@media (max-width: 1023.98px) {
   .q-actions > span { grid-column: 1 / -1; }
   .q-actions > div > button, .q-actions > button { width: 100%; justify-content: center; display: inline-flex; align-items: center; }
 }

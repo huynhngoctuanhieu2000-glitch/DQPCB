@@ -1,4 +1,4 @@
-# Quy tắc làm giao diện điện thoại (≤ 768px)
+# Quy tắc làm giao diện điện thoại và máy tính bảng (< 1024px)
 
 Rút từ các lỗi đã gặp khi đưa DQPCB lên web/PWA (tháng 9/2026). Sửa gì trên
 giao diện cũng phải đối chiếu danh sách này TRƯỚC khi commit.
@@ -14,7 +14,9 @@ giao diện cũng phải đối chiếu danh sách này TRƯỚC khi commit.
   (Lỗi đã gặp: hộp Báo giá bị đồng hồ đè lên tiêu đề.)
 - Viewport: `maximum-scale=1, viewport-fit=cover`. Không dùng mẹo ép ô nhập 16px
   để chặn iOS tự phóng — nó làm lệch cỡ chữ cả app.
-- Điểm gãy: một nơi duy nhất `src/ui/useIsMobile.ts` (`max-width: 768px`). Không
+- Điểm gãy: `src/ui/useIsMobile.ts` (`max-width: 1023.98px`) và các `@media (max-width: 1023.98px)`
+  trong `index.css` — hai chỗ phải cùng số. Máy tính bảng (768–1023px) dùng giao diện
+  điện thoại: ở 820px giao diện ba cột chỉ còn 300px cho khung xem bo. Không
   tự viết `matchMedia` ở chỗ khác.
 
 ## 2. Bố cục
@@ -121,7 +123,7 @@ JSON.stringify({
 })
 ```
 
-Chạy ở **đủ 4 cỡ máy** (trình duyệt trong app: `resize_window` với width/height
+Chạy ở **đủ các cỡ dưới đây** (trình duyệt trong app: `resize_window` với width/height
 tuỳ ý; menu Viewport của pane chỉ có sẵn Mobile 375×812 và Tablet):
 
 | Máy | Kích thước |
@@ -130,6 +132,11 @@ tuỳ ý; menu Viewport của pane chỉ có sẵn Mobile 375×812 và Tablet):
 | iPhone SE / mini | 375 × 667 |
 | iPhone 15 / 16 | 393 × 852 |
 | iPhone Pro Max | 430 × 932 |
+| iPad (dọc) — giao diện gọn | 820 × 1180 |
+| Máy tính bảng ngang — ranh giới, vẫn gọn | 1023 × 768 |
+| Laptop nhỏ — ranh giới, giao diện 3 cột | 1024 × 768 |
+| Laptop | 1366 × 768 |
+| Màn Full HD | 1920 × 1080 |
 
 360px là cỡ hay vỡ nhất (lỗi đã gặp: nút "Mặc định" của Cài đặt gãy dòng ở 360
 nhưng lành ở 375).
