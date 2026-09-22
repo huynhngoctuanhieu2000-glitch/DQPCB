@@ -48,3 +48,10 @@ const QR_TECHCOMBANK: BrandingImage = { dataUrl: qrTechcombank, width: 427, heig
  */
 export const brandingFor = (hasVat: boolean): QuotationBranding =>
   hasVat ? { logo: BACH_VAN, qr: [] } : { logo: THIEN_LAM, qr: [QR_VIETCOMBANK, QR_TECHCOMBANK] }
+
+/** "data:image/png;base64,AAAA…" → phần đuôi file và phần base64 riêng, cho exceljs `addImage`. */
+export const splitDataUrl = (dataUrl: string): { base64: string; extension: 'png' | 'jpeg' } => {
+  const m = /^data:image\/(png|jpeg);base64,(.+)$/.exec(dataUrl)
+  if (!m) throw new Error('Ảnh không phải data URL PNG/JPEG hợp lệ')
+  return { extension: m[1] as 'png' | 'jpeg', base64: m[2] }
+}

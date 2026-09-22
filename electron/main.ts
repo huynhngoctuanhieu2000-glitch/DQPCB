@@ -64,14 +64,19 @@ app.on('activate', () => {
 // Lưu file báo giá: renderer dựng xong bytes rồi nhờ main mở hộp thoại "Save as".
 ipcMain.handle(
   'quotation:save',
-  async (_event, payload: { fileName: string; data: Uint8Array }) => {
+  async (_event, payload: { fileName: string; data: Uint8Array; defaultDir?: string }) => {
+    // Mặc định lưu ngay cạnh file gerber vừa nạp — thư mục việc của khách đó,
+    // giống hộp thoại lưu PDF.
+    const defaultPath = payload.defaultDir
+      ? path.join(payload.defaultDir, payload.fileName)
+      : payload.fileName
     const target = win
       ? await dialog.showSaveDialog(win, {
           title: 'Lưu báo giá',
-          defaultPath: payload.fileName,
+          defaultPath,
           filters: [{ name: 'Excel Workbook', extensions: ['xlsx'] }],
         })
-      : await dialog.showSaveDialog({ defaultPath: payload.fileName })
+      : await dialog.showSaveDialog({ defaultPath })
 
     if (target.canceled || !target.filePath) return { canceled: true }
     await fs.writeFile(target.filePath, Buffer.from(payload.data))

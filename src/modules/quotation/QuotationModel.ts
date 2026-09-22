@@ -120,6 +120,28 @@ export const formatDate = (d: Date): string => {
   return `${p(d.getDate())}/${p(d.getMonth() + 1)}/${d.getFullYear()}`
 }
 
+/**
+ * Chuẩn hoá mọi chuỗi trong object về Unicode NFC (đệ quy qua object/mảng).
+ *
+ * Gõ tiếng Việt trên điện thoại hay dán từ một số nguồn (Zalo, bàn phím iOS) có
+ * thể ra chữ ở dạng NFD — chữ cái và dấu là hai ký tự tổ hợp riêng thay vì một
+ * ký tự dựng sẵn. Trên màn hình trông vẫn đúng, nhưng html2canvas (dùng khi xuất
+ * PDF trên trình duyệt) vẽ dạng đó bị rớt mất dấu. Gọi hàm này ngay khi lưu vào
+ * state để mọi nơi đọc ra đều là NFC, không phải sửa lại lúc xuất.
+ */
+export const normalizeStrings = <T>(value: T): T => {
+  if (typeof value === 'string') return value.normalize('NFC') as unknown as T
+  if (Array.isArray(value)) return value.map(normalizeStrings) as unknown as T
+  if (value !== null && typeof value === 'object') {
+    const out = {} as Record<string, unknown>
+    for (const k of Object.keys(value as Record<string, unknown>)) {
+      out[k] = normalizeStrings((value as Record<string, unknown>)[k])
+    }
+    return out as T
+  }
+  return value
+}
+
 /** dd/MM/yyyy -> yyyy-MM-dd cho ô chọn ngày; không đúng dạng thì trả rỗng. */
 export const dateToInput = (s: string): string => {
   const m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(s.trim())

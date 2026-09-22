@@ -15,6 +15,7 @@ import {
   discountItem,
   dateToInput,
   dateFromInput,
+  normalizeStrings,
   insertItems,
   itemFromBoard,
   itemFromStencil,
@@ -26,10 +27,13 @@ import {
   subtotal,
   vatAmount,
   grandTotal,
+  suggestedFileName,
 } from './QuotationModel'
 import type { Quotation, QuotationItem } from './QuotationModel'
 import { exportQuotationToPdf, revealInFolder } from './exportPdf'
 import { canShareFiles, shareQuotationPdf } from './exportImage'
+import { exportQuotationToXlsx } from './exportExcel'
+import { saveXlsx } from './saveFile'
 import { computePrice, pickStencil, type PriceBasis, type StencilTier } from '../pricing/PricingModel'
 import { PricingStore } from '../pricing/PricingStore'
 import { QuotationPreview } from './QuotationPreview'
@@ -140,14 +144,17 @@ export const QuotationPanel: React.FC<{
   } | null>(null)
   const [busy, setBusy] = useState(false)
 
-  const patch = (change: Partial<Quotation>) => setQ((prev) => ({ ...prev, ...change }))
+  // normalizeStrings ở cả ba hàm dưới đây: mọi ô nhập tay (tên khách, ghi chú, tên
+  // file…) được chuẩn về NFC ngay khi lưu vào state — xem lý do ở normalizeStrings.
+  const patch = (change: Partial<Quotation>) =>
+    setQ((prev) => ({ ...prev, ...normalizeStrings(change) }))
   const patchCustomer = (change: Partial<Quotation['customer']>) =>
-    setQ((prev) => ({ ...prev, customer: { ...prev.customer, ...change } }))
+    setQ((prev) => ({ ...prev, customer: { ...prev.customer, ...normalizeStrings(change) } }))
 
   const patchItem = (id: string, change: Partial<QuotationItem>) =>
     setQ((prev) => ({
       ...prev,
-      items: prev.items.map((it) => (it.id === id ? { ...it, ...change } : it)),
+      items: prev.items.map((it) => (it.id === id ? { ...it, ...normalizeStrings(change) } : it)),
     }))
 
   const removeItem = (id: string) =>
@@ -277,6 +284,30 @@ export const QuotationPanel: React.FC<{
         setStatus({
           kind: 'ok',
           text: res.filePath ? `Đã lưu: ${res.filePath}` : 'Đã xuất xong.',
+          filePath: res.filePath,
+        })
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      setStatus({ kind: 'err', text: `Xuất thất bại: ${message}` })
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const handleExportExcel = async () => {
+    setBusy(true)
+    setStatus(null)
+    try {
+      const bytes = await exportQuotationToXlsx(q)
+      // Lưu mặc định ngay cạnh file gerber vừa nạp, như PDF.
+      const res = await saveXlsx(bytes, suggestedFileName(q), board.sourceDir)
+      if (res.canceled) {
+        setStatus(null)
+      } else {
+        setStatus({
+          kind: 'ok',
+          text: res.filePath ? `Đã lưu: ${res.filePath}` : 'Đã tải Excel về máy.',
           filePath: res.filePath,
         })
       }
@@ -776,6 +807,21 @@ export const QuotationPanel: React.FC<{
             }
           >
             {busy ? 'Đang xuất…' : window.ipcRenderer ? '⬇ Xuất PDF' : '🖨 In'}
+          </button>
+          {/* Bản có thể sửa lại — PDF mới là bản gửi khách, Excel để chỉnh tay khi cần. */}
+          <button
+            onClick={handleExportExcel}
+            disabled={busy}
+            style={{ ...S.secondaryBtn, ...(busy ? S.disabled : null) }}
+            title={
+              window.ipcRenderer
+                ? board.sourceDir
+                  ? `Lưu vào ${board.sourceDir}`
+                  : 'Chọn chỗ lưu ở hộp thoại'
+                : 'Tải file Excel về máy'
+            }
+          >
+            {busy ? 'Đang xuất…' : '⬇ Xuất Excel'}
           </button>
         </div>
       </div>
