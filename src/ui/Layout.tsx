@@ -639,6 +639,26 @@ export const Layout: React.FC = () => {
                 </div>
               )
             })}
+            {/* Mở thêm bo ngay cạnh dãy tab, khỏi phải lên menu File. */}
+            <button
+              onClick={() => openPicker(false)}
+              title="Mở thêm file Gerber (ZIP, RAR hoặc file lẻ)"
+              style={{
+                flexShrink: 0,
+                width: 24,
+                height: 24,
+                padding: 0,
+                borderRadius: '4px',
+                border: '1px dashed #475569',
+                backgroundColor: 'transparent',
+                color: '#94a3b8',
+                fontSize: '15px',
+                lineHeight: 1,
+                cursor: 'pointer',
+              }}
+            >
+              +
+            </button>
           </div>
         )}
 
