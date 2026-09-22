@@ -54,8 +54,12 @@ const parseDigits = (raw: string): number | null => {
   return s === '' ? null : Number(s)
 }
 
-/** Cạnh nào của tấm panel có rail. */
-type RailSides = 'tb' | 'lr' | 'all'
+/** Kiểu rail của tấm panel: không rail / trên + dưới / trái + phải / cả 4 cạnh. */
+type RailSides = 'none' | 'tb' | 'lr' | 'all'
+/** Bề rộng rail từng cạnh, mm. */
+interface RailEdges { t: number; b: number; l: number; r: number }
+const RAIL_EDGES: Record<RailSides, (keyof RailEdges)[]> = { none: [], tb: ['t', 'b'], lr: ['l', 'r'], all: ['t', 'b', 'l', 'r'] }
+const RAIL_EDGE_LABEL: Record<keyof RailEdges, string> = { t: 'Trên', b: 'Dưới', l: 'Trái', r: 'Phải' }
 
 /** Những gì người lập đã nhập trên thẻ cho một bo. */
 interface CardInputs {
@@ -69,8 +73,8 @@ interface CardInputs {
   mode: PriceMode | null
   panelX: number
   panelY: number
-  railMm: number
   railSides: RailSides
+  rail: RailEdges
   extraFeeCny: number
   forceFormula: boolean
   manualAmount: number | null
@@ -122,15 +126,36 @@ export const PricingCard: React.FC<{
   const [panelX, setPanelX] = useState(1)
   const [panelY, setPanelY] = useState(1)
   /**
-   * Rail: nhập BỀ RỘNG MỖI BÊN (vd 5 mm) và chọn cạnh nào có rail. Thói quen cũ bên sheet
-   * là gõ 10 mà hiểu là rail 5 mm hai bên — app cộng hai bên khi tính kích thước tấm, còn
-   * ghi chú báo giá ghi đúng "Rail 5mm".
+   * Rail: chọn KIỂU trước (dropdown), rồi hiện ô cho đúng các cạnh đó, điền sẵn bằng nhau
+   * theo rail mặc định trong cấu hình giá (5 mm — Cài đặt → Công thức tính tiền), sửa tay
+   * từng cạnh được. Thói quen cũ bên sheet gõ 10 mà hiểu là rail 5 mm hai bên — giờ nhập
+   * đúng bề rộng MỖI cạnh; kích thước tấm cộng đủ các cạnh.
    */
-  const [railMm, setRailMm] = useState(0)
-  const [railSides, setRailSides] = useState<RailSides>('tb')
+  const [railSides, setRailSides] = useState<RailSides>('none')
+  const [rail, setRail] = useState<RailEdges>({ t: 0, b: 0, l: 0, r: 0 })
+  /** Đổi kiểu rail: cạnh mới hiện ra mà chưa có số thì điền rail mặc định. */
+  const pickRailSides = (sides: RailSides) => {
+    setRailSides(sides)
+    const def = PricingStore.getConfig().panel?.defaultRailMm ?? 5
+    setRail((prev) => {
+      const next = { ...prev }
+      for (const e of RAIL_EDGES[sides]) if (!(next[e] > 0)) next[e] = def
+      return next
+    })
+  }
+  const edgeOn = (e: keyof RailEdges) => RAIL_EDGES[railSides].includes(e)
+  const railMm = (e: keyof RailEdges) => (edgeOn(e) ? Math.max(0, rail[e]) : 0)
   // Tổng rail cộng vào mỗi chiều của tấm (cm) — công thức giá và sơ đồ panel dùng số này.
-  const railX = railMm > 0 && railSides !== 'tb' ? (2 * railMm) / 10 : 0
-  const railY = railMm > 0 && railSides !== 'lr' ? (2 * railMm) / 10 : 0
+  const railX = (railMm('l') + railMm('r')) / 10
+  const railY = (railMm('t') + railMm('b')) / 10
+  /** Chữ rail cho ghi chú: bằng nhau thì "5mm", lệch nhau thì ghi từng cạnh. */
+  const railText = (() => {
+    const edges = RAIL_EDGES[railSides].filter((e) => railMm(e) > 0)
+    if (!edges.length) return ''
+    const vals = edges.map((e) => +railMm(e).toFixed(1))
+    if (vals.every((v) => v === vals[0]) && edges.length === RAIL_EDGES[railSides].length) return `${vals[0]}mm`
+    return edges.map((e, i) => `${RAIL_EDGE_LABEL[e].toLowerCase()} ${vals[i]}mm`).join(' / ')
+  })()
   const [extraFeeCny, setExtraFeeCny] = useState(0)
   const [forceFormula, setForceFormula] = useState(false)
   const [advanced, setAdvanced] = useState(false)
@@ -170,7 +195,7 @@ export const PricingCard: React.FC<{
   if (board.activeBoardId !== seenBoardId) {
     if (seenBoardId) {
       cardMemory.set(seenBoardId, {
-        qty, panelOn, qtyFrom, setCount, panelKind, spec, specTouched, mode, panelX, panelY, railMm, railSides,
+        qty, panelOn, qtyFrom, setCount, panelKind, spec, specTouched, mode, panelX, panelY, railSides, rail,
         extraFeeCny, forceFormula, manualAmount, sizeOverride, stencilOn, stencilPick, stencilSide,
       })
     }
@@ -187,8 +212,8 @@ export const PricingCard: React.FC<{
       setMode(saved.mode)
       setPanelX(saved.panelX)
       setPanelY(saved.panelY)
-      setRailMm(saved.railMm)
       setRailSides(saved.railSides)
+      setRail(saved.rail)
       setExtraFeeCny(saved.extraFeeCny)
       setForceFormula(saved.forceFormula)
       setManualAmount(saved.manualAmount)
@@ -422,7 +447,7 @@ export const PricingCard: React.FC<{
   // Vd "Mạ vàng ENIG, Bo 0.8mm, Đồng 2oz, Panel 2*5 · 50 set · Rail 5mm".
   const autoNote = [
     ...specNoteParts(spec),
-    ...(panelOn ? [panelNote(panelX, panelY, orderQty, tiled && (railX || railY) ? railMm : 0)] : []),
+    ...(panelOn ? [panelNote(panelX, panelY, orderQty, tiled ? railText : '')] : []),
   ]
     .filter(Boolean)
     .join(', ')
@@ -572,37 +597,37 @@ export const PricingCard: React.FC<{
           {!fromSets && (
           <>
           <div style={S.row}>
-            <span style={S.label}>Rail mỗi bên</span>
-            <div style={S.sizeGroup}>
-              <input
-                style={S.sizeInput}
-                value={railMm || ''}
-                placeholder="0"
-                onChange={(e) => setRailMm(Math.max(0, parseNum(e.target.value) ?? 0))}
-              />
+            <span style={S.label}>Rail</span>
+            <select
+              style={{ ...S.select, maxWidth: 130 }}
+              value={railSides}
+              onChange={(e) => pickRailSides(e.target.value as RailSides)}
+            >
+              <option value="none">Không rail</option>
+              <option value="tb">Trên + Dưới</option>
+              <option value="lr">Trái + Phải</option>
+              <option value="all">4 cạnh</option>
+            </select>
+          </div>
+          {railSides !== 'none' && (
+            <div style={{ ...S.row, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+              {RAIL_EDGES[railSides].map((e) => (
+                <label key={e} style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: 11, color: '#94a3b8' }}>
+                  {RAIL_EDGE_LABEL[e]}
+                  <input
+                    style={S.sizeInput}
+                    value={rail[e] || ''}
+                    placeholder="0"
+                    onChange={(ev) => {
+                      const v = Math.max(0, parseNum(ev.target.value) ?? 0)
+                      setRail((prev) => ({ ...prev, [e]: v }))
+                    }}
+                  />
+                </label>
+              ))}
               <span style={S.unit}>mm</span>
             </div>
-          </div>
-          <div style={S.row}>
-            <span style={S.label}>Cạnh có rail</span>
-            <div style={S.kindGroup}>
-              {(
-                [
-                  ['tb', 'Trên + Dưới'],
-                  ['lr', 'Trái + Phải'],
-                  ['all', '4 cạnh'],
-                ] as const
-              ).map(([k, label]) => (
-                <button
-                  key={k}
-                  onClick={() => setRailSides(k)}
-                  style={{ ...S.chip, ...(railSides === k ? S.chipOn : null) }}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-          </div>
+          )}
           </>
           )}
           {size && !fromSets && (
@@ -613,6 +638,8 @@ export const PricingCard: React.FC<{
               rows={Math.max(1, panelY)}
               railX={railX * 10}
               railY={railY * 10}
+              railLeft={railMm('l')}
+              railTop={railMm('t')}
               kind={panelKind}
               shape={boardShape}
             />

@@ -22,20 +22,23 @@ export const PanelPreview: React.FC<{
   boardH: number
   cols: number
   rows: number
-  /** Tổng rail theo mỗi trục, mm — chia đều hai bên. */
+  /** Tổng rail theo mỗi trục, mm — chia đều hai bên nếu không cho rail cạnh trái/trên. */
   railX: number
   railY: number
+  /** Rail cạnh trái / cạnh trên (mm) khi hai bên không bằng nhau. */
+  railLeft?: number
+  railTop?: number
   kind: PanelKind
   shape?: BoardShape | null
-}> = ({ boardW, boardH, cols, rows, railX, railY, kind, shape }) => {
+}> = ({ boardW, boardH, cols, rows, railX, railY, railLeft, railTop, kind, shape }) => {
   const panelW = boardW * cols + railX
   const panelH = boardH * rows + railY
   const MAX = 170
   const k = MAX / Math.max(panelW, panelH)
   const W = panelW * k
   const H = panelH * k
-  const rx = (railX / 2) * k
-  const ry = (railY / 2) * k
+  const rx = (railLeft ?? railX / 2) * k
+  const ry = (railTop ?? railY / 2) * k
 
   // Hình bo gốc (mm, y lên) → toạ độ SVG trong ô của bo (y xuống), co giãn theo ô nếu
   // kích thước đang bị sửa tay khác Gerber.
@@ -99,7 +102,7 @@ export const PanelPreview: React.FC<{
         <g transform="translate(1,1)">
           {/* Nền tấm = phần rail/khung, màu xám cho tách khỏi bo */}
           <rect x={0} y={0} width={W} height={H} fill="#3f4a5a" stroke="#64748b" strokeWidth={1} />
-          <rect x={rx} y={ry} width={W - 2 * rx} height={H - 2 * ry} fill="#0f1a14" />
+          <rect x={rx} y={ry} width={boardW * cols * k} height={boardH * rows * k} fill="#0f1a14" />
           {boards}
           {cuts}
         </g>

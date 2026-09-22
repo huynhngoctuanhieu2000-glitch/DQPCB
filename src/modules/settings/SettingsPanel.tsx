@@ -279,6 +279,19 @@ export const SettingsPanel: React.FC<{ onClose: () => void }> = ({ onClose }) =>
             </div>
           </Section>
 
+          <Section
+            title="Ghép panel"
+            note="Rail mặc định điền sẵn vào mỗi cạnh khi chọn kiểu rail (Trên + Dưới, Trái + Phải, 4 cạnh) trên thẻ tính giá — vẫn sửa tay từng cạnh được."
+          >
+            <div style={S.rowWrap}>
+              <NumField
+                label="Rail mặc định mỗi cạnh (mm)"
+                value={cfg.panel.defaultRailMm}
+                onChange={(v) => edit((d) => void (d.panel.defaultRailMm = v))}
+              />
+            </div>
+          </Section>
+
           <Section title="Khối lượng & phí bo lớn">
             <div style={S.rowWrap}>
               <NumField

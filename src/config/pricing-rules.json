@@ -82,5 +82,9 @@
       { "frameW": 50, "frameH": 140, "areaW": 32, "areaH": 120, "priceVnd": 1350000, "weightKg": 7.5 },
       { "frameW": 50, "frameH": 150, "areaW": 32, "areaH": 130, "priceVnd": 1400000, "weightKg": 8 }
     ]
+  },
+  "panel": {
+    "note": "Ghép panel. defaultRailMm = bề rộng rail MỖI CẠNH điền sẵn khi chọn kiểu rail trên thẻ tính giá (vẫn sửa tay từng cạnh được). Sửa ở đây hoặc Cài đặt → Công thức tính tiền.",
+    "defaultRailMm": 5
   }
 }

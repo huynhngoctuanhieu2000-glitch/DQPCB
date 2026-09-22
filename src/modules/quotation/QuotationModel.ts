@@ -248,12 +248,14 @@ export const panelNote = (
   panelX = 1,
   panelY = 1,
   sets?: number | null,
-  railMm?: number,
+  /** Số mm (bằng nhau mọi cạnh), hoặc chữ sẵn như "5mm" / "trên 5mm / dưới 3mm". */
+  rail?: number | string,
 ): string | null => {
   if (panelX <= 1 && panelY <= 1) return null
   const parts = [`Panel ${panelX}*${panelY}`]
   if (sets) parts.push(`${sets} set`)
-  if (railMm && railMm > 0) parts.push(`Rail ${+railMm.toFixed(1)}mm`)
+  if (typeof rail === 'string' && rail) parts.push(`Rail ${rail}`)
+  else if (typeof rail === 'number' && rail > 0) parts.push(`Rail ${+rail.toFixed(1)}mm`)
   return parts.join(' · ')
 }
 

@@ -80,11 +80,19 @@ export interface StencilConfig {
   tiers: StencilTier[]
 }
 
+/** Ghép panel. */
+export interface PanelConfig {
+  note?: string
+  /** Bề rộng rail MỖI CẠNH (mm) điền sẵn khi chọn kiểu rail trên thẻ tính giá. */
+  defaultRailMm: number
+}
+
 export interface PricingConfig {
   table: TableConfig
   formula: FormulaConfig
   options: OptionConfig[]
   stencil: StencilConfig
+  panel: PanelConfig
 }
 
 /** Cấu hình gốc đọc từ JSON. PricingStore phủ chỉnh sửa của người dùng lên trên. */
