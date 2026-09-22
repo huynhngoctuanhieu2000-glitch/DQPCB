@@ -714,11 +714,16 @@ export const QuotationPanel: React.FC<{
                       />
                     </td>
                     <td data-label="Số lượng" style={S.td}>
-                      <NumberInput
-                        style={{ ...S.cellInput, width: '60px', textAlign: 'right' }}
-                        value={it.quantity}
-                        onChange={(v) => changeQuantity(it, v)}
-                      />
+                      {/* Gõ tay ở ô số, hoặc chọn nhanh một mốc bảng giá ở nút ▾ bên cạnh —
+                          chọn xong vẫn sửa tay tiếp được. Thành tiền tự tính lại như gõ tay. */}
+                      <div style={{ display: 'flex', gap: '4px', alignItems: 'stretch' }}>
+                        <NumberInput
+                          style={{ ...S.cellInput, width: '60px', textAlign: 'right' }}
+                          value={it.quantity}
+                          onChange={(v) => changeQuantity(it, v)}
+                        />
+                        <QtyPicker it={it} tiers={pricingCfg.table.tiers} onPick={(n) => changeQuantity(it, n)} />
+                      </div>
                     </td>
                     <td data-label="Thành tiền" style={S.td}>
                       <NumberInput
@@ -968,6 +973,52 @@ export const QuotationPanel: React.FC<{
 }
 
 /**
+ * Nút ▾ cạnh ô Số lượng của dòng hàng: danh sách mốc số lượng của bảng giá nhà máy.
+ * Dòng có cơ sở tính giá thì mỗi mốc kèm luôn thành tiền, để so nhanh trước khi chọn.
+ * Bo ghép panel: mốc bảng giá tính theo SET, còn cột SL là số PCB → nhân số bo/set.
+ * Dòng stencil không có mốc (giá theo cái) nên không hiện nút.
+ */
+const QtyPicker: React.FC<{
+  it: QuotationItem
+  tiers: { qty: number; priceVnd: number }[]
+  onPick: (quantity: number) => void
+}> = ({ it, tiers, onPick }) => {
+  if (it.stencil || tiers.length === 0) return null
+  const perSet = Math.max(1, it.pcsPerSet ?? 1)
+  const priceOf = (sets: number): string => {
+    if (!it.priceBasis) return ''
+    try {
+      const r = computePrice({ ...it.priceBasis, qty: sets }, PricingStore.getConfig())
+      return r.kind === 'off-table' ? '' : ` — ${money(r.priceVnd)} đ`
+    } catch {
+      return ''
+    }
+  }
+  return (
+    <select
+      className="q-qty-pick"
+      aria-label="Chọn số lượng theo mốc bảng giá"
+      title="Chọn nhanh mốc số lượng — chọn xong vẫn sửa tay ở ô bên trái"
+      value=""
+      onChange={(e) => e.target.value && onPick(Number(e.target.value))}
+      style={S.qtyPick}
+    >
+      <option value="">▾</option>
+      {tiers.map((t) => {
+        const pcs = t.qty * perSet
+        return (
+          <option key={t.qty} value={pcs}>
+            {pcs}
+            {perSet > 1 ? ` pcs (${t.qty} set)` : ''}
+            {priceOf(t.qty)}
+          </option>
+        )
+      })}
+    </select>
+  )
+}
+
+/**
  * Ô GHI CHÚ: bấm vào thì nở ra nhiều dòng để gõ ghi chú dài, và có sẵn danh sách
  * ghi chú hay dùng để chọn nhanh (sửa trong quotation-defaults.json).
  * Xuống dòng ở đây thành xuống dòng thật trong ô Excel — ô đó đã bật wrap.
@@ -1195,6 +1246,23 @@ const S: Record<string, React.CSSProperties> = {
     fontSize: '12px',
     cursor: 'pointer',
     fontWeight: 500,
+  },
+  // Chỉ hiện dấu ▾; danh sách mở ra mới có chữ. Tự vẽ mũi tên (appearance none) để
+  // máy nào cũng cùng một kiểu, rộng vừa ngón tay.
+  qtyPick: {
+    appearance: 'none',
+    WebkitAppearance: 'none',
+    width: '28px',
+    flexShrink: 0,
+    padding: 0,
+    textAlign: 'center',
+    textAlignLast: 'center',
+    backgroundColor: '#1e293b',
+    color: '#cbd5e1',
+    border: '1px solid #334155',
+    borderRadius: '3px',
+    fontSize: '13px',
+    cursor: 'pointer',
   },
   removeBtn: {
     display: 'inline-flex',

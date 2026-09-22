@@ -95,6 +95,10 @@ button.swatch { min-width: 22px; min-height: 22px; }
     width: 22px;
     height: 22px;
   }
+  /* Ô gõ chữ/số: cao 36px, ngang hàng với nút và ô chọn bên cạnh. */
+  input:not([type="checkbox"]):not([type="radio"]):not([type="color"]):not([type="file"]) {
+    min-height: 36px !important;
+  }
   /* Nút nằm trong hàng dày đặc (dãy số lượng, tab lọc lớp): cao 36px là đủ,
      40px thì một hàng 11 nút chiếm nửa màn hình. */
   .tap-dense button, .tap-dense [role="button"] { min-height: 36px !important; }
@@ -142,6 +146,9 @@ button.swatch { min-width: 22px; min-height: 22px; }
   .q-items td.q-del { position: absolute; top: 4px; right: 4px; }
   .q-items td.q-empty { display: none; }
   .q-items input, .q-items select, .q-items textarea { width: 100% !important; min-height: 36px; font-size: 14px !important; }
+  /* Nút ▾ chọn mốc số lượng nằm cạnh ô số: giữ vuông, không kéo đầy hàng như ô khác. */
+  .q-items select.q-qty-pick { width: 40px !important; flex: 0 0 40px; }
+  .q-items td > div > input { flex: 1; min-width: 0; }
 }
 
 /* Hàng nút "Dòng hàng" của Báo giá trên điện thoại: tiêu đề chiếm cả hàng, nút đầy ô. */
