@@ -39,17 +39,10 @@ import { computePrice, pickStencil, type PriceBasis, type StencilTier } from '..
 import { PricingStore } from '../pricing/PricingStore'
 import { QuotationPreview } from './QuotationPreview'
 import { useIsMobile } from '../../ui/useIsMobile'
+import { NumberInput } from '../../ui/NumberInput'
 
 const money = (n: number) => n.toLocaleString('vi-VN')
 
-/**
- * Ô số lượng / thành tiền để người lập gõ tay: bỏ hết ký tự không phải chữ số
- * (kể cả dấu phân cách nghìn tự chèn) rồi mới đọc ra số. Xoá trắng = chưa nhập.
- */
-const parseDigits = (raw: string): number | null => {
-  const digits = raw.replace(/\D/g, '')
-  return digits === '' ? null : Number(digits)
-}
 
 /**
  * Giá đã tính bên thẻ tính giá cho một bo. Gắn với id bo: kéo nhiều bo vào báo giá
@@ -601,15 +594,12 @@ export const QuotationPanel: React.FC<{
                         />
                       </td>
                       <td style={S.td}>
-                        <input
+                        <NumberInput
                           style={{ ...S.cellInput, width: '112px', textAlign: 'right', color: '#f87171' }}
-                          inputMode="numeric"
                           placeholder="Số tiền giảm"
-                          value={it.amount === null ? '' : money(-it.amount)}
-                          onChange={(e) => {
-                            const v = parseDigits(e.target.value)
-                            patchItem(it.id, { amount: v === null ? null : -v })
-                          }}
+                          value={it.amount === null ? null : -it.amount}
+                          format={money}
+                          onChange={(v) => patchItem(it.id, { amount: v === null ? null : -v })}
                         />
                       </td>
                       <td style={S.td} />
@@ -684,20 +674,19 @@ export const QuotationPanel: React.FC<{
                       />
                     </td>
                     <td style={S.td}>
-                      <input
+                      <NumberInput
                         style={{ ...S.cellInput, width: '60px', textAlign: 'right' }}
-                        inputMode="numeric"
-                        value={it.quantity ?? ''}
-                        onChange={(e) => changeQuantity(it, parseDigits(e.target.value))}
+                        value={it.quantity}
+                        onChange={(v) => changeQuantity(it, v)}
                       />
                     </td>
                     <td style={S.td}>
-                      <input
+                      <NumberInput
                         style={{ ...S.cellInput, width: '112px', textAlign: 'right' }}
-                        inputMode="numeric"
                         placeholder="0"
-                        value={it.amount === null ? '' : money(it.amount)}
-                        onChange={(e) => patchItem(it.id, { amount: parseDigits(e.target.value) })}
+                        value={it.amount}
+                        format={money}
+                        onChange={(v) => patchItem(it.id, { amount: v })}
                       />
                     </td>
                     {/* Đơn giá là công thức trong Excel; ở đây chỉ xem trước. */}
@@ -744,13 +733,12 @@ export const QuotationPanel: React.FC<{
             </Field>
             {q.hasVat && (
               <Field label="Thuế suất (%)">
-                <input
+                <NumberInput
                   style={S.input}
-                  type="number"
-                  min={0}
-                  step={0.5}
+                  decimals
                   value={+(q.vatRate * 100).toFixed(2)}
-                  onChange={(e) => patch({ vatRate: Number(e.target.value) / 100 })}
+                  fallback={0}
+                  onChange={(v) => patch({ vatRate: (v ?? 0) / 100 })}
                 />
               </Field>
             )}

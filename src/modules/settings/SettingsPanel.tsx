@@ -9,6 +9,7 @@
  * không phải chờ tới lúc báo giá cho khách mới biết.
  */
 import React, { useMemo, useState } from 'react'
+import { NumberInput } from '../../ui/NumberInput'
 import { PricingStore } from '../pricing/PricingStore'
 import { useIsMobile } from '../../ui/useIsMobile'
 import { CaptureSettings, DEFAULT_CAPTURE_SETTINGS, type CaptureSettingsData } from './CaptureSettings'
@@ -702,7 +703,7 @@ const NumField: React.FC<{ label: string; value: number; onChange: (v: number) =
 }) => (
   <div style={S.field}>
     <span style={S.fieldLabel}>{label}</span>
-    <input style={S.input} value={value} onChange={(e) => onChange(num(e.target.value, value))} />
+    <NumberInput style={S.input} decimals value={value} fallback={value} onChange={(v) => v !== null && onChange(v)} />
   </div>
 )
 

@@ -15,6 +15,7 @@ import { MASK_COLORS } from '../../models/MaskColors'
 import type { QuotationSeed } from '../quotation/QuotationPanel'
 import { panelNote, stencilSideFromBoard, stencilSizeLabel, type StencilSide } from '../quotation/QuotationModel'
 import { PricingStore } from './PricingStore'
+import { NumberInput } from '../../ui/NumberInput'
 import { PanelPreview, type BoardShape, type PanelKind } from './PanelPreview'
 import { copperSamplePoints, detectPanel, loopPolygon, splitOutlineLoops } from '../../lib/gerber-reader'
 import {
@@ -42,17 +43,6 @@ import {
 
 const money = (n: number) => Math.round(n).toLocaleString('vi-VN')
 
-const parseNum = (raw: string): number | null => {
-  const s = raw.replace(/[^\d.,-]/g, '').replace(',', '.')
-  if (s === '' || s === '-') return null
-  const n = Number(s)
-  return Number.isFinite(n) ? n : null
-}
-
-const parseDigits = (raw: string): number | null => {
-  const s = raw.replace(/\D/g, '')
-  return s === '' ? null : Number(s)
-}
 
 /** Kiểu rail của tấm panel: không rail / trên + dưới / trái + phải / cả 4 cạnh. */
 type RailSides = 'none' | 'tb' | 'lr' | 'all'
@@ -496,24 +486,20 @@ export const PricingCard: React.FC<{
 
       <InfoRow label="Kích thước">
         <div style={S.sizeGroup}>
-          <input
+          <NumberInput
             style={S.sizeInput}
-            value={size ? mm(size.w) : ''}
+            decimals
+            value={size ? mm(size.w) : null}
             placeholder="—"
-            onChange={(e) => {
-              const w = parseNum(e.target.value)
-              setSizeOverride({ w: (w ?? 0) / 10, h: size?.h ?? 0 })
-            }}
+            onChange={(w) => setSizeOverride({ w: (w ?? 0) / 10, h: size?.h ?? 0 })}
           />
           <span style={S.times}>×</span>
-          <input
+          <NumberInput
             style={S.sizeInput}
-            value={size ? mm(size.h) : ''}
+            decimals
+            value={size ? mm(size.h) : null}
             placeholder="—"
-            onChange={(e) => {
-              const h = parseNum(e.target.value)
-              setSizeOverride({ w: size?.w ?? 0, h: (h ?? 0) / 10 })
-            }}
+            onChange={(h) => setSizeOverride({ w: size?.w ?? 0, h: (h ?? 0) / 10 })}
           />
           <span style={S.unit}>mm</span>
         </div>
@@ -581,16 +567,18 @@ export const PricingCard: React.FC<{
           <div style={S.row}>
             <span style={S.label}>Số bo mỗi cạnh</span>
             <div style={S.sizeGroup}>
-              <input
+              <NumberInput
                 style={S.sizeInput}
                 value={panelX}
-                onChange={(e) => setPanelX(Math.max(1, parseDigits(e.target.value) ?? 1))}
+                fallback={1}
+                onChange={(v) => setPanelX(Math.max(1, v ?? 1))}
               />
               <span style={S.times}>×</span>
-              <input
+              <NumberInput
                 style={S.sizeInput}
                 value={panelY}
-                onChange={(e) => setPanelY(Math.max(1, parseDigits(e.target.value) ?? 1))}
+                fallback={1}
+                onChange={(v) => setPanelY(Math.max(1, v ?? 1))}
               />
             </div>
           </div>
@@ -614,14 +602,12 @@ export const PricingCard: React.FC<{
               {RAIL_EDGES[railSides].map((e) => (
                 <label key={e} style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: 11, color: '#94a3b8' }}>
                   {RAIL_EDGE_LABEL[e]}
-                  <input
+                  <NumberInput
                     style={S.sizeInput}
-                    value={rail[e] || ''}
+                    decimals
+                    value={rail[e] || null}
                     placeholder="0"
-                    onChange={(ev) => {
-                      const v = Math.max(0, parseNum(ev.target.value) ?? 0)
-                      setRail((prev) => ({ ...prev, [e]: v }))
-                    }}
+                    onChange={(v) => setRail((prev) => ({ ...prev, [e]: Math.max(0, v ?? 0) }))}
                   />
                 </label>
               ))}
@@ -875,10 +861,10 @@ export const PricingCard: React.FC<{
       <div style={S.row}>
         <span style={S.label}>{fromSets ? 'Số set' : 'Số lượng'}</span>
         <div style={S.qtyGroup}>
-          <input
+          <NumberInput
             style={S.qtyInput}
-            value={(fromSets ? setCount : qty) ?? ''}
-            onChange={(e) => (fromSets ? setSetCount : setQty)(parseDigits(e.target.value))}
+            value={fromSets ? setCount : qty}
+            onChange={(v) => (fromSets ? setSetCount : setQty)(v)}
           />
           <span style={S.unit}>{fromSets ? 'set' : 'pcs'}</span>
         </div>
@@ -941,11 +927,12 @@ export const PricingCard: React.FC<{
           <div style={{ ...S.row, marginTop: 8 }}>
             <span style={S.label}>Thành tiền</span>
             <div style={S.qtyGroup}>
-              <input
+              <NumberInput
                 style={S.manualInput}
                 placeholder="nhập tay"
-                value={manualAmount === null ? '' : money(manualAmount)}
-                onChange={(e) => setManualAmount(parseDigits(e.target.value))}
+                value={manualAmount}
+                format={money}
+                onChange={setManualAmount}
               />
               <span style={S.unit}>đ</span>
             </div>
@@ -1031,10 +1018,12 @@ export const PricingCard: React.FC<{
               Phí thêm
             </span>
             <div style={S.qtyGroup}>
-              <input
+              <NumberInput
                 style={S.sizeInput}
+                decimals
                 value={extraFeeCny}
-                onChange={(e) => setExtraFeeCny(parseNum(e.target.value) ?? 0)}
+                fallback={0}
+                onChange={(v) => setExtraFeeCny(v ?? 0)}
               />
               <span style={S.unit}>¥</span>
             </div>
