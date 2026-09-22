@@ -1168,55 +1168,136 @@ export const Viewer2DWebGL: React.FC<Viewer2DWebGLProps> = ({
 
       const canvas = render.Renderer?.domElement as HTMLCanvasElement | undefined
       if (canvas) {
+        // ── Chuột + cảm ứng ──
+        // Điện thoại (22/09/2026): trước chỉ có zoom bằng con lăn — không pinch được; hai
+        // ngón cùng lái MỘT lượt kéo nên bo giật qua lại; trình duyệt còn tự cuộn/phóng
+        // trang theo cử chỉ. Giờ theo dõi từng ngón: một ngón = kéo (2D) / xoay (3D), hai
+        // ngón = chụm để zoom quanh điểm giữa hai ngón + kéo, chạm đúp = về vừa khung.
+        canvas.style.touchAction = 'none'
+        const minDist = fitDist * 0.02
+        const maxDist = fitDist * 20
+        /** Số đơn vị world trên một pixel màn hình, theo khoảng cách camera hiện tại. */
+        const worldPerPx = () => (2 * view.dist * Math.tan(fov / 2)) / (canvas.clientHeight || 1)
+        // Nhìn từ dưới lên thì trục X trên màn hình bị lật.
+        const sx = fromBelow ? -1 : 1
+        /**
+         * Zoom theo hệ số `k` (<1 là phóng to) mà giữ nguyên điểm dưới (clientX, clientY)
+         * — ở 2D điểm đó đứng yên dưới ngón tay/con trỏ; 3D chỉ đổi khoảng cách.
+         */
+        const zoomAt = (k: number, clientX: number, clientY: number) => {
+          const next = Math.min(Math.max(view.dist * k, minDist), maxDist)
+          if (!threeDMode) {
+            const rect = canvas.getBoundingClientRect()
+            const dx = clientX - (rect.left + rect.width / 2)
+            const dy = clientY - (rect.top + rect.height / 2)
+            const before = worldPerPx()
+            const wx = view.x + sx * dx * before
+            const wy = view.y - dy * before
+            view.dist = next
+            const after = worldPerPx()
+            view.x = wx - sx * dx * after
+            view.y = wy + dy * after
+          } else {
+            view.dist = next
+          }
+        }
         const onWheel = (e: WheelEvent) => {
           e.preventDefault()
-          view.dist *= e.deltaY > 0 ? 1.12 : 1 / 1.12
-          view.dist = Math.min(Math.max(view.dist, fitDist * 0.02), fitDist * 20)
+          zoomAt(e.deltaY > 0 ? 1.12 : 1 / 1.12, e.clientX, e.clientY)
           apply()
         }
-        let dragging = false
-        let lastX = 0
-        let lastY = 0
+
+        /** Các ngón / con trỏ đang chạm, theo pointerId. */
+        const pts = new Map<number, { x: number; y: number }>()
+        /** Mốc của cử chỉ hai ngón: khoảng cách và điểm giữa lần trước. */
+        let pinch: { d: number; mx: number; my: number } | null = null
+        let lastTap = { t: 0, x: 0, y: 0 }
+        let moved = false
+        const pinchState = () => {
+          const [a, b] = [...pts.values()]
+          return { d: Math.hypot(a.x - b.x, a.y - b.y) || 1, mx: (a.x + b.x) / 2, my: (a.y + b.y) / 2 }
+        }
+
         const onDown = (e: PointerEvent) => {
-          dragging = true
-          lastX = e.clientX
-          lastY = e.clientY
-          canvas.setPointerCapture(e.pointerId)
+          pts.set(e.pointerId, { x: e.clientX, y: e.clientY })
+          try { canvas.setPointerCapture(e.pointerId) } catch { /* ignore */ }
+          if (pts.size === 1) moved = false
+          // Ngón thứ hai chạm: bắt đầu cử chỉ hai ngón từ đúng vị trí hiện tại.
+          pinch = pts.size === 2 ? pinchState() : null
         }
         const onMove = (e: PointerEvent) => {
-          if (!dragging) return
-          if (threeDMode) {
-            // kéo ngang = xoay quanh trục z, kéo dọc = nâng/hạ góc nhìn
-            view.az -= (e.clientX - lastX) * 0.008
-            view.el += (e.clientY - lastY) * 0.008
-            // chặn sát 2 cực để camera không lật
-            view.el = Math.min(Math.max(view.el, -1.5), 1.5)
+          const p = pts.get(e.pointerId)
+          if (!p) return
+          const ddx = e.clientX - p.x
+          const ddy = e.clientY - p.y
+          if (Math.hypot(ddx, ddy) > 3) moved = true
+          p.x = e.clientX
+          p.y = e.clientY
+
+          if (pts.size >= 2 && pinch) {
+            const now = pinchState()
+            // Chụm/mở: khoảng cách hai ngón tăng thì phóng to (camera lại gần).
+            zoomAt(pinch.d / now.d, now.mx, now.my)
+            if (!threeDMode) {
+              // Kéo hai ngón: điểm giữa di bao nhiêu thì bo di bấy nhiêu.
+              const wpp = worldPerPx()
+              view.x -= sx * (now.mx - pinch.mx) * wpp
+              view.y += (now.my - pinch.my) * wpp
+            }
+            pinch = now
+          } else if (pts.size === 1) {
+            if (threeDMode) {
+              // kéo ngang = xoay quanh trục z, kéo dọc = nâng/hạ góc nhìn
+              view.az -= ddx * 0.008
+              view.el += ddy * 0.008
+              // chặn sát 2 cực để camera không lật
+              view.el = Math.min(Math.max(view.el, -1.5), 1.5)
+            } else {
+              // Nhìn từ dưới lên thì trục X bị lật -> đảo dấu để kéo sang phải thì bo
+              // vẫn chạy sang phải.
+              const wpp = worldPerPx()
+              view.x -= sx * ddx * wpp
+              view.y += ddy * wpp
+            }
           } else {
-            // đổi pixel -> đơn vị world theo chiều cao khung nhìn hiện tại
-            const worldPerPx = (2 * view.dist * Math.tan(fov / 2)) / (canvas.clientHeight || 1)
-            // Nhìn từ dưới lên thì trục X trên màn hình bị lật -> đảo dấu để kéo
-            // sang phải thì bo vẫn chạy sang phải.
-            view.x += (fromBelow ? 1 : -1) * (e.clientX - lastX) * worldPerPx
-            view.y += (e.clientY - lastY) * worldPerPx
+            return
           }
-          lastX = e.clientX
-          lastY = e.clientY
           apply()
         }
         const onUp = (e: PointerEvent) => {
-          dragging = false
+          const wasSingle = pts.size === 1
+          pts.delete(e.pointerId)
           try { canvas.releasePointerCapture(e.pointerId) } catch { /* ignore */ }
+          // Nhấc một trong hai ngón: ngón còn lại tiếp tục kéo, không nhảy.
+          pinch = pts.size === 2 ? pinchState() : null
+          // Chạm đúp (hai lần chạm nhanh, gần nhau, không kéo) = về vừa khung.
+          if (e.type === 'pointerup' && wasSingle && !moved && e.pointerType !== 'mouse') {
+            const now = performance.now()
+            if (now - lastTap.t < 320 && Math.hypot(e.clientX - lastTap.x, e.clientY - lastTap.y) < 30) {
+              resetView()
+              lastTap = { t: 0, x: 0, y: 0 }
+              return
+            }
+            lastTap = { t: now, x: e.clientX, y: e.clientY }
+          }
         }
+        const onDblClick = () => resetView()
         canvas.addEventListener('wheel', onWheel, { passive: false })
         canvas.addEventListener('pointerdown', onDown)
         canvas.addEventListener('pointermove', onMove)
         canvas.addEventListener('pointerup', onUp)
+        // Hệ điều hành cướp cử chỉ (vuốt thông báo, cuộn) -> phải bỏ ngón đó, không thì
+        // kẹt trạng thái kéo.
+        canvas.addEventListener('pointercancel', onUp)
+        canvas.addEventListener('dblclick', onDblClick)
         canvas.style.cursor = 'grab'
         cleanups.push(() => {
           canvas.removeEventListener('wheel', onWheel)
           canvas.removeEventListener('pointerdown', onDown)
           canvas.removeEventListener('pointermove', onMove)
           canvas.removeEventListener('pointerup', onUp)
+          canvas.removeEventListener('pointercancel', onUp)
+          canvas.removeEventListener('dblclick', onDblClick)
         })
       }
     }
