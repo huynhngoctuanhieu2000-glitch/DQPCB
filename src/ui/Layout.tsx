@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { BOARD_RENDERED_EVENT, Viewer2DWebGL, isBoardBuilt } from '../modules/viewer2d/Viewer2D.WebGL'
 import type { CaptureFn } from '../modules/viewer2d/Viewer2D.WebGL'
 import { composeTwoSides, copyPng } from '../modules/viewer2d/captureBoard'
+import { canShareType, shareOrDownload } from '../modules/quotation/exportImage'
 import { BoardDataModel } from '../models/BoardDataModel'
 import type { BoardState } from '../models/BoardDataModel'
 import { GerberParser, LAYER_CHOICES, layerKeyOf } from '../lib/gerber-reader'
@@ -54,6 +55,12 @@ export const Layout: React.FC = () => {
     window.setTimeout(() => BoardDataModel.setActiveBoard(id), 40)
   }
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
+  // Thông báo lỗi tự tắt sau 6 giây: trước nó nằm mãi giữa khung xem, đè lên nhãn BOT.
+  useEffect(() => {
+    if (!errorMessage) return
+    const t = window.setTimeout(() => setErrorMessage(null), 6000)
+    return () => window.clearTimeout(t)
+  }, [errorMessage])
   const [showQuotation, setShowQuotation] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
   /**
@@ -81,6 +88,8 @@ export const Layout: React.FC = () => {
   // Kích thước khung chia đôi — nhãn kích thước cần biết để bám sát mép bo
   const splitRef = useRef<HTMLDivElement>(null)
   const [splitSize, setSplitSize] = useState<{ w: number; h: number } | null>(null)
+  /** "2 Mặt" xếp TOP trên / BOT dưới: màn gọn và khung đang dựng đứng (cao > rộng). */
+  const splitStacked = isMobile && !!splitSize && splitSize.h > splitSize.w
   // Hàm chụp của hai khung Top/Bot, do mỗi Viewer2DWebGL gán vào khi dựng xong cảnh
   const captureTopRef = useRef<CaptureFn | null>(null)
   const captureBotRef = useRef<CaptureFn | null>(null)
@@ -113,8 +122,20 @@ export const Layout: React.FC = () => {
         widthMM: boardState.bounds.widthMM,
         heightMM: boardState.bounds.heightMM,
       })
-      await copyPng(img)
-      setCopied(true)
+      // Điện thoại / máy tính bảng: người dùng cần GỬI (Zalo) hoặc LƯU ảnh, không phải
+      // dán — mà Safari iPhone còn hạn chế ghi ảnh vào clipboard. Mở bảng chia sẻ với file
+      // PNG; máy không có bảng chia sẻ thì tải ảnh về. Máy tính giữ copy như cũ.
+      if (isMobile) {
+        const blob = await new Promise<Blob | null>((res) => img.toBlob(res, 'image/png'))
+        if (!blob) throw new Error('Không tạo được ảnh')
+        const name = `${(boardState.projectName || 'bo').replace(/[\\/:*?"<>|]+/g, '_')} - 2 mat.png`
+        const how = await shareOrDownload(blob, name, canShareType('image/png', 'png'))
+        if (how === 'canceled') return
+        setCopied(true)
+      } else {
+        await copyPng(img)
+        setCopied(true)
+      }
       window.setTimeout(() => setCopied(false), 2500)
     } catch (err: any) {
       setErrorMessage(err?.message || 'Không chụp được ảnh bo')
@@ -398,6 +419,10 @@ export const Layout: React.FC = () => {
         style={{ display: 'none' }}
       />
 
+      {/* Hai thanh công cụ. Bình thường khối bọc là display:contents (như không có);
+          màn gọn mà thấp (điện thoại xoay ngang) thì CSS .bars gộp hai thanh thành một
+          hàng — hai thanh chồng nhau ăn 100/375px chiều cao. */}
+      <div className="bars">
       {/* 1. TOP MENU BAR */}
       <div
         className="tap-bar"
@@ -680,9 +705,12 @@ export const Layout: React.FC = () => {
                 </div>
               )
             })}
-            {addBoardBtn}
+            {!isMobile && addBoardBtn}
           </div>
         )}
+        {/* Màn gọn: nút + đứng NGOÀI dải tab — trong dải thì tên bo dài đẩy nó ra khỏi
+            phần nhìn thấy (dải cuộn ngang). */}
+        {isMobile && boardState.boards.length === 1 && addBoardBtn}
 
         {/* Điện thoại: một nút mở bảng trượt từ đáy, trong đó có hai tab Lớp / Thông tin.
             Hai ngăn kéo hai bên hẹp quá, bảng thông tin không đủ bề ngang để đọc. */}
@@ -694,6 +722,8 @@ export const Layout: React.FC = () => {
             <IconLabel icon={drawer ? 'x' : 'layers'} size={15}>{drawer ? 'Đóng' : 'Lớp · Thông tin'}</IconLabel>
           </button>
         )}
+      </div>
+
       </div>
 
       {/* 3. MAIN WORKSPACE: 3-COLUMN SPLIT */}
@@ -1078,7 +1108,10 @@ export const Layout: React.FC = () => {
           {/* Một viewer duy nhất phục vụ cả CAM 2D / Real 2D / 3D.
               Chế độ "2 Mặt" dựng hai cảnh độc lập cạnh nhau: trái nhìn từ trên
               (Top), phải nhìn từ dưới lên nên là ảnh lật gương (Bot) — đúng quy
-              ước bản vẽ lắp ráp của nhà máy. */}
+              ước bản vẽ lắp ráp của nhà máy.
+              Màn gọn đang dựng đứng (điện thoại/máy tính bảng cầm dọc): xếp TOP trên, BOT
+              dưới — chia trái/phải thì mỗi mặt chỉ rộng ~174px, bỏ trống 3/4 chiều cao.
+              Ảnh "Chụp" vẫn ghép trái/phải như cũ. */}
           {boardState.isLoaded &&
             (boardState.activeView === 'Both' ? (
               <div
@@ -1086,6 +1119,7 @@ export const Layout: React.FC = () => {
                 style={{
                   flex: 1,
                   display: 'flex',
+                  flexDirection: splitStacked ? 'column' : 'row',
                   minHeight: 0,
                   position: 'relative',
                   // Khoảng trắng giữa hai khung: bỏ đường kẻ ngăn rồi thì lúc zoom vào,
@@ -1095,7 +1129,7 @@ export const Layout: React.FC = () => {
                   backgroundColor: '#eeeeee',
                 }}
               >
-                <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ flex: 1, minWidth: 0, minHeight: 0 }}>
                   <Viewer2DWebGL
                     viewOverride="Real"
                     faceSide="top"
@@ -1104,7 +1138,7 @@ export const Layout: React.FC = () => {
                     captureRef={captureTopRef}
                   />
                 </div>
-                <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ flex: 1, minWidth: 0, minHeight: 0 }}>
                   <Viewer2DWebGL
                     viewOverride="Real"
                     faceSide="bottom"
@@ -1118,7 +1152,11 @@ export const Layout: React.FC = () => {
                 <button
                   onClick={captureTwoSides}
                   disabled={capturing}
-                  title="Copy ảnh hai mặt bo vào clipboard, đúng khung đang nhìn (nét gấp đôi màn hình)"
+                  title={
+                    isMobile
+                      ? 'Chụp ảnh hai mặt bo rồi gửi (Zalo…) hoặc lưu ảnh'
+                      : 'Copy ảnh hai mặt bo vào clipboard, đúng khung đang nhìn (nét gấp đôi màn hình)'
+                  }
                   aria-label="Chụp ảnh hai mặt"
                   style={{
                     position: 'absolute',
@@ -1142,7 +1180,7 @@ export const Layout: React.FC = () => {
                 >
                   {/* Có chữ bên cạnh icon: điện thoại không rê chuột xem chú thích được. */}
                   <Icon name="camera" size={16} />
-                  {capturing ? 'Đang chụp…' : copied ? 'Đã copy' : 'Chụp'}
+                  {capturing ? 'Đang chụp…' : copied ? (isMobile ? 'Xong' : 'Đã copy') : 'Chụp'}
                 </button>
 
                 {/* Nhãn kích thước nổi giữa hai khung, sát bo — thanh chạy hết chiều
@@ -1152,6 +1190,7 @@ export const Layout: React.FC = () => {
                   name={boardState.projectName ?? ''}
                   layerCount={boardState.layersOverride ?? boardState.layerCount}
                   panel={splitSize}
+                  stacked={splitStacked}
                 />
               </div>
             ) : (
@@ -1471,16 +1510,23 @@ const BoardBadge: React.FC<{
   name: string
   layerCount: number
   panel: { w: number; h: number } | null
-}> = ({ bounds, name, layerCount, panel }) => {
+  /** TOP trên / BOT dưới: nhãn nằm ở khe giữa hai mặt. */
+  stacked?: boolean
+}> = ({ bounds, name, layerCount, panel, stacked }) => {
   if (!bounds) return null
 
   let top = '88%'
-  if (panel && panel.w > 0 && panel.h > 0) {
+  if (stacked) {
+    top = '50%'
+  } else if (panel && panel.w > 0 && panel.h > 0) {
     const aspect = panel.w / 2 / panel.h // mỗi mặt chiếm nửa chiều ngang
     // Phải TRÙNG fitPadding truyền cho hai khung, nếu lệch thì nhãn rơi sai chỗ.
     const span = Math.max(bounds.heightMM, bounds.widthMM / aspect) * SPLIT_FIT_PADDING
     const frac = 0.5 + bounds.heightMM / 2 / span
-    top = `calc(${Math.min(frac, 0.95) * 100}% + 20px)`
+    // Kẹp trong khung, chừa 96px dưới cho nút "Vừa khung" (cao 32–40px, cách đáy 10px) và
+    // chính nhãn — khung thấp (điện thoại xoay ngang) thì nhãn từng lòi khỏi mép dưới và
+    // đè lên nút.
+    top = `min(calc(${Math.min(frac, 0.95) * 100}% + 20px), calc(100% - 96px))`
   }
 
   return (
@@ -1489,7 +1535,7 @@ const BoardBadge: React.FC<{
         position: 'absolute',
         left: '50%',
         top,
-        transform: 'translateX(-50%)',
+        transform: stacked ? 'translate(-50%, -50%)' : 'translateX(-50%)',
         display: 'flex',
         alignItems: 'center',
         gap: '10px',
@@ -1501,6 +1547,7 @@ const BoardBadge: React.FC<{
         // To bằng nhãn trong ảnh copy trên màn rộng; cửa sổ hẹp thì co lại cho khỏi tràn
         // ra ngoài khung xem.
         fontSize: 'clamp(11px, 1.15vw, 16px)',
+        maxWidth: 'calc(100% - 16px)',
         fontWeight: 600,
         color: '#e2e8f0',
         whiteSpace: 'nowrap',

@@ -11,6 +11,7 @@ import {
   NewRenderByElement,
 } from 'web-gerber'
 import { Icon } from '../../ui/Icon'
+import { useIsMobile } from '../../ui/useIsMobile'
 
 /**
  * web-gerber bundle three.js 0.175 vào trong dist của nó (không import ngoài).
@@ -441,6 +442,7 @@ export const Viewer2DWebGL: React.FC<Viewer2DWebGLProps> = ({
   fitPadding = 1.15,
   captureRef,
 }) => {
+  const isMobile = useIsMobile()
   const containerRef = useRef<HTMLDivElement>(null)
   // Hàm đưa khung nhìn về vừa khít, do effect dựng cảnh gán vào
   const fitViewRef = useRef<(() => void) | null>(null)
@@ -1060,7 +1062,13 @@ export const Viewer2DWebGL: React.FC<Viewer2DWebGLProps> = ({
       const fov = (cam.fov * Math.PI) / 180
 
       const aspectNow = () => (el.clientWidth || 800) / (el.clientHeight || 600)
-      const fitDist = (Math.max(h, w / aspectNow()) / 2 / Math.tan(fov / 2)) * fitPadding
+      // Khoảng cách camera để bo vừa khung — PHẢI tính theo tỉ lệ khung LÚC GỌI: khung
+      // đổi cỡ (xoay điện thoại, đổi cỡ cửa sổ, mở/đóng bảng bên) mà dùng số lúc dựng thì
+      // khung dọc hẹp → khung ngang bo chỉ còn ~1/8, và "Vừa khung" cũng không cứu được.
+      const fitDistNow = () => (Math.max(h, w / aspectNow()) / 2 / Math.tan(fov / 2)) * fitPadding
+      const fitDist = fitDistNow()
+      /** Đang ở đúng khung "vừa khung" (chưa zoom/kéo/xoay) → đổi cỡ khung thì tự vừa lại. */
+      let atFit = true
 
       const cx = (minX + maxX) / 2
       const cy = (minY + maxY) / 2
@@ -1106,9 +1114,10 @@ export const Viewer2DWebGL: React.FC<Viewer2DWebGLProps> = ({
       const resetView = () => {
         view.x = cx
         view.y = cy
-        view.dist = fitDist
+        view.dist = fitDistNow()
         view.az = -Math.PI / 2
         view.el = fromBelow ? -0.9 : 0.9
+        atFit = true
         apply()
       }
       fitViewRef.current = resetView
@@ -1169,6 +1178,13 @@ export const Viewer2DWebGL: React.FC<Viewer2DWebGLProps> = ({
         const ch = el.clientHeight
         if (!cw || !ch) return
         render.Renderer?.setSize?.(cw, ch)
+        // Người dùng chưa zoom/kéo thì giữ "vừa khung" theo cỡ khung mới; đã zoom vào
+        // một chỗ thì giữ nguyên chỗ đang soi.
+        if (atFit) {
+          view.x = cx
+          view.y = cy
+          view.dist = fitDistNow()
+        }
         apply()
       })
       ro.observe(el)
@@ -1182,8 +1198,9 @@ export const Viewer2DWebGL: React.FC<Viewer2DWebGLProps> = ({
         // trang theo cử chỉ. Giờ theo dõi từng ngón: một ngón = kéo (2D) / xoay (3D), hai
         // ngón = chụm để zoom quanh điểm giữa hai ngón + kéo, chạm đúp = về vừa khung.
         canvas.style.touchAction = 'none'
-        const minDist = fitDist * 0.02
-        const maxDist = fitDist * 20
+        // Giới hạn zoom theo khoảng cách vừa khung HIỆN TẠI (khung đổi cỡ thì đổi theo).
+        const minDist = () => fitDistNow() * 0.02
+        const maxDist = () => fitDistNow() * 20
         /** Số đơn vị world trên một pixel màn hình, theo khoảng cách camera hiện tại. */
         const worldPerPx = () => (2 * view.dist * Math.tan(fov / 2)) / (canvas.clientHeight || 1)
         // Nhìn từ dưới lên thì trục X trên màn hình bị lật.
@@ -1193,7 +1210,8 @@ export const Viewer2DWebGL: React.FC<Viewer2DWebGLProps> = ({
          * — ở 2D điểm đó đứng yên dưới ngón tay/con trỏ; 3D chỉ đổi khoảng cách.
          */
         const zoomAt = (k: number, clientX: number, clientY: number) => {
-          const next = Math.min(Math.max(view.dist * k, minDist), maxDist)
+          atFit = false
+          const next = Math.min(Math.max(view.dist * k, minDist()), maxDist())
           if (!threeDMode) {
             const rect = canvas.getBoundingClientRect()
             const dx = clientX - (rect.left + rect.width / 2)
@@ -1270,6 +1288,7 @@ export const Viewer2DWebGL: React.FC<Viewer2DWebGLProps> = ({
           } else {
             return
           }
+          atFit = false
           apply()
         }
         const onUp = (e: PointerEvent) => {
@@ -1397,9 +1416,12 @@ export const Viewer2DWebGL: React.FC<Viewer2DWebGLProps> = ({
     <div style={{ position: 'relative', width: '100%', height: '100%', backgroundColor: '#0b0d10' }}>
       <div ref={containerRef} style={{ width: '100%', height: '100%' }} />
 
+      {/* Màn gọn: chỉ icon (2 Mặt có hai nút, để chữ thì chiếm cả đáy khung); còn cử
+          chỉ chạm đúp cũng về vừa khung. */}
       <button
         onClick={() => fitViewRef.current?.()}
         title="Đưa khung nhìn về vừa khít bo"
+        aria-label="Vừa khung"
         style={{
           position: 'absolute',
           right: 10,
@@ -1407,9 +1429,11 @@ export const Viewer2DWebGL: React.FC<Viewer2DWebGLProps> = ({
           zIndex: 5,
           display: 'inline-flex',
           alignItems: 'center',
+          justifyContent: 'center',
           gap: 6,
           minHeight: 32,
-          padding: '0 12px',
+          minWidth: 32,
+          padding: isMobile ? 0 : '0 12px',
           fontSize: 12,
           fontWeight: 600,
           borderRadius: 6,
@@ -1419,7 +1443,8 @@ export const Viewer2DWebGL: React.FC<Viewer2DWebGLProps> = ({
           border: '1px solid #334155',
         }}
       >
-        <Icon name="fit" size={15} /> Vừa khung
+        <Icon name="fit" size={15} />
+        {isMobile ? null : ' Vừa khung'}
       </button>
       {hideBadge ? (
         <div style={faceTag} title={fromBelow ? 'Mặt Bot, nhìn từ dưới lên (đã lật gương)' : 'Mặt Top, nhìn từ trên xuống'}>{fromBelow ? 'BOT' : 'TOP'}</div>

@@ -41,6 +41,29 @@ html { touch-action: manipulation; -webkit-text-size-adjust: 100%; }
 /* Ô nhập/chọn không tự kế thừa font của trang — select trên điện thoại hiện font hệ thống lệch hẳn. */
 button, input, select, textarea { font-family: inherit; }
 
+/* Khối bọc hai thanh công cụ (Layout.tsx): bình thường như không có. */
+.bars { display: contents; }
+/* Màn gọn mà thấp (điện thoại xoay ngang): gộp hai thanh thành một hàng 48px. */
+@media (max-width: 1023.98px) and (max-height: 500px) {
+  .bars {
+    display: flex;
+    align-items: stretch;
+    flex-shrink: 0;
+    height: 48px;
+    border-bottom: 1px solid #282b34;
+    background-color: #16181e;
+  }
+  .bars > .tap-bar {
+    height: 48px !important;
+    border-bottom: none !important;
+  }
+  /* Thanh trên chỉ rộng theo nội dung; thanh dưới ăn phần còn lại. Nút Báo giá / Mở
+     nằm cạnh nhau, không bị đẩy sang mép phải. */
+  .bars > .tap-bar:first-child { flex: 0 0 auto; border-right: 1px solid #282b34; }
+  .bars > .tap-bar:first-child > div:last-child { margin-left: 8px !important; }
+  .bars > .tap-bar:last-child { flex: 1 1 auto; min-width: 0; }
+}
+
 /* Chân hộp Báo giá trên điện thoại: lưới 2 cột, nút nào cũng đầy ô; công tắc
    Nhập liệu/Xem trước và dòng trạng thái chiếm cả hàng. */
 @media (max-width: 1023.98px) {

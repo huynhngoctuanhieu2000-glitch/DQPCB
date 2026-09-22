@@ -1,6 +1,7 @@
 # Kiểm tra chế độ "2 Mặt" trên điện thoại và máy tính bảng
 
-Ngày 22/09/2026 · Chỉ đo và đánh giá, **chưa sửa code** (theo `CLAUDE.md`).
+Ngày 22/09/2026 · Đo và đánh giá. **Cập nhật 23/09/2026: đã sửa cả 6 mục** — xem mục
+"Đã sửa" ở cuối.
 
 ## Cách đo
 
@@ -113,4 +114,20 @@ chỗ và trùng việc. Có sẵn cử chỉ chạm đúp để vừa khung.
 | 4 | "Chụp" → chia sẻ/lưu ảnh trên điện thoại; lỗi tự tắt (mục 4) | 1–2 giờ |
 | 5 | Thanh công cụ gọn khi xoay ngang; nút Vừa khung chỉ icon (mục 5, 6) | 1 giờ |
 
-Chờ chọn mục nào làm thì mới sửa code.
+
+## Đã sửa (23/09/2026)
+
+| # | Sửa | Đo lại |
+|---|---|---|
+| 1 | `fitDistNow()` tính theo cỡ khung lúc gọi; `ResizeObserver` tự vừa khung lại nếu người dùng chưa zoom/kéo; "Vừa khung" và giới hạn zoom dùng số mới (`Viewer2D.WebGL.tsx`) | Xoay 375×812 → 812×375 → 375×812 không tải lại: bo luôn vừa khung. Zoom vào rồi "Vừa khung": về đúng |
+| 2 | Màn gọn mà khung dựng đứng (cao > rộng): `flexDirection: column`, TOP trên / BOT dưới. Ảnh Chụp vẫn ghép trái/phải | 375×812: mỗi mặt 375×342 (trước 174×712), bo rộng ~275px (trước ~150px). 820×1180: 820×526 |
+| 3 | Nhãn tên bo: xếp dọc thì nằm ở khe giữa hai mặt; xếp ngang thì kẹp `min(…, 100% − 96px)`, `maxWidth` theo khung | 812×375: nhãn trong khung, không đè nút. 375×812: ở khe giữa |
+| 4 | Màn gọn: "Chụp" mở bảng chia sẻ với file PNG (Zalo, Lưu ảnh), không có bảng chia sẻ thì tải về; máy tính vẫn copy. Thông báo lỗi tự tắt sau 6 giây | 375×812: tạo `Gerber Anh Nhat - 2 mat.png` 3732×1914, không báo lỗi |
+| 5 | Màn gọn mà thấp (≤ 500px cao): hai thanh công cụ gộp một hàng 48px (`.bars` trong `index.css`) | 812×375: 48px (trước 100px), khung xem cao 327px (trước 275px) |
+| 6 | Màn gọn: nút "Vừa khung" chỉ còn icon 40×40 | 375×812: 40×40 (trước 106×40) |
+
+Thêm: màn gọn có một bo thì nút **+** đứng ngoài dải tab (trước bị tên bo dài đẩy khuất).
+
+Máy tính 1366×768 không đổi: hai mặt trái/phải, nút "Vừa khung" có chữ, "Chụp" vẫn copy
+vào clipboard. 151/151 test qua.
+
