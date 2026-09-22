@@ -278,3 +278,27 @@ describe('nhiều lớp viền (Altium .GKO + .GM1)', () => {
     expect(b.bounds.widthMM).toBeCloseTo(100, 0)
   })
 })
+
+describe('rãnh phay vẽ bằng một nét trong lớp viền', () => {
+  // Bo "CHAT_BOT_4" (Nguyen Van Quang, 22/09/2026): khung chữ L nét 0.5 mm + 3 rãnh chia bo
+  // nét 0.8 mm, mỗi rãnh một đoạn. Trước bị loại cùng "đường lẻ" → mất sạch rãnh.
+  const outline = [
+    '%FSLAX44Y44*%', '%MOMM*%', '%ADD10C,0.5000*%', '%ADD40C,0.8000*%', 'D10*',
+    'X813000Y814000D02*', 'X1137000D01*', 'X813000D02*', 'Y1231000D01*', 'X259000D02*', 'X813000D01*',
+    'X1137000Y261000D02*', 'Y814000D01*', 'X259000Y261000D02*', 'X1137000D01*', 'X259000D02*', 'Y1231000D01*',
+    'D40*', 'X813000Y403000D02*', 'X813000Y677000D01*', 'X388000Y584000D02*', 'X683000D01*',
+    // Vạch chạm mép bo (kiểu V-cut vẽ trong lớp viền): không phải rãnh.
+    'D40*', 'X259000Y1000000D02*', 'X500000D01*',
+    'M02*',
+  ].join('\n')
+
+  it('giữ rãnh nằm hẳn trong bo, bỏ vạch chạm mép; kích thước không đổi', async () => {
+    const [b] = await parse([['GHEP_MACH.GTL', copper], ['GHEP_MACH.GKO', outline]])
+    const parts = outlineOf(b).imageTree.parts
+    expect(parts).toHaveLength(3) // khung + 2 rãnh
+    // CAM vẽ lại đúng nét gốc của khách: mỗi rãnh giữ một nét đơn.
+    expect(parts.filter((pt: any) => pt.millLine).map((pt: any) => pt.millLine.children.length)).toEqual([1, 1])
+    expect(b.bounds.widthMM).toBeCloseTo(87.8, 0)
+    expect(b.bounds.heightMM).toBeCloseTo(97, 0)
+  })
+})

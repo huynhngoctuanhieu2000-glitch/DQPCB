@@ -204,6 +204,13 @@ const buildLayerObject = (
       if (line) obj?.add(line)
     }
     for (const part of holes) {
+      // Rãnh phay khách vẽ bằng một nét (xem stitchOutline): CAM vẽ đúng nét đó như file,
+      // Real/3D mới khoét hình thuôn theo bề rộng nét.
+      if (!fillOutline && part.millLine) {
+        const line = renderThree(part.millLine, color, undefined, false)
+        if (line) obj?.add(line)
+        continue
+      }
       const hole = renderThree(part, holeColor, undefined, fillOutline)
       if (hole) cutouts.push(hole)
     }
@@ -583,10 +590,17 @@ export const Viewer2DWebGL: React.FC<Viewer2DWebGLProps> = ({
     // children[0]. Bo đơn có đúng một mảnh nên không lộ, còn panel thì OutLine gồm
     // 13 mảnh (9 bo + khung + rãnh) — 12 mảnh còn lại giữ nguyên màu nền FR-4 và hiện
     // ra thành các mảng vàng loang lổ. Tô lại toàn bộ cho chắc.
+    // Bản clone DÙNG CHUNG vật liệu với OutLine gốc: tô thẳng lên đó là tô luôn các nét
+    // của lớp Outline (nét phay, rãnh một nét ở CAM thành màu xanh mask). Tô trên bản sao.
     for (const oil of [topOil, bottomOil]) {
       oil?.traverse((o: any) => {
-        const mats = Array.isArray(o.material) ? o.material : o.material ? [o.material] : []
-        mats.forEach((m: any) => m?.color?.set?.(palette.Oil))
+        if (!o.material) return
+        const recolor = (m: any) => {
+          const c = m?.clone?.() ?? m
+          c?.color?.set?.(palette.Oil)
+          return c
+        }
+        o.material = Array.isArray(o.material) ? o.material.map(recolor) : recolor(o.material)
       })
     }
 

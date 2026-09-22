@@ -14,6 +14,7 @@ export { ESTIMATED_OUTLINE_FILE, extractProfileGerber } from './outline'
 export {
   OUTLINE_CUTOUT_MAX_RATIO,
   copperSamplePoints,
+  countBoards,
   loopArea,
   loopPolygon,
   pointInPolygon,

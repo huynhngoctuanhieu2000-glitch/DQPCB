@@ -15,7 +15,7 @@ import { MASK_COLORS } from '../../models/MaskColors'
 import type { QuotationSeed } from '../quotation/QuotationPanel'
 import { PricingStore } from './PricingStore'
 import { PanelPreview, type BoardShape, type PanelKind } from './PanelPreview'
-import { copperSamplePoints, loopPolygon, splitOutlineLoops } from '../../lib/gerber-reader'
+import { copperSamplePoints, countBoards, loopPolygon, splitOutlineLoops } from '../../lib/gerber-reader'
 import {
   COPPER_CHOICES,
   FINISHES,
@@ -371,6 +371,22 @@ export const PricingCard: React.FC<{
     return { body: gerberShape.body.map(fit), holes: gerberShape.holes.map(fit) }
   }, [gerberShape, size])
 
+  // Viền có nhiều bo = khách gửi file đã ghép. Bảng tra chỉ cho bo lẻ, và số lượng phải
+  // nhập theo set — nhắc để người lập không báo giá theo bảng tra như một bo đơn.
+  const boardsInFile = useMemo(() => countBoards(board.layers), [board.layers])
+  const multiBoards = boardsInFile && boardsInFile.count >= 2 ? boardsInFile : null
+  /** Bật chế độ "file ghép sẵn" với đúng số bo đọc được trong viền. */
+  const useAsPrePanel = () => {
+    if (!multiBoards) return
+    const grid = multiBoards.cols * multiBoards.rows === multiBoards.count
+    setPanelOn(true)
+    setQtyFrom('sets')
+    setPanelX(grid ? multiBoards.cols : multiBoards.count)
+    setPanelY(grid ? multiBoards.rows : 1)
+    // Giữ số PCB đang nhập: quy ra số set, làm tròn lên.
+    setSetCount(Math.max(1, Math.ceil((qty ?? multiBoards.count) / multiBoards.count)))
+  }
+
   // ── Gợi ý stencil: khung rẻ nhất vừa TẤM sẽ in (panel nếu ghép, bo lẻ nếu không),
   // mặt nào có lớp paste thì mặt đó cần một tấm. ──
   const pasteSides = ['top', 'bottom'].filter((side) => board.layers.some((l) => l.type === 'solderpaste' && l.side === side))
@@ -428,6 +444,20 @@ export const PricingCard: React.FC<{
       )}
 
       {smallBoardWarn && <div style={S.warn}>⚠ {smallBoardWarn}</div>}
+      {multiBoards && !panelOn && (
+        <div style={S.warn}>
+          ⚠ File có <b>{multiBoards.count} bo</b> trong viền — có vẻ đã ghép sẵn. Bảng tra chỉ cho bo lẻ;
+          tính theo file ghép sẵn thì nhập số set.
+          <button style={S.warnBtn} onClick={useAsPrePanel}>
+            Dùng: file ghép sẵn {multiBoards.count} bo/set
+          </button>
+        </div>
+      )}
+      {multiBoards && panelOn && fromSets && perSet !== multiBoards.count && (
+        <div style={S.warn}>
+          ⚠ Viền có {multiBoards.count} bo nhưng đang tính {perSet} bo/set — kiểm lại số bo mỗi cạnh.
+        </div>
+      )}
 
       {/* Ghép panel ngay dưới kích thước: là thông số của tấm sẽ sản xuất, không phải tuỳ
           chọn giá phụ. Tích vào mới hiện các ô, bo lẻ không phải nhìn thấy. */}
@@ -909,6 +939,18 @@ const S: Record<string, React.CSSProperties> = {
     border: '1px solid #6b5412',
   },
   kindGroup: { display: 'flex', gap: 4 },
+  warnBtn: {
+    display: 'block',
+    marginTop: 6,
+    padding: '4px 10px',
+    fontSize: 11,
+    fontWeight: 600,
+    borderRadius: 5,
+    cursor: 'pointer',
+    color: '#1c1400',
+    backgroundColor: '#fbbf24',
+    border: 'none',
+  },
   stencilBox: { margin: '10px 0 4px', padding: '8px 10px', borderRadius: 6, backgroundColor: '#12151c', border: '1px solid #262b36' },
   stencilHead: { display: 'flex', justifyContent: 'space-between', fontSize: 11, color: '#94a3b8', marginBottom: 4 },
   stencilFor: { color: '#64748b' },

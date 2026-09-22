@@ -6,7 +6,7 @@
  * bên trong có đồng hay không: rãnh không có, bo con trong panel thì đầy.
  */
 import { describe, it, expect } from 'vitest'
-import { copperSamplePoints, pointInPolygon, splitOutlineLoops } from '../src/lib/gerber-reader'
+import { copperSamplePoints, countBoards, pointInPolygon, splitOutlineLoops } from '../src/lib/gerber-reader'
 
 /** Vòng chữ nhật kín từ (x, y) kích thước w × h, mỗi cạnh một child một đoạn. */
 const rect = (x: number, y: number, w: number, h: number) => {
@@ -112,5 +112,33 @@ describe('splitOutlineLoops — panel (Le Quoc Huy, 21/09/2026)', () => {
     expect(r.body).toEqual([frame])
     expect(r.cutouts).toEqual([])
     expect(r.lines).toEqual([zigzag])
+  })
+})
+
+describe('countBoards — file ghép sẵn nhiều bo', () => {
+  const layersOf = (parts: any[]) => [{ type: 'outline', imageTree: { units: 'mm', parts } }]
+
+  it('đếm bo, bỏ rail và điền số cột × hàng', () => {
+    // 3 bo 60×150 xếp ngang + 2 rail 5 mm hai bên (kiểu "Ceiling Master")
+    const parts = [rect(0, 0, 60, 150), rect(60, 0, 60, 150), rect(120, 0, 60, 150), rect(-5, 0, 5, 150), rect(180, 0, 5, 150)]
+    expect(countBoards(layersOf(parts))).toEqual({ count: 3, cols: 3, rows: 1 })
+  })
+
+  it('lưới 2 × 4', () => {
+    const parts: any[] = []
+    for (let c = 0; c < 2; c++) for (let r = 0; r < 4; r++) parts.push(rect(c * 40, r * 20, 40, 20))
+    expect(countBoards(layersOf(parts))).toEqual({ count: 8, cols: 2, rows: 4 })
+  })
+
+  it('bo lẻ có lỗ khoét vẫn là 1 bo', () => {
+    expect(countBoards(layersOf([rect(0, 0, 100, 60), rect(10, 10, 3, 3)]))?.count).toBe(1)
+  })
+
+  it('khung panel ôm các bo không bị đếm là bo', () => {
+    const frame = rect(0, 0, 100, 60)
+    const parts = [frame, rect(10, 10, 35, 40), rect(55, 10, 35, 40)]
+    // Bo con thật có pad bên trong — không có đồng thì luật chia vòng coi là lỗ khoét.
+    const pads = copperAt([[15, 15], [20, 20], [25, 25], [60, 15], [65, 20], [70, 25]])
+    expect(countBoards([...layersOf(parts), ...pads])?.count).toBe(2)
   })
 })

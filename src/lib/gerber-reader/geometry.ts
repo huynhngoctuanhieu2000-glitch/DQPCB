@@ -275,7 +275,10 @@ export const flattenArcs = (tree: any): any => {
  */
 export const stitchOutline = (tree: any) => {
   const segs: any[] = []
-  for (const c of tree?.children ?? []) if (c?.segments?.length) segs.push(...c.segments)
+  for (const c of tree?.children ?? []) {
+    if (!c?.segments?.length) continue
+    for (const seg of c.segments) segs.push(typeof c.width === 'number' ? { ...seg, _w: c.width } : seg)
+  }
   // Không bỏ qua ở mốc 2 đoạn: cả viền bo TRÒN có khi chỉ là MỘT cung 360° (CAM350),
   // bỏ qua thì lớp không có `parts` và bên ngoài dựng nhầm thành một khối tự cắt.
   if (segs.length === 0) return tree
@@ -472,12 +475,98 @@ export const stitchOutline = (tree: any) => {
     isClosedLoop(ch, TOL * 10) && ch.some((s) => s?.type === 'arc')
   const usable = simple.filter((ch) => ch.length >= 3 || isClosedArc(ch))
 
+  // [DQPCB] Rãnh phay vẽ bằng MỘT nét thẳng trong lớp viền. Bo "CHAT_BOT_4" (Nguyen Van
+  // Quang, 22/09/2026): khung chữ L nét 0.5 mm + 3 rãnh chia bo nét 0.8 mm, mỗi rãnh một
+  // đoạn — bị loại cùng "đường lẻ", mất sạch rãnh. Chuỗi hở 1–2 đoạn thẳng có mọi đầu mút
+  // nằm HẲN trong bo (cách mép ≥ 1 mm) là rãnh: dựng thành vòng kín hình thuôn đúng bề
+  // rộng nét, để nó đi đường lỗ khoét (CAM tô trắng, 2D/3D khoét thủng). Vạch chạm mép bo
+  // (V-cut vẽ trong lớp viền) và nét mảnh < 0.3 mm (nét vẽ) vẫn bỏ như cũ.
+  if (usable.length > 0) {
+    const polyOf = (ch: any[]) => ch.map((sg) => sg.start)
+    const boxArea = (ch: any[]) => {
+      const xs = ch.flatMap((sg) => [sg.start[0], sg.end[0]]), ys = ch.flatMap((sg) => [sg.start[1], sg.end[1]])
+      return (Math.max(...xs) - Math.min(...xs)) * (Math.max(...ys) - Math.min(...ys))
+    }
+    const main = polyOf(usable.reduce((a, b) => (boxArea(b) > boxArea(a) ? b : a)))
+    const inside = (pt: number[]) => {
+      let hit = false
+      for (let i = 0, j = main.length - 1; i < main.length; j = i++) {
+        const [xi, yi] = main[i], [xj, yj] = main[j]
+        if (yi > pt[1] !== yj > pt[1] && pt[0] < ((xj - xi) * (pt[1] - yi)) / (yj - yi) + xi) hit = !hit
+      }
+      return hit
+    }
+    const edgeDist = (pt: number[]) => {
+      let best = Infinity
+      for (let i = 0, j = main.length - 1; i < main.length; j = i++) {
+        const a = main[j], b = main[i]
+        const dx = b[0] - a[0], dy = b[1] - a[1]
+        const len2 = dx * dx + dy * dy
+        const t = len2 > 0 ? Math.max(0, Math.min(1, ((pt[0] - a[0]) * dx + (pt[1] - a[1]) * dy) / len2)) : 0
+        best = Math.min(best, Math.hypot(pt[0] - (a[0] + t * dx), pt[1] - (a[1] + t * dy)))
+      }
+      return best
+    }
+    const MARGIN = tree.units === 'in' ? 1 / 25.4 : 1
+    // Nét dưới 0.3 mm là nét vẽ / ghi chú, không phải đường dao phay (dao thường ≥ 0.5 mm).
+    const MIN_TOOL = tree.units === 'in' ? 0.3 / 25.4 : 0.3
+    const fallbackW = template?.width ?? 0
+    /** Vòng kín hình thuôn quanh đoạn a→b, bán kính r (hai đầu tròn, 8 bước mỗi nửa vòng). */
+    const stadium = (a: number[], b: number[], r: number) => {
+      const ang = Math.atan2(b[1] - a[1], b[0] - a[0])
+      const pts: number[][] = []
+      const arc = (c: number[], from: number) => {
+        for (let k = 0; k <= 8; k++) {
+          const t = from + (Math.PI * k) / 8
+          pts.push([c[0] + r * Math.cos(t), c[1] + r * Math.sin(t)])
+        }
+      }
+      arc(b, ang - Math.PI / 2) // quanh đầu b
+      arc(a, ang + Math.PI / 2) // quanh đầu a
+      return pts.map((pt, k) => ({ type: 'line', start: pt, end: pts[(k + 1) % pts.length] }))
+    }
+    const segDist = (pt: number[], sg: any) => {
+      const dx = sg.end[0] - sg.start[0], dy = sg.end[1] - sg.start[1]
+      const len2 = dx * dx + dy * dy
+      const t = len2 > 0 ? Math.max(0, Math.min(1, ((pt[0] - sg.start[0]) * dx + (pt[1] - sg.start[1]) * dy) / len2)) : 0
+      return Math.hypot(pt[0] - (sg.start[0] + t * dx), pt[1] - (sg.start[1] + t * dy))
+    }
+    // Rãnh thật đứng riêng. Mảnh của đường phay gấp khúc bị đứt (Altium "PHAONUOC": nét
+    // 0.8 mm nhiều khúc chạm nhau) chạm nét khác ở đầu mút → không phải rãnh, bỏ như cũ.
+    // Cùng lý do: bề rộng nét nào đã dùng cho một đường hở ≥ 3 khúc (đường vẽ, không phải
+    // rãnh) thì các mảnh ngắn cùng bề rộng cũng là đường vẽ.
+    const JOIN = TOL * 10
+    const touchesOther = (ch: any[], pt: number[]) =>
+      simple.some((o) => o !== ch && o.some((sg: any) => sg?.start && sg?.end && segDist(pt, sg) <= JOIN))
+    const drawnWidths = simple
+      .filter((o) => o.length >= 3 && !isClosedLoop(o, TOL))
+      .flatMap((o) => o.map((sg: any) => sg._w).filter((w: any) => typeof w === 'number'))
+    const isDrawnWidth = (w: number) => drawnWidths.some((d) => Math.abs(d - w) < 1e-6)
+    for (const ch of simple) {
+      if (ch.length > 2 || isClosedLoop(ch, TOL) || ch.some((sg: any) => sg?.type === 'arc')) continue
+      const ends = [ch[0].start, ...ch.map((sg: any) => sg.end)]
+      if (!ends.every((pt: number[]) => inside(pt) && edgeDist(pt) >= MARGIN)) continue
+      if (ends.some((pt: number[]) => touchesOther(ch, pt))) continue
+      for (const sg of ch) {
+        const w = typeof sg._w === 'number' && sg._w > 0 ? sg._w : fallbackW
+        if (!(w >= MIN_TOOL) || isDrawnWidth(w) || Math.hypot(sg.end[0] - sg.start[0], sg.end[1] - sg.start[1]) <= 0) continue
+        const loop: any = stadium(sg.start, sg.end, w / 2)
+        // Giữ nét gốc: CAM vẽ lại đúng một nét như file khách, chỉ 2D/3D mới khoét hình thuôn.
+        loop._millLine = [{ type: 'line', start: sg.start, end: sg.end }]
+        usable.push(loop)
+      }
+    }
+  }
+
   // Lọc sạch nhẵn thì trả lại nguyên cây: lớp .GM1 nhiều khi chỉ có một vạch ghi chú cơ
   // khí, dựng ra rỗng là vẽ ít hơn trước.
   if (usable.length === 0) return tree
 
   const main = asTree(usable.flat())
-  return { ...main, parts: usable.map(asTree) }
+  return {
+    ...main,
+    parts: usable.map((ch: any) => (ch._millLine ? { ...asTree(ch), millLine: asTree(ch._millLine) } : asTree(ch))),
+  }
 }
 
 /**

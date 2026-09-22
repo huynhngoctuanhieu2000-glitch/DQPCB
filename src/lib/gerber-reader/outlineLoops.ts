@@ -203,3 +203,48 @@ const overlapRatio = (a: number[], b: number[]) => {
   const area = (a[2] - a[0]) * (a[3] - a[1])
   return w > 0 && h > 0 && area > 0 ? (w * h) / area : 0
 }
+
+/**
+ * [DQPCB] Trong lớp viền có bao nhiêu BO (để nhắc "file này đã ghép sẵn nhiều bo").
+ *
+ * Lấy các vòng thân bo của splitOutlineLoops rồi bỏ:
+ *  - rail / dải hẹp (cạnh ngắn < 8 mm) — Ceiling Master có 2 rail 5 mm;
+ *  - mảnh nhỏ (< 10% vòng lớn nhất);
+ *  - khung panel ôm lấy ≥ 2 bo khác.
+ * Trả thêm số cột / số hàng (gom tâm theo trục) để điền sẵn ô "số bo mỗi cạnh".
+ * CHAT_BOT_1 (Nguyen Van Quang, 22/09/2026): 4 bo ghép mà vẫn đi bảng tra giá bo lẻ.
+ */
+export const countBoards = (
+  layers: { type: string; imageTree?: any }[],
+): { count: number; cols: number; rows: number } | null => {
+  const ol = layers.find((l) => l.type === 'outline' && l.imageTree?.parts?.length)
+  if (!ol) return null
+  const scale = ol.imageTree.units === 'in' ? 25.4 : 1
+  const parts = ol.imageTree.parts
+  const body = parts.length > 1 ? splitOutlineLoops(parts, { scale, copperPoints: copperSamplePoints(layers) }).body : parts
+  const boxes = body.map((p: any) => bbox(loopPolygon(p, scale))).filter((b: number[]) => Number.isFinite(b[0]))
+  if (boxes.length === 0) return null
+  const area = (b: number[]) => (b[2] - b[0]) * (b[3] - b[1])
+  const biggest = Math.max(...boxes.map(area))
+  let boards = boxes.filter((b: number[]) => Math.min(b[2] - b[0], b[3] - b[1]) >= 8 && area(b) >= biggest * 0.1)
+  const centre = (b: number[]) => [(b[0] + b[2]) / 2, (b[1] + b[3]) / 2]
+  const holds = (outer: number[], inner: number[]) => {
+    const [x, y] = centre(inner)
+    return inner !== outer && x > outer[0] && x < outer[2] && y > outer[1] && y < outer[3]
+  }
+  boards = boards.filter((b: number[]) => boards.filter((o: number[]) => holds(b, o)).length < 2)
+  if (boards.length === 0) return null
+
+  // Gom tâm theo từng trục: hai tâm cách nhau dưới nửa bề rộng bo là cùng cột/hàng.
+  const groups = (vals: number[], tol: number) => {
+    const s = [...vals].sort((a, b) => a - b)
+    let n = 1
+    for (let i = 1; i < s.length; i++) if (s[i] - s[i - 1] > tol) n++
+    return n
+  }
+  const medW = boards.map((b: number[]) => b[2] - b[0]).sort((a: number, b: number) => a - b)[Math.floor(boards.length / 2)]
+  const medH = boards.map((b: number[]) => b[3] - b[1]).sort((a: number, b: number) => a - b)[Math.floor(boards.length / 2)]
+  const cols = groups(boards.map((b: number[]) => centre(b)[0]), medW / 2)
+  const rows = groups(boards.map((b: number[]) => centre(b)[1]), medH / 2)
+  return { count: boards.length, cols, rows }
+}
