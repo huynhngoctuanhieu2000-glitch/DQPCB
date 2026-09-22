@@ -6,6 +6,8 @@
  * phủ đồng của CAM350).
  */
 
+import { splitOutlineLoops } from './outlineLoops'
+
 /**
  * Sai số lớn nhất cho phép giữa cung thật và chuỗi đoạn thẳng thay thế nó (mm).
  * 0.02mm nhỏ hơn nét in mảnh nhất nên mắt không thấy được chỗ gãy.
@@ -591,7 +593,11 @@ export const outlineSize = (tree: any): [number, number, number, number] | null 
   const parts = tree?.parts
   if (!Array.isArray(parts) || parts.length === 0) return null
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity, stroke = 0
+  // Khấc phay bỏ vắt ngang mép bo (xem splitOutlineLoops) không phải vật liệu — không tính
+  // vào kích thước. Bo "Dao Quoc Thai 5pcs": khấc thò ra ngoài 3.6 mm, bo 66.28 thành 70.01 mm.
+  const { notches } = splitOutlineLoops(parts, { scale: tree.units === 'in' ? 25.4 : 1 })
   for (const part of parts) {
+    if (notches.includes(part)) continue
     for (const child of part?.children ?? []) {
       if (typeof child?.width === 'number') stroke = Math.max(stroke, child.width)
       for (const seg of child?.segments ?? []) {

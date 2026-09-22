@@ -356,6 +356,21 @@ export const isPartialDrillFile = (filename: string, plating?: 'PTH' | 'NPTH' | 
   /(^|[^a-z])(round|slot|rect|square)s?(holes?)?([^a-z]|$)/i.test(filename.split(/[\\/]/).pop() ?? filename)
 
 /**
+ * [DQPCB] File khoan CHỈ có rãnh phay (lệnh M15/M16 hay G85 — dựng ra vùng / nét, không có
+ * lỗ tròn nào) luôn là một PHẦN của bộ khoan, bất kể tên. Bo "Dao Quoc Thai 5pcs"
+ * (22/09/2026): `SqDrl.txt` chứa 3 rãnh 0.8 mm; tên không khớp luật round/slot/rect/square
+ * nên bị coi là file gộp, thua `Drl.txt` (54 lỗ) và không được vẽ — mất 3 rãnh.
+ */
+export const isSlotOnlyDrill = (imageTree: any): boolean => {
+  const children = imageTree?.children
+  return (
+    Array.isArray(children) &&
+    children.length > 0 &&
+    children.every((c: any) => c?.type === 'imageRegion' || c?.type === 'imagePath')
+  )
+}
+
+/**
  * Đếm lỗ khoan. Gerber (bộ Proteus): mỗi lệnh flash D03 là một lỗ, cộng các lỗ oval/rãnh
  * phay vẽ bằng D02 → D01. Excellon: xem countExcellonHoles.
  */

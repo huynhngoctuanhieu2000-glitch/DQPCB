@@ -97,11 +97,11 @@ export const copperSamplePoints = (layers: { type: string; imageTree?: any }[]):
 export const splitOutlineLoops = (
   parts: any[],
   opts: { scale?: number; copperPoints?: number[][] } = {},
-): { body: any[]; cutouts: any[]; lines: any[] } => {
-  if (!Array.isArray(parts) || parts.length < 2) return { body: parts ?? [], cutouts: [], lines: [] }
+): { body: any[]; cutouts: any[]; lines: any[]; notches: any[] } => {
+  if (!Array.isArray(parts) || parts.length < 2) return { body: parts ?? [], cutouts: [], lines: [], notches: [] }
   const areas = parts.map(loopArea)
   const biggest = Math.max(...areas)
-  if (!(biggest > 0)) return { body: parts, cutouts: [], lines: [] }
+  if (!(biggest > 0)) return { body: parts, cutouts: [], lines: [], notches: [] }
 
   const scale = opts.scale ?? 1
   const copper = opts.copperPoints ?? []
@@ -140,7 +140,37 @@ export const splitOutlineLoops = (
     return x1 - x0 >= (all[2] - all[0]) * 0.5 || y1 - y0 >= (all[3] - all[1]) * 0.5
   }
 
+  // Khấc phay bỏ ở mép bo: vòng VẮT NGANG mép một vòng lớn hơn — có đỉnh nằm hẳn trong
+  // và có đỉnh nằm hẳn ngoài vòng đó. Bo "Dao Quoc Thai 5pcs" (22/09/2026): vùng 6.3 × 18 mm
+  // lấn 2.7 mm vào mép phải, thò ra ngoài 3.6 mm — ô bao chỉ chồng 42% nên không "nằm
+  // trong", bị coi là thân bo thứ hai: bo rộng thành 70.01 mm thay vì 66.28 mm. Altium xuất
+  // vùng cắt bo (board cutout) đúng kiểu này. Tai bo / rail vẽ riêng thì chỉ CHẠM mép (đỉnh
+  // nằm trên cạnh), không lấn vào trong thân bo.
+  //
+  // Chỉ vòng NHỎ (≤ 10% vòng bị vắt qua; khấc Dao Quoc Thai 5%): hồi quy 523 bộ có panel
+  // "PHAONUOC V3.9" nối viền lộn xộn — hai vòng 180 × 50 và 83 × 150 mm chồng lên nhau bị
+  // coi nhầm là khấc; "Driver_Lift" có vòng 17% lấn 7.7 mm vào mép, không rõ khấc hay tai bo.
+  const STRADDLE_MM = 0.2
+  const NOTCH_MAX_RATIO = 0.1
+  const straddles = (i: number) => {
+    for (let j = 0; j < parts.length; j++) {
+      if (j === i || areas[j] <= areas[i] || polys[j].length < 3) continue
+      if (areas[i] > areas[j] * NOTCH_MAX_RATIO) continue
+      let inDeep = false
+      let outDeep = false
+      for (const p of polys[i]) {
+        const deep = edgeDistance(p, polys[j]) > STRADDLE_MM
+        if (!deep) continue
+        if (pointInPolygon(p, polys[j])) inDeep = true
+        else outDeep = true
+        if (inDeep && outDeep) return true
+      }
+    }
+    return false
+  }
+
   const isCutout = (i: number): boolean => {
+    if (straddles(i)) return true
     const small = areas[i] / biggest < OUTLINE_CUTOUT_MAX_RATIO
     const host = containerOf(i)
     // Không nằm trong vòng nào: rail thì là thân bo; vòng nhỏ khác vẫn là lỗ như trước
@@ -178,11 +208,28 @@ export const splitOutlineLoops = (
   const body: any[] = []
   const cutouts: any[] = []
   const lines: any[] = []
+  const notches: any[] = []
   parts.forEach((part, i) => {
     if (isOpen(i) && containerOf(i) !== -1) lines.push(part)
-    else (isCutout(i) ? cutouts : body).push(part)
+    else if (isCutout(i)) {
+      cutouts.push(part)
+      if (straddles(i)) notches.push(part)
+    } else body.push(part)
   })
-  return body.length > 0 ? { body, cutouts, lines } : { body: parts, cutouts: [], lines: [] }
+  return body.length > 0 ? { body, cutouts, lines, notches } : { body: parts, cutouts: [], lines: [], notches: [] }
+}
+
+/** Khoảng cách từ điểm tới cạnh gần nhất của đa giác (cùng đơn vị). */
+const edgeDistance = (p: number[], poly: number[][]) => {
+  let best = Infinity
+  for (let k = 0, m = poly.length - 1; k < poly.length; m = k++) {
+    const a = poly[m], b = poly[k]
+    const dx = b[0] - a[0], dy = b[1] - a[1]
+    const len2 = dx * dx + dy * dy
+    const t = len2 > 0 ? Math.max(0, Math.min(1, ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / len2)) : 0
+    best = Math.min(best, Math.hypot(p[0] - (a[0] + t * dx), p[1] - (a[1] + t * dy)))
+  }
+  return best
 }
 
 const bbox = (poly: number[][]): number[] => {

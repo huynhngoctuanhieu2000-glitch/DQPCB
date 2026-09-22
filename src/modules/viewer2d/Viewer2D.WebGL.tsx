@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { BoardDataModel } from '../../models/BoardDataModel'
 import { realPalette, HOLE, MASK_OPENING, BASE_BOARD } from '../../models/RealPalette'
-import { copperSamplePoints, detectPanel, isPartialDrillFile, minDrill, splitOutlineLoops } from '../../lib/gerber-reader'
+import { copperSamplePoints, detectPanel, isPartialDrillFile, isSlotOnlyDrill, minDrill, splitOutlineLoops } from '../../lib/gerber-reader'
 // @ts-ignore - web-gerber typings for named exports are incomplete
 import {
   createParser,
@@ -196,9 +196,16 @@ const drillPlanOf = (layers: any[]) => {
       // Tách = chỉ chứa một phần (theo mạ, hoặc theo hình lỗ kiểu Altium Round/Slot/
       // RectHoles), phải vẽ kèm các file tách còn lại — luật nằm trong gerber-reader.
       split: isPartialDrillFile(l.filename, l.drillPlating),
+      slotOnly: isSlotOnlyDrill(l.imageTree),
+      hasSlots: (l.imageTree?.children ?? []).some((c: any) => c?.type === 'imageRegion' || c?.type === 'imagePath'),
     }))
-  const merged = drills.filter((d) => !d.split).sort((a, b) => b.holes - a.holes)
-  const drillPlan = merged.length > 0 ? [merged[0]] : drills
+  const merged = drills.filter((d) => !d.split && !d.slotOnly).sort((a, b) => b.holes - a.holes)
+  const base = merged.length > 0 ? [merged[0]] : drills.filter((d) => !d.slotOnly)
+  // File CHỈ có rãnh phay (xem isSlotOnlyDrill) luôn vẽ kèm, bất kể tên — trừ khi file gộp
+  // đã tự có rãnh (vẽ nữa là trùng). Bo "Dao Quoc Thai 5pcs": Drl.txt (54 lỗ) + SqDrl.txt
+  // (3 rãnh) — trước đây chỉ vẽ Drl.txt, mất 3 rãnh.
+  const slotFiles = drills.filter((d) => d.slotOnly && !base.some((b) => b.hasSlots))
+  const drillPlan = [...base, ...slotFiles]
   return {
     drillPlan,
     drillUse: new Set(drillPlan.map((d) => d.name)),

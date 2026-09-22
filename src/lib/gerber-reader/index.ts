@@ -15,6 +15,7 @@ export {
   drillPlatingOf,
   isAuxiliaryFile,
   isPartialDrillFile,
+  isSlotOnlyDrill,
   layerKeyOf,
   matchLayer,
   shortenNames,

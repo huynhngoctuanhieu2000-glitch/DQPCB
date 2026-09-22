@@ -9,7 +9,8 @@
  *     sạch lỗ không mạ lẫn lỗ via.
  */
 import { describe, it, expect } from 'vitest'
-import { GerberParser, countExcellonHoles, drillPlatingOf, isPartialDrillFile, matchLayer } from '../src/lib/gerber-reader'
+import { GerberParser, countExcellonHoles, drillPlatingOf, isPartialDrillFile, isSlotOnlyDrill, matchLayer } from '../src/lib/gerber-reader'
+import { defineMissingApertures } from '../src/lib/gerber-reader/normalize'
 import { isGerberContent } from '../src/lib/gerber-reader/identify'
 
 const asFile = (name: string, content: string) =>
@@ -477,5 +478,57 @@ describe('lớp viền có vùng tô đứng trước khung bo (bo Anh Nhat, BAI
     })
     expect(verts).toBeGreaterThan(0)
     expect(b.bounds.widthMM).toBeCloseTo(10, 0)
+  })
+})
+
+describe('bo Dao Quoc Thai 5pcs: khấc mép, file chỉ có rãnh, aperture không khai báo', () => {
+  // Khung 10 × 10 mm + vùng tô 2 × 4 mm vắt ngang mép phải (lấn vào 1 mm, thò ra 1 mm).
+  const gko = gbr(
+    [
+      'G36*',
+      'X900000Y300000D02*',
+      'X1100000Y300000D01*',
+      'X1100000Y700000D01*',
+      'X900000Y700000D01*',
+      'X900000Y300000D01*',
+      'G37*',
+      'G01X0Y0D02*',
+      'G01X1000000Y0D01*',
+      'G01X1000000Y1000000D01*',
+      'G01X0Y1000000D01*',
+      'G01X0Y0D01*',
+    ].join('\n'),
+  )
+
+  it('khấc vắt ngang mép là lỗ khoét, không tính vào kích thước', async () => {
+    const [b] = await GerberParser.parseInputFiles([asFile('BO.GTL', copper), asFile('BO.GKO', gko)])
+    expect(b.bounds.widthMM).toBeCloseTo(10, 0)
+    expect(b.bounds.heightMM).toBeCloseTo(10, 0)
+    const { splitOutlineLoops } = await import('../src/lib/gerber-reader')
+    const parts = b.layers.find((l) => l.type === 'outline')!.imageTree.parts
+    const sp = splitOutlineLoops(parts)
+    expect(sp.body).toHaveLength(1)
+    expect(sp.cutouts).toHaveLength(1)
+    expect(sp.notches).toHaveLength(1)
+  })
+
+  it('file khoan chỉ có rãnh phay được nhận ra bất kể tên', async () => {
+    const sq = ['M48', ';FILE_FORMAT=2:5', 'INCH,LZ', 'T3F00S00C0.03150', '%', 'T3', 'G00X003682Y004389', 'M15', 'G01X002816', 'M16', 'M30'].join('\n')
+    const drl = ['M48', 'INCH,LZ', 'T2C0.02800', '%', 'T2', 'X0024Y00125', 'X00645Y00065', 'M30'].join('\n')
+    const [b] = await GerberParser.parseInputFiles([asFile('BO.GTL', copper), asFile('SqDrl.txt', sq), asFile('Drl.txt', drl)])
+    const sqLayer = b.layers.find((l) => l.filename === 'SqDrl.txt')!
+    const drlLayer = b.layers.find((l) => l.filename === 'Drl.txt')!
+    expect(isPartialDrillFile(sqLayer.filename, sqLayer.drillPlating)).toBe(false) // tên không khớp luật tên
+    expect(isSlotOnlyDrill(sqLayer.imageTree)).toBe(true)
+    expect(isSlotOnlyDrill(drlLayer.imageTree)).toBe(false)
+  })
+
+  it('khai báo aperture còn thiếu bằng nét mảnh, giữ aperture đã khai', () => {
+    const src = ['%FSLAX25Y25*%', '%MOIN*%', '%ADD10C,0.01*%', 'G54D37*', 'X0Y0D02*', 'X100000Y0D01*', 'D10*', 'X0Y0D03*', 'M02*'].join('\n')
+    const out = defineMissingApertures(src)
+    expect(out).toContain('%ADD37C,0.0039*%')
+    expect(out.match(/%ADD10/g)).toHaveLength(1)
+    expect(out.indexOf('%ADD37')).toBeLessThan(out.indexOf('G54D37'))
+    expect(defineMissingApertures(out)).toBe(out)
   })
 })

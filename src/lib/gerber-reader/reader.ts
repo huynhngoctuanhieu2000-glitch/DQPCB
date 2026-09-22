@@ -21,7 +21,7 @@ import {
   shortenNames,
 } from './identify'
 import { dilateRegions, flattenArcs, outlineSize, stitchOutline } from './geometry'
-import { convertIncrementalToAbsolute, detectFileUnits, parseApertureList } from './normalize'
+import { convertIncrementalToAbsolute, defineMissingApertures, detectFileUnits, parseApertureList } from './normalize'
 import { buildEstimatedOutline, extractProfileGerber, plotOutline } from './outline'
 
 /**
@@ -580,6 +580,8 @@ export class GerberParser {
         // aperture đó -> mọi lệnh flash D03 dùng nó biến mất. Thực đo trên bo VOL LED:
         // copper_top từ 0 lên 528 hình sau khi bỏ dấu cách.
         fileContent = fileContent.replace(/(%ADD\d+[A-Za-z]*),[ \t]+/g, '$1,')
+        // Lớp viền dùng aperture không khai báo → nét mảnh (xem defineMissingApertures).
+        if (meta.type === 'outline') fileContent = defineMissingApertures(fileContent)
 
         const isOutline = meta.type === 'outline'
         const parser = createParser()
