@@ -17,12 +17,24 @@ import { ZoomBox } from '../../ui/ZoomBox'
 // break-word lo phần đó). 6 cột kia (SỐ LỚP..ĐƠN GIÁ) chỉ vừa đủ cho tiêu đề bảng
 // không xuống hàng, không co được nữa — khối "KÍCH THƯỚC → GHI CHÚ" (cột D–I) còn
 // phải đủ chỗ cho dòng tên công ty ở đầu trang không xuống hàng (colSpan 6 chung ô).
-/** Bề rộng tương đối của 9 cột, coi như px trên bảng rộng 900px. */
-const COL_WIDTHS = [32, 223, 65, 103, 76, 29, 100, 72, 200]
+/**
+ * Bề rộng tương đối của 9 cột, coi như px trên bảng rộng 1062px — đúng khổ in
+ * (xem PREVIEW_W): rộng hơn thì mỗi cột đều rộng thêm theo cùng tỉ lệ, không phải
+ * co cột này lấy chỗ cho cột kia nữa.
+ */
+const COL_WIDTHS = [38, 272, 68, 121, 90, 34, 118, 85, 236]
 const TOTAL_W = COL_WIDTHS.reduce((a, b) => a + b, 0)
 
-/** Bề rộng dựng bản xem trước (px): bảng 900 như khổ A4 ngang + lề trắng hai bên. */
-export const PREVIEW_W = 900 + 2 * 14
+/**
+ * Bề rộng dựng bản xem trước (px). Bằng đúng bề ngang in được của khổ A4 ngang, lề
+ * 8mm mỗi bên (297mm - 16mm ≈ 281mm ≈ 1062px ở 96dpi — cùng con số PAGE_W/MARGIN
+ * dùng khi xuất PDF ở exportImage.ts), cộng lề trắng 14px hai bên của khung xem
+ * trước. Rộng hơn không làm trang in bị "rộng hơn A4": cả hai đường xuất PDF đều co
+ * vừa khổ A4 sau đó (Electron ép `table{width:100%}` trong trang in;
+ * html2canvas+pdf-lib co ảnh vừa trang) — ở đây chỉ là rộng hơn để mỗi cột có thêm
+ * chỗ, xem trước cũng đúng bằng khổ in nên không phải đoán co lại thế nào.
+ */
+export const PREVIEW_W = 1062 + 2 * 14
 
 /** Số dòng trống có sẵn viền dưới bảng — phải khớp SPARE_ROWS của exportExcel.ts. */
 const SPARE_ROWS = 1
@@ -100,7 +112,7 @@ export const QuotationSheet: React.FC<{ q: Quotation }> = ({ q }) => {
             <td style={{ ...cell, fontSize: '14px', fontWeight: 700, lineHeight: 1.35 }} colSpan={6}>
               {/* Không xuống dòng: trên iPhone font Times rộng hơn Times New Roman một chút,
                   20px là chữ "PCB" rớt xuống hàng dưới trong file PDF. */}
-              <div style={{ fontSize: '16px', color: '#C00000', marginBottom: '2px', whiteSpace: 'nowrap' }}>{q.company.name}</div>
+              <div style={{ fontSize: '18px', color: '#C00000', marginBottom: '2px', whiteSpace: 'nowrap' }}>{q.company.name}</div>
               <div>{q.company.address}</div>
               <div>{q.company.contact}</div>
             </td>
