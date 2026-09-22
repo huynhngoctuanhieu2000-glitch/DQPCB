@@ -40,6 +40,8 @@ export interface QuotationItem {
   priceBasis?: PriceBasis
   /** Bo nguồn của dòng này — để dòng bám theo thẻ tính giá khi bên đó đổi. */
   sourceBoardId?: string
+  /** Số bo mỗi set của dòng bo ghép panel — SL là số bo, giá tra theo số set. Không xuất ra file. */
+  pcsPerSet?: number
   /**
    * Phần ghi chú app tự điền từ thẻ tính giá (thông số khác mặc định + panel), đang
    * đứng đầu ô GHI CHÚ. Giữ lại để khi bên thẻ đổi thì thay đúng phần này mà không

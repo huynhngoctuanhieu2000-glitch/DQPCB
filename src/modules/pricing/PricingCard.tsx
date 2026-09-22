@@ -426,8 +426,10 @@ export const PricingCard: React.FC<{
       canSend
         ? {
             boardId: board.activeBoardId,
-            quantity: orderQty!,
-            unit: panelOn ? 'set' : 'pcs',
+            // Cột SL của báo giá ghi SỐ BO (400), không phải số set (50) — số set đã có
+            // trong ghi chú panel. Giá vẫn tính theo set; pcsPerSet để báo giá quy ngược.
+            quantity: pcsCount!,
+            ...(panelOn ? { pcsPerSet: perSet } : null),
             amount: priced ? amount : null,
             basis: priced ? basis : null,
             ...(sizeText ? { size: sizeText } : null),
@@ -436,7 +438,7 @@ export const PricingCard: React.FC<{
           }
         : null,
     )
-  }, [onPriceChange, synced, canSend, priced, board.activeBoardId, orderQty, panelOn, amount, basis, sizeText, autoNote, stencilChoice])
+  }, [onPriceChange, synced, canSend, priced, board.activeBoardId, orderQty, pcsCount, perSet, panelOn, amount, basis, sizeText, autoNote, stencilChoice])
 
   /** Đơn giá dưới thành tiền: bo lẻ ghi / pcs; ghép panel ghi / set và quy ra / pcs. */
   const unitText = (priceVnd: number) =>

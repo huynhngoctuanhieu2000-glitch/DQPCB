@@ -57,10 +57,14 @@ const parseDigits = (raw: string): number | null => {
  */
 export interface QuotationSeed {
   boardId: string
-  /** Ghép panel: SỐ SET (đã chốt 22/09/2026 — báo giá bo ghép ghi theo set). Bo lẻ: số pcs. */
+  /**
+   * SỐ BO (pcs) — kể cả khi ghép panel: khách nhận bo lẻ nên cột SL ghi số bo (50 set ×
+   * 8 bo = 400), số set nằm trong ghi chú "Panel 4*2 · 50 set" (đổi lại 22/09/2026 tối;
+   * bản trước ghi số set vào cột SL).
+   */
   quantity: number
-  /** Đơn vị của quantity. Không có = pcs. */
-  unit?: 'set' | 'pcs'
+  /** Số bo mỗi set khi ghép panel (1 = bo lẻ) — giá tính theo set, nên đổi SL thì quy ra set. */
+  pcsPerSet?: number
   /** null = chưa có công thức giá cho thông số đang chọn — người lập nhập tay. */
   amount: number | null
   /** Cơ sở đã dùng để ra con số trên — để form tính lại khi đổi SL. null = không có giá. */
@@ -93,6 +97,7 @@ export const QuotationPanel: React.FC<{
     return {
       ...it,
       quantity: price.quantity,
+      ...(price.pcsPerSet && price.pcsPerSet > 1 ? { pcsPerSet: price.pcsPerSet } : null),
       amount: price.amount,
       ...(price.basis ? { priceBasis: price.basis } : null),
       sourceBoardId: b.id,
@@ -109,9 +114,10 @@ export const QuotationPanel: React.FC<{
   }
 
   /** Thành tiền theo cơ sở tính giá và số lượng; ngoài bảng giá nhà máy thì trả null. */
-  const amountFor = (basis: PriceBasis, qty: number): number | null => {
+  const amountFor = (basis: PriceBasis, qty: number, pcsPerSet = 1): number | null => {
     try {
-      const r = computePrice({ ...basis, qty }, PricingStore.getConfig())
+      // SL trên báo giá là số bo; giá bo ghép tính theo số set (làm tròn lên).
+      const r = computePrice({ ...basis, qty: Math.ceil(qty / Math.max(1, pcsPerSet)) }, PricingStore.getConfig())
       return r.kind === 'off-table' ? null : r.priceVnd
     } catch {
       // Cấu hình giá đổi sau khi dòng được tạo (vd xoá phương án) — để tiền cho nhập tay.
@@ -135,7 +141,8 @@ export const QuotationPanel: React.FC<{
       return
     }
     try {
-      const r = computePrice({ ...it.priceBasis, qty: quantity }, PricingStore.getConfig())
+      const sets = Math.ceil(quantity / Math.max(1, it.pcsPerSet ?? 1))
+      const r = computePrice({ ...it.priceBasis, qty: sets }, PricingStore.getConfig())
       patchItem(it.id, { quantity, amount: r.kind === 'off-table' ? null : r.priceVnd })
     } catch {
       // Cấu hình giá đổi sau khi dòng được tạo (vd xoá phương án) — giữ SL, để tiền cho nhập tay.
@@ -216,7 +223,7 @@ export const QuotationPanel: React.FC<{
         // Có công thức: tra lại theo SL của dòng; số lượng khớp thẻ mà ngoài bảng giá thì
         // lấy số người lập đã gõ bên thẻ. Không có công thức: giữ số người lập gõ trên form.
         const amount = price.basis
-          ? amountFor(price.basis, qty) ?? (qty === price.quantity ? price.amount : null)
+          ? amountFor(price.basis, qty, price.pcsPerSet) ?? (qty === price.quantity ? price.amount : null)
           : it.amount
         if (
           it.size === size && it.note === note && it.amount === amount &&
@@ -495,7 +502,7 @@ export const QuotationPanel: React.FC<{
                           : ''}
                         {prices[b.id] && (
                           <span style={{ color: '#5eead4' }}>
-                            {` · ${prices[b.id].quantity} ${prices[b.id].unit ?? 'pcs'}`}
+                            {` · ${prices[b.id].quantity} pcs`}
                             {prices[b.id].amount !== null ? ` · ${money(prices[b.id].amount!)} đ` : ' · chưa có giá'}
                           </span>
                         )}
