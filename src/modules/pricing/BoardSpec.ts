@@ -83,3 +83,19 @@ export const specSummary = (spec: BoardSpec): string =>
     `${spec.thicknessMm} mm`,
     `${spec.copperOz} oz`,
   ].join(' · ')
+
+/**
+ * Những thông số KHÁC mặc định, để ghi vào ô GHI CHÚ của dòng báo giá — mặc định là
+ * đúng "THÔNG SỐ MẶC ĐỊNH" in sẵn trên báo giá (FR4 · 1.6 mm · 1 oz · mạ thiếc HASL),
+ * nên thông số trùng thì khỏi ghi. Số lớp và màu bo đã có cột riêng nên không ghi.
+ * Vd bo mạ vàng 0.8 mm đồng 2 oz → ["Mạ vàng ENIG", "Bo 0.8mm", "Đồng 2oz"].
+ */
+export const specNoteParts = (spec: BoardSpec): string[] => {
+  const d = defaultSpec(spec.layers)
+  const parts: string[] = []
+  if (spec.material !== d.material) parts.push(MATERIALS.find((m) => m.key === spec.material)?.label ?? spec.material)
+  if (spec.finish !== d.finish) parts.push(FINISHES.find((f) => f.key === spec.finish)?.label ?? spec.finish)
+  if (spec.thicknessMm !== d.thicknessMm) parts.push(`Bo ${spec.thicknessMm}mm`)
+  if (spec.copperOz !== d.copperOz) parts.push(`Đồng ${spec.copperOz}oz`)
+  return parts
+}

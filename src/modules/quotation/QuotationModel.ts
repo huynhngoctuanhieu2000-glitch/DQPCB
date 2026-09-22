@@ -41,6 +41,12 @@ export interface QuotationItem {
   /** Bo nguồn của dòng này — để dòng bám theo thẻ tính giá khi bên đó đổi. */
   sourceBoardId?: string
   /**
+   * Phần ghi chú app tự điền từ thẻ tính giá (thông số khác mặc định + panel), đang
+   * đứng đầu ô GHI CHÚ. Giữ lại để khi bên thẻ đổi thì thay đúng phần này mà không
+   * đụng chữ người lập gõ thêm phía sau.
+   */
+  autoNote?: string
+  /**
    * Dòng giảm giá. `amount` lưu SỐ ÂM nên tổng cộng tự trừ đi; luôn nằm cuối bảng
    * (xem `insertItems`).
    */
@@ -161,7 +167,7 @@ export const dateFromInput = (s: string): string => {
 export const itemFromBoard = (board: Board): QuotationItem => ({
   ...emptyItem(),
   name: board.projectName,
-  layers: board.layers.length > 0 ? String(board.layerCount) : '',
+  layers: board.layers.length > 0 ? String(board.layersOverride ?? board.layerCount) : '',
   size: board.bounds
     ? `${Math.round(board.bounds.widthMM)}*${Math.round(board.bounds.heightMM)}mm`
     : '',
@@ -190,16 +196,20 @@ export const sameStencil = (a: StencilTier, b: StencilTier): boolean =>
   a.frameW === b.frameW && a.frameH === b.frameH && !!a.noFrame === !!b.noFrame
 
 /** Mặt cần làm stencil — theo cách gọi trong danh sách gợi ý ghi chú sẵn có. */
-export type StencilSide = 'Top' | 'Bot'
+export type StencilSide = 'Top' | 'Bot' | 'Top + Bot'
 
 /** "Stencil Khung Top" / "Stencil Không Khung Bot" — đúng mẫu ghi chú đang dùng. */
 export const stencilNote = (t: StencilTier, side: StencilSide): string =>
   `Stencil ${t.noFrame ? 'Không Khung' : 'Khung'} ${side}`
 
 /** Hai cách ghi tự sinh của một cỡ — để biết ghi chú có bị sửa tay hay chưa. */
-const autoNotes = (t: StencilTier): string[] => [stencilNote(t, 'Top'), stencilNote(t, 'Bot')]
+const autoNotes = (t: StencilTier): string[] => [
+  stencilNote(t, 'Top'),
+  stencilNote(t, 'Bot'),
+  stencilNote(t, 'Top + Bot'),
+]
 
-const isStencilNote = (s: string) => /^Stencil (Khung|Không Khung) (Top|Bot)$/.test(s.trim())
+const isStencilNote = (s: string) => /^Stencil (Khung|Không Khung) (Top \+ Bot|Top|Bot)$/.test(s.trim())
 
 /** Dòng gợi ý này đã có trong ghi chú chưa. */
 export const noteHas = (current: string, text: string): boolean =>
@@ -228,20 +238,35 @@ export const applyNoteSuggestion = (current: string, picked: string): string => 
   return [...lines, picked].join('\n')
 }
 
-/** Ghi chú panel, chỉ có khi thật sự ghép nhiều tấm. */
-export const panelNote = (panelX = 1, panelY = 1): string | null =>
-  panelX > 1 || panelY > 1 ? `Panel ${panelX}*${panelY}` : null
-
-const PANEL_LINE = /^Panel\s+\d+\s*\*\s*\d+$/
+/**
+ * Ghi chú panel, chỉ có khi thật sự ghép nhiều tấm: "Panel 2*5 · 50 set · Rail 5mm".
+ * Rail hai chiều luôn bằng nhau (quy ước xưởng) nên chỉ ghi một số; 0 thì bỏ.
+ */
+export const panelNote = (
+  panelX = 1,
+  panelY = 1,
+  sets?: number | null,
+  railMm?: number,
+): string | null => {
+  if (panelX <= 1 && panelY <= 1) return null
+  const parts = [`Panel ${panelX}*${panelY}`]
+  if (sets) parts.push(`${sets} set`)
+  if (railMm && railMm > 0) parts.push(`Rail ${+railMm.toFixed(1)}mm`)
+  return parts.join(' · ')
+}
 
 /**
- * Đặt lại dòng panel trong ghi chú, giữ nguyên mọi dòng khác. Đổi cách ghép bên thẻ
- * tính giá thì dòng này đổi theo chứ không chồng thêm một dòng panel thứ hai.
+ * Đặt lại phần ghi chú app tự điền (`prevAuto`, đứng đầu ô) thành `nextAuto`, giữ
+ * nguyên chữ người lập gõ thêm phía sau. Người lập đã sửa chính phần tự điền (ô không
+ * còn bắt đầu bằng nó) thì để y nguyên — không đạp lên chữ họ viết.
  */
-export const withPanelNote = (note: string, panelX = 1, panelY = 1): string => {
-  const rest = note.split('\n').filter((l) => l.trim() && !PANEL_LINE.test(l.trim()))
-  const line = panelNote(panelX, panelY)
-  return (line ? [line, ...rest] : rest).join('\n')
+export const withAutoNote = (note: string, prevAuto: string, nextAuto: string): string => {
+  if (prevAuto === nextAuto) return note
+  if (prevAuto === '') return note.trim() ? (nextAuto ? `${nextAuto}, ${note.trim()}` : note) : nextAuto
+  if (!note.startsWith(prevAuto)) return note
+  const rest = note.slice(prevAuto.length).replace(/^\s*,\s*/, '').trim()
+  if (!nextAuto) return rest
+  return rest ? `${nextAuto}, ${rest}` : nextAuto
 }
 
 /**
@@ -252,7 +277,9 @@ export const stencilSideFromBoard = (board?: Board): StencilSide => {
   const paste = board?.layers.filter((l) => l.type === 'solderpaste') ?? []
   const hasTop = paste.some((l) => l.side === 'top')
   const hasBot = paste.some((l) => l.side === 'bottom')
-  return hasBot && !hasTop ? 'Bot' : 'Top'
+  // Một file chỉ làm một tấm stencil; có kem cả hai mặt thì tấm đó làm cả Top + Bot.
+  if (hasTop && hasBot) return 'Top + Bot'
+  return hasBot ? 'Bot' : 'Top'
 }
 
 export const itemFromStencil = (
@@ -279,7 +306,9 @@ export const withStencil = (item: QuotationItem, tier: StencilTier): QuotationIt
   // người lập gõ tay hay chọn tay trong danh sách gợi ý thì để y như vậy.
   const auto = item.stencil ? autoNotes(item.stencil) : []
   const keepNote = !auto.includes(item.note)
-  const side: StencilSide = item.note === stencilNote(item.stencil ?? tier, 'Bot') ? 'Bot' : 'Top'
+  const was = item.stencil ?? tier
+  const side: StencilSide =
+    item.note === stencilNote(was, 'Top + Bot') ? 'Top + Bot' : item.note === stencilNote(was, 'Bot') ? 'Bot' : 'Top'
   return {
     ...item,
     stencil: tier,

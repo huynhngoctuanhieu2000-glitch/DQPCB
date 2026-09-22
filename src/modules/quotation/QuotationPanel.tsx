@@ -9,7 +9,7 @@ import {
   applyNoteSuggestion,
   applyVatFlag,
   noteHas,
-  withPanelNote,
+  withAutoNote,
   createQuotation,
   emptyItem,
   discountItem,
@@ -29,7 +29,7 @@ import {
   grandTotal,
   suggestedFileName,
 } from './QuotationModel'
-import type { Quotation, QuotationItem } from './QuotationModel'
+import type { Quotation, QuotationItem, StencilSide } from './QuotationModel'
 import { exportQuotationToPdf, revealInFolder } from './exportPdf'
 import { canShareFiles, shareQuotationPdf } from './exportImage'
 import { exportQuotationToXlsx, canShareXlsxFiles, shareQuotationXlsx } from './exportExcel'
@@ -58,15 +58,20 @@ const parseDigits = (raw: string): number | null => {
 export interface QuotationSeed {
   boardId: string
   quantity: number
-  amount: number
-  /** Cơ sở đã dùng để ra con số trên — để form tính lại khi đổi SL. */
-  basis: PriceBasis
+  /** null = chưa có công thức giá cho thông số đang chọn — người lập nhập tay. */
+  amount: number | null
+  /** Cơ sở đã dùng để ra con số trên — để form tính lại khi đổi SL. null = không có giá. */
+  basis: PriceBasis | null
   /**
    * Kích thước đã tính giá, chỉ có khi người lập gõ tay đè lên số đọc từ Gerber.
    * Phải ghi đè cột KÍCH THƯỚC, nếu không báo giá gửi khách sẽ ghi một kích thước
    * mà giá lại tính theo kích thước khác.
    */
   size?: string
+  /** Ghi chú tự điền: thông số khác mặc định + panel, gộp một dòng. */
+  note: string
+  /** Stencil chọn bên thẻ — thêm một dòng stencil ngay dưới dòng bo. */
+  stencil?: { tier: StencilTier; side: StencilSide }
 }
 
 export const QuotationPanel: React.FC<{
@@ -75,8 +80,9 @@ export const QuotationPanel: React.FC<{
   /** Giá đã tính bên thẻ, theo id bo — điền vào dòng của bo tương ứng khi lấy từ bo. */
   prices?: Record<string, QuotationSeed>
 }> = ({ board, onClose, prices = {} }) => {
-  // Dòng lấy từ bo: bốn cột từ Gerber, cộng thêm số lượng + thành tiền nếu bo đó
-  // đã được tính giá bên thẻ.
+  // Dòng lấy từ bo: bốn cột từ Gerber (số lớp và màu theo lựa chọn bên thẻ), cộng số
+  // lượng, thành tiền và ghi chú tự điền từ thẻ tính giá. Chưa có công thức giá thì vẫn
+  // lấy được — thành tiền để trống cho người lập nhập tay.
   const itemWithPrice = (b: Board): QuotationItem => {
     const it = itemFromBoard(b)
     const price = prices[b.id]
@@ -85,12 +91,18 @@ export const QuotationPanel: React.FC<{
       ...it,
       quantity: price.quantity,
       amount: price.amount,
-      priceBasis: price.basis,
+      ...(price.basis ? { priceBasis: price.basis } : null),
       sourceBoardId: b.id,
       ...(price.size ? { size: price.size } : null),
-      // Panel là thứ khách phải biết và nhà máy phải làm, nên ghi thẳng vào báo giá.
-      note: withPanelNote(it.note, price.basis.panelX, price.basis.panelY),
+      note: price.note,
+      autoNote: price.note,
     }
+  }
+
+  /** Dòng bo, kèm ngay dưới là dòng stencil nếu bên thẻ có chọn stencil cho bo đó. */
+  const itemsFromBoard = (b: Board): QuotationItem[] => {
+    const st = prices[b.id]?.stencil
+    return st ? [itemWithPrice(b), itemFromStencil(st.tier, b.projectName, st.side)] : [itemWithPrice(b)]
   }
 
   /** Thành tiền theo cơ sở tính giá và số lượng; ngoài bảng giá nhà máy thì trả null. */
@@ -132,7 +144,8 @@ export const QuotationPanel: React.FC<{
     const base = createQuotation(false, board)
     if (!board.isLoaded) return base
     // Dòng đầu là bo đang mở — chính là bo vừa tính giá, nên điền thẳng vào đó.
-    return { ...base, items: [itemWithPrice(board), ...base.items.slice(1)] }
+    const active = board.boards.find((b) => b.id === board.activeBoardId)
+    return { ...base, items: active ? itemsFromBoard(active) : [itemWithPrice(board), ...base.items.slice(1)] }
   })
   const [tab, setTab] = useState<'form' | 'preview'>('form')
   const isMobile = useIsMobile()
@@ -196,13 +209,23 @@ export const QuotationPanel: React.FC<{
         if (!price) return it
         const qty = it.quantity ?? price.quantity
         const size = price.size ?? it.size
-        const note = withPanelNote(it.note, price.basis.panelX, price.basis.panelY)
-        const amount = amountFor(price.basis, qty)
-        if (it.size === size && it.note === note && it.amount === amount && it.quantity === qty) {
+        const note = withAutoNote(it.note, it.autoNote ?? '', price.note)
+        // Có công thức: tra lại theo SL của dòng; số lượng khớp thẻ mà ngoài bảng giá thì
+        // lấy số người lập đã gõ bên thẻ. Không có công thức: giữ số người lập gõ trên form.
+        const amount = price.basis
+          ? amountFor(price.basis, qty) ?? (qty === price.quantity ? price.amount : null)
+          : it.amount
+        if (
+          it.size === size && it.note === note && it.amount === amount &&
+          it.quantity === qty && it.autoNote === price.note
+        ) {
           return it
         }
         changed = true
-        return { ...it, size, note, amount, quantity: qty, priceBasis: price.basis }
+        return {
+          ...it, size, note, amount, quantity: qty, autoNote: price.note,
+          priceBasis: price.basis ?? undefined,
+        }
       })
       return changed ? { ...prev, items } : prev
     })
@@ -239,7 +262,7 @@ export const QuotationPanel: React.FC<{
 
   const addBoards = (list: Board[]) => {
     if (list.length === 0) return
-    setQ((prev) => ({ ...prev, items: insertItems(prev.items, list.map(itemWithPrice)) }))
+    setQ((prev) => ({ ...prev, items: insertItems(prev.items, list.flatMap(itemsFromBoard)) }))
     setBoardMenu(false)
   }
 
@@ -469,7 +492,8 @@ export const QuotationPanel: React.FC<{
                           : ''}
                         {prices[b.id] && (
                           <span style={{ color: '#5eead4' }}>
-                            {` · ${prices[b.id].quantity} pcs · ${money(prices[b.id].amount)} đ`}
+                            {` · ${prices[b.id].quantity} pcs`}
+                            {prices[b.id].amount !== null ? ` · ${money(prices[b.id].amount!)} đ` : ' · chưa có giá'}
                           </span>
                         )}
                       </span>

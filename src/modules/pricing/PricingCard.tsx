@@ -13,6 +13,7 @@ import React, { useEffect, useMemo, useState } from 'react'
 import { BoardDataModel, type BoardState } from '../../models/BoardDataModel'
 import { MASK_COLORS } from '../../models/MaskColors'
 import type { QuotationSeed } from '../quotation/QuotationPanel'
+import { panelNote, stencilSideFromBoard, stencilSizeLabel, type StencilSide } from '../quotation/QuotationModel'
 import { PricingStore } from './PricingStore'
 import { PanelPreview, type BoardShape, type PanelKind } from './PanelPreview'
 import { copperSamplePoints, countBoards, loopPolygon, splitOutlineLoops } from '../../lib/gerber-reader'
@@ -24,6 +25,7 @@ import {
   THICKNESS_CHOICES,
   defaultSpec,
   optionForSpec,
+  specNoteParts,
   specSummary,
   type BoardSpec,
 } from './BoardSpec'
@@ -70,6 +72,9 @@ interface CardInputs {
   forceFormula: boolean
   manualAmount: number | null
   sizeOverride: { w: number; h: number } | null
+  stencilOn: boolean
+  stencilPick: number | null
+  stencilSide: StencilSide | null
 }
 
 /**
@@ -126,6 +131,13 @@ export const PricingCard: React.FC<{
   /** Kích thước gõ tay, cm. null = bám theo bo đang mở. */
   const [sizeOverride, setSizeOverride] = useState<{ w: number; h: number } | null>(null)
 
+  /** Có làm stencil kèm bo không — có thì "Đưa vào báo giá" thêm một dòng stencil. */
+  const [stencilOn, setStencilOn] = useState(false)
+  /** Cỡ khung chọn tay (chỉ số trong bảng giá stencil); null = cỡ rẻ nhất vừa tấm. */
+  const [stencilPick, setStencilPick] = useState<number | null>(null)
+  /** Mặt stencil chọn tay; null = theo lớp kem hàn (paste) đọc được trong Gerber. */
+  const [stencilSide, setStencilSide] = useState<StencilSide | null>(null)
+
   /** Người lập đã tự sửa thông số chưa — sửa rồi thì đổi bo mới được đạp lên. */
   const [specTouched, setSpecTouched] = useState(false)
   /** Sửa một ô thông số; mọi ô đều tính là "đã sửa tay". */
@@ -148,7 +160,7 @@ export const PricingCard: React.FC<{
     if (seenBoardId) {
       cardMemory.set(seenBoardId, {
         qty, panelOn, qtyFrom, setCount, panelKind, spec, specTouched, mode, panelX, panelY, railX, railY,
-        extraFeeCny, forceFormula, manualAmount, sizeOverride,
+        extraFeeCny, forceFormula, manualAmount, sizeOverride, stencilOn, stencilPick, stencilSide,
       })
     }
     setSeenBoardId(board.activeBoardId)
@@ -170,8 +182,14 @@ export const PricingCard: React.FC<{
       setForceFormula(saved.forceFormula)
       setManualAmount(saved.manualAmount)
       setSizeOverride(saved.sizeOverride)
+      setStencilOn(saved.stencilOn)
+      setStencilPick(saved.stencilPick)
+      setStencilSide(saved.stencilSide)
     } else {
       setPanelOn(false)
+      setStencilOn(false)
+      setStencilPick(null)
+      setStencilSide(null)
       setQtyFrom('pcs')
       setSizeOverride(null)
       setManualAmount(null)
@@ -298,7 +316,10 @@ export const PricingCard: React.FC<{
 
   const amount =
     result?.kind === 'table' || result?.kind === 'formula' ? result.priceVnd : manualAmount
-  const canSend = !!orderQty && amount !== null && amount > 0
+  // Chưa có công thức giá (hoặc ngoài bảng mà chưa gõ tiền) vẫn đưa vào báo giá được:
+  // dòng báo giá có đủ tên, số lớp, kích thước, màu, ghi chú — thành tiền để trống.
+  const priced = amount !== null && amount > 0
+  const canSend = board.isLoaded && !!orderQty
 
   // Gõ tay đè lên kích thước Gerber thì báo giá phải ghi theo số đã tính giá, kẻo
   // dòng báo giá ghi một đằng mà tiền tính một nẻo. Dạng "200*350mm" khớp cột
@@ -307,24 +328,6 @@ export const PricingCard: React.FC<{
     ? `${Math.round(sizeOverride.w * 10)}*${Math.round(sizeOverride.h * 10)}mm`
     : undefined
 
-  // Chỉ báo khi thẻ đã đồng bộ với bo đang mở — lượt render ngay sau khi đổi bo vẫn
-  // còn cầm số của bo cũ, báo lúc đó là gắn giá bo cũ cho bo mới.
-  const synced = board.activeBoardId === seenBoardId
-  useEffect(() => {
-    if (!board.activeBoardId || !synced) return
-    onPriceChange(
-      board.activeBoardId,
-      canSend && basis
-        ? {
-            boardId: board.activeBoardId,
-            quantity: orderQty!,
-            amount: amount!,
-            basis,
-            ...(sizeText ? { size: sizeText } : null),
-          }
-        : null,
-    )
-  }, [onPriceChange, synced, canSend, board.activeBoardId, orderQty, amount, basis, sizeText])
 
   // ── Nhắc nhở kỹ thuật (mốc của xưởng, chốt 21/09/2026) ──
   // Cạnh bo < 15 mm: máy không kẹp được bo lẻ, phải ghép V-cut → giá tính có V-cut.
@@ -391,6 +394,44 @@ export const PricingCard: React.FC<{
   // mặt nào có lớp paste thì mặt đó cần một tấm. ──
   const pasteSides = ['top', 'bottom'].filter((side) => board.layers.some((l) => l.type === 'solderpaste' && l.side === side))
   const stencilTier = panelMm ? pickStencil(panelMm.w / 10, panelMm.h / 10, cfg.stencil) : null
+  /** Mặt stencil theo Gerber: có kem cả hai mặt thì một tấm làm Top + Bot. */
+  const autoSide = stencilSideFromBoard(board.isLoaded ? board : undefined)
+  /** Stencil sẽ đưa vào báo giá: cỡ chọn tay hoặc cỡ gợi ý, mặt chọn tay hoặc theo Gerber. */
+  const stencilChoice = useMemo(() => {
+    if (!stencilOn) return null
+    const tier = stencilPick !== null ? cfg.stencil.tiers[stencilPick] : stencilTier
+    return tier ? { tier, side: stencilSide ?? autoSide } : null
+  }, [stencilOn, stencilPick, stencilTier, stencilSide, autoSide, cfg])
+
+  // Ghi chú tự điền cho dòng báo giá, gộp một dòng: thông số khác mặc định rồi đến panel.
+  // Vd "Mạ vàng ENIG, Bo 0.8mm, Đồng 2oz, Panel 2*5 · 50 set · Rail 5mm".
+  const autoNote = [
+    ...specNoteParts(spec),
+    ...(panelOn ? [panelNote(panelX, panelY, orderQty, tiled ? Math.max(railX, railY) * 10 : 0)] : []),
+  ]
+    .filter(Boolean)
+    .join(', ')
+
+  // Chỉ báo khi thẻ đã đồng bộ với bo đang mở — lượt render ngay sau khi đổi bo vẫn
+  // còn cầm số của bo cũ, báo lúc đó là gắn giá bo cũ cho bo mới.
+  const synced = board.activeBoardId === seenBoardId
+  useEffect(() => {
+    if (!board.activeBoardId || !synced) return
+    onPriceChange(
+      board.activeBoardId,
+      canSend
+        ? {
+            boardId: board.activeBoardId,
+            quantity: orderQty!,
+            amount: priced ? amount : null,
+            basis: priced ? basis : null,
+            ...(sizeText ? { size: sizeText } : null),
+            note: autoNote,
+            ...(stencilChoice ? { stencil: stencilChoice } : null),
+          }
+        : null,
+    )
+  }, [onPriceChange, synced, canSend, priced, board.activeBoardId, orderQty, amount, basis, sizeText, autoNote, stencilChoice])
 
   /** Đơn giá dưới thành tiền: bo lẻ ghi / pcs; ghép panel ghi / set và quy ra / pcs. */
   const unitText = (priceVnd: number) =>
@@ -543,6 +584,82 @@ export const PricingCard: React.FC<{
             </div>
           )}
         </div>
+      )}
+
+      {/* Stencil kèm bo: tích vào thì "Đưa vào báo giá" thêm một dòng stencil ngay dưới
+          dòng bo. Một file chỉ làm một tấm — kem hai mặt thì tấm đó làm Top + Bot.
+          Cỡ khung gợi ý là cỡ rẻ nhất vừa TẤM sẽ in (panel nếu ghép, bo lẻ nếu không). */}
+      {board.isLoaded && size && (
+        <>
+          <label style={S.panelToggle}>
+            <input
+              type="checkbox"
+              checked={stencilOn}
+              onChange={(e) => setStencilOn(e.target.checked)}
+              style={{ margin: 0 }}
+            />
+            <span>Stencil</span>
+            {stencilOn && stencilChoice && (
+              <span style={S.panelHint}>{money(stencilChoice.tier.priceVnd)} đ</span>
+            )}
+          </label>
+          {!stencilOn && pasteSides.length === 0 && (
+            <div style={{ ...S.stencilNote, padding: '0 0 6px 20px' }}>
+              File không có lớp paste — thường không cần stencil.
+            </div>
+          )}
+          {stencilOn && (
+            <div style={S.panelBox}>
+              <div style={S.row}>
+                <span style={S.label}>Khung</span>
+                <select
+                  style={{ ...S.select, maxWidth: 170 }}
+                  value={stencilPick ?? -1}
+                  onChange={(e) => {
+                    const i = Number(e.target.value)
+                    setStencilPick(i < 0 ? null : i)
+                  }}
+                >
+                  <option value={-1}>
+                    {stencilTier
+                      ? `Gợi ý: ${stencilSizeLabel(stencilTier)} · ${money(stencilTier.priceVnd)} đ`
+                      : 'Gợi ý: không có cỡ vừa tấm'}
+                  </option>
+                  {cfg.stencil.tiers.map((t, i) => (
+                    <option key={i} value={i}>
+                      {stencilSizeLabel(t)} · {money(t.priceVnd)} đ
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div style={S.row}>
+                <span style={S.label}>Mặt</span>
+                <div style={S.kindGroup}>
+                  {(['Top', 'Bot', 'Top + Bot'] as const).map((side) => (
+                    <button
+                      key={side}
+                      onClick={() => setStencilSide(side)}
+                      style={{ ...S.chip, ...((stencilSide ?? autoSide) === side ? S.chipOn : null) }}
+                    >
+                      {side}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              {stencilChoice ? (
+                <div style={S.stencilNote}>
+                  Vùng mạch {stencilChoice.tier.areaW}×{stencilChoice.tier.areaH} cm ·{' '}
+                  {stencilChoice.tier.noFrame ? 'Stencil Không Khung' : 'Stencil Khung'} {stencilChoice.side}
+                </div>
+              ) : (
+                <div style={S.stencilNote}>
+                  Tấm {panelMm ? `${+panelMm.w.toFixed(1)} × ${+panelMm.h.toFixed(1)} mm` : ''} lớn hơn mọi
+                  khung — chọn cỡ khung tay.
+                </div>
+              )}
+            </div>
+          )}
+        </>
       )}
 
       {/* Thông số đặt hàng, chọn kiểu JLC. Gerber chỉ cho biết số lớp nên chỉ số lớp là
@@ -827,32 +944,9 @@ export const PricingCard: React.FC<{
       >
         ↑ Đưa vào báo giá
       </button>
-
-      {/* ── Gợi ý stencil ── */}
-      {board.isLoaded && size && (
-        <div style={S.stencilBox}>
-          <div style={S.stencilHead}>
-            <span>Stencil gợi ý</span>
-            <span style={S.stencilFor}>{panelOn ? 'theo tấm panel' : 'theo bo'}</span>
-          </div>
-          {pasteSides.length === 0 ? (
-            <div style={S.stencilNote}>File không có lớp paste — thường không cần stencil.</div>
-          ) : stencilTier ? (
-            <>
-              <div style={S.stencilMain}>
-                Khung {stencilTier.frameW}×{stencilTier.frameH} cm{stencilTier.noFrame ? ' (không khung)' : ''} ·{' '}
-                {money(stencilTier.priceVnd)} đ/tấm
-              </div>
-              <div style={S.stencilNote}>
-                Vùng mạch {stencilTier.areaW}×{stencilTier.areaH} cm ·{' '}
-                {pasteSides.length === 2
-                  ? `2 tấm (Top + Bot) = ${money(stencilTier.priceVnd * 2)} đ`
-                  : `1 tấm mặt ${pasteSides[0] === 'top' ? 'Top' : 'Bot'}`}
-              </div>
-            </>
-          ) : (
-            <div style={S.stencilNote}>Tấm {panelMm ? `${+panelMm.w.toFixed(1)} × ${+panelMm.h.toFixed(1)} mm` : ''} lớn hơn mọi khung stencil trong bảng giá.</div>
-          )}
+      {canSend && !priced && (
+        <div style={{ ...S.stencilNote, textAlign: 'center' }}>
+          Chưa có giá — dòng báo giá để trống thành tiền cho bạn nhập tay.
         </div>
       )}
 
