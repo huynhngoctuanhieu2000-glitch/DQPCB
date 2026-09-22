@@ -11,18 +11,19 @@ import { grandTotal, subtotal, vatAmount } from './QuotationModel'
 import { brandingFor } from './branding'
 import { ZoomBox } from '../../ui/ZoomBox'
 
-// TÊN FILE và GHI CHÚ đều rộng hơn hẳn 6 cột còn lại: tên bo và ghi chú thường là
-// chữ dài nhất trong bảng (tên bo vd "ESP32_Multi_Purpose_IoT_Kit", ghi chú có khi
-// cả câu), nên nằm gọn một dòng — chỉ khi thật dài mới cần xuống hàng (đã có
-// break-word lo phần đó). 6 cột kia (SỐ LỚP..ĐƠN GIÁ) chỉ vừa đủ cho tiêu đề bảng
-// không xuống hàng, không co được nữa — khối "KÍCH THƯỚC → GHI CHÚ" (cột D–I) còn
-// phải đủ chỗ cho dòng tên công ty ở đầu trang không xuống hàng (colSpan 6 chung ô).
 /**
- * Bề rộng tương đối của 9 cột, coi như px trên bảng rộng 1062px — đúng khổ in
- * (xem PREVIEW_W): rộng hơn thì mỗi cột đều rộng thêm theo cùng tỉ lệ, không phải
- * co cột này lấy chỗ cho cột kia nữa.
+ * Bề rộng 9 cột, coi như px trên bảng rộng 1062px — đúng khổ in (xem PREVIEW_W).
+ *
+ * Theo tỉ lệ của form mẫu (bản Excel gửi khách thật, vd báo giá FRIWO 22/09/2026):
+ * TÊN FILE và GHI CHÚ chiếm phần lớn bề ngang, gần bằng nhau — tên bo và ghi chú là
+ * chữ dài nhất trong bảng. 7 cột số liệu chỉ vừa đủ cho tiêu đề (chữ đậm 11px +
+ * lề ô) nằm một dòng, cộng ít dư cho dữ liệu hay gặp nhất: "Xanh dương" ở MÀU PHỦ,
+ * "1000" ở SL, "1,725,000" ở THÀNH TIỀN.
+ *
+ * Khối cột D–I (KÍCH THƯỚC → GHI CHÚ) còn là ô tên công ty ở đầu trang (colSpan 6),
+ * phải đủ cho dòng tên đỏ 18px không xuống hàng.
  */
-const COL_WIDTHS = [38, 272, 68, 121, 90, 34, 118, 85, 236]
+const COL_WIDTHS = [38, 298, 60, 93, 72, 36, 89, 72, 304]
 const TOTAL_W = COL_WIDTHS.reduce((a, b) => a + b, 0)
 
 /**
