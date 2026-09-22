@@ -104,6 +104,7 @@ children.push(
       ['16', 'File khoan không khai định dạng số (co 10 lần) hoặc lệch gốc so với Gerber', 'FRIWO — 55807.931-90FE (+ 31 bộ / 1.850 mẫu)', 'Đã sửa · c680077, 3ec37c4'],
       ['17', '2D / 3D chọn "Bot Side" không thấy mặt dưới', 'FRIWO — 55807.931-90FE', 'Đã sửa · 020e8de'],
       ['18', 'Chuyển qua lại giữa các bo đang mở chậm 0.5–3.3 s, không báo đang tải', 'FRIWO, PHAONUOC, CHAT_BOT_4', 'Đã sửa · 71bf3a5'],
+      ['19', '2D / 3D mất lõi bo: vùng tô trong lớp viền làm khung bo bị gán sai kiểu', 'Anh Nhat — Gerber Anh Nhat (+ 2 bộ)', 'Đã sửa · dbbea67'],
     ],
     [5, 42, 30, 23],
   ),
@@ -281,6 +282,16 @@ const bugs = [
       ['Còn lại', 'Bấm ngay khi lớp nặng đang dựng dở ở nền thì chờ lớp đó xong (đo được 1.6 s).'],
     ],
   },
+  {
+    t: 'Lỗi 19 — 2D / 3D mất lõi bo (Anh Nhat)',
+    rows: [
+      ['Bộ file', 'D:\\JobDatMach\\Anh Nhat\\16-08-23\\Gerber Anh Nhat.zip (Altium, inch)'],
+      ['Hiện tượng', 'CAM đúng (80 × 75 mm, bo góc); 2D/3D trắng mảng lớn góc trên trái và quanh cổng USB J1 — đúng những chỗ không có đồng ở cả hai mặt: lõi bo (FR-4 + mask) không được vẽ.'],
+      ['Nguyên nhân', 'BAI111.GKO có một vùng tô G36 (rãnh khoét dưới anten Module1) đứng **trước** khung bo. Bước nối viền bọc mỗi đoạn theo mẫu = phần tử đầu tiên → 8 đoạn khung bo thành 8 "vùng tô" một đoạn; tô đặc ra **0 đỉnh**. CAM vẽ nét nên không lộ.'],
+      ['Cách giải quyết', 'Mẫu lấy **nét vẽ đầu tiên** (geometry.ts); lớp chỉ có vùng tô thì giữ như cũ. Test mới dựng lại đúng dáng file.'],
+      ['Kiểm', 'Thân bo 0 → 756 đỉnh, 2D phủ kín bo, rãnh khoét vẫn là lỗ. Hồi quy 157 bộ: đúng 3 bộ đổi (Anh Nhat, Dao Quoc Thai 5pcs, CM5-gerber), cả 3 từ lõi bo rỗng → có lõi; kích thước, cách tách vòng giữ nguyên; 154 bộ không đổi.'],
+    ],
+  },
 ]
 for (const b of bugs) children.push(H2(b.t), bugTable(b.rows), gap())
 children.push(H2('Ghi chú — "mất logo" khi chụp (không phải lỗi app)'))
@@ -424,6 +435,7 @@ children.push(T([
   ['Giữ vòng', '≥ 3 đoạn; 1–2 đoạn chỉ khi khép kín và có cung (lỗ tròn EasyEDA, bo tròn CAM350)'],
   ['Rãnh một nét', 'Nét thẳng 1–2 đoạn nằm hẳn trong bo (≥ 1 mm từ mép), rộng ≥ 0.3 mm, đứng riêng, bề rộng không dùng cho đường vẽ nhiều khúc → hình thuôn rộng bằng nét, thành lỗ khoét (CHAT_BOT_4)'],
   ['Kích thước', 'Ô bao các vòng đã nối + nửa nét — không dùng số thô'],
+  ['Kiểu phần tử', 'Mỗi đoạn viền đã nối bọc theo nét vẽ đầu tiên, không theo vùng tô (vùng tô G36 đứng trước khung bo làm 2D/3D mất lõi bo — Anh Nhat)'],
 ], [25, 75]))
 children.push(H3('Vòng nào là thân bo, lỗ khoét hay nét phay'))
 children.push(T([
@@ -480,7 +492,7 @@ for (const s of [
 children.push(H2('5.2 Checklist khi sửa luật đọc file'))
 for (const s of [
   'Viết test trong test/ dựng lại đúng dáng file thật gây lỗi.',
-  'Chạy **npm run build** (tsc -b chặt hơn tsc --noEmit — lỗi build Vercel ở f12b339 là do chỉ chạy lệnh nhẹ) và npx vitest run (150 test).',
+  'Chạy **npm run build** (tsc -b chặt hơn tsc --noEmit — lỗi build Vercel ở f12b339 là do chỉ chạy lệnh nhẹ) và npx vitest run (151 test).',
   'Hồi quy corpus D:\\JobDatMach: so bản cũ/mới — kích thước bo, số vòng + thân/lỗ/nét, số lỗ và tỉ lệ lỗ nằm trong bo; xem hình cũ/mới các bộ bị đổi trước khi chốt.',
   'Mở lại bộ mẫu: FC_F405RGT6_Wing (KiCad 6 lớp), BOAD NUT NHAN (EasyEDA), AGVH7 (Altium inch, slot), Ceiling / Dynamic Master (panel inch), Slaver_Ceiling bản lẻ (GKO + GM1), ESP32_DR (Altium metric 4:3, RectHoles), CHAT_BOT_1 (panel 4 bo), DA82 (OrCAD Layout, thruhole.tap + .DRD), FRIWO 55807 (Pulsonix, khoan INCH không khai format), PCB_doline (Altium, khoan lệch gốc), 5395_1 (EasyEDA, NPTH phải giữ nguyên), CHAT_BOT_4 (rãnh một nét), PHAONUOC (đường vẽ 0.8 mm không thành rãnh), 3W NHUA XANH (CAM350, RAR).',
 ]) children.push(B(s))

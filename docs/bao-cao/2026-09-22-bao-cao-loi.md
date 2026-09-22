@@ -25,6 +25,7 @@ Tóm tắt:
 | 16 | File khoan không khai định dạng số (lỗ co 10 lần) hoặc lệch gốc so với Gerber | FRIWO — 55807.931-90FE (+ 31 bộ / 1.850 mẫu) | Đã sửa · `c680077`, `3ec37c4` |
 | 17 | 2D / 3D chọn "Bot Side" không thấy mặt dưới | FRIWO — 55807.931-90FE | Đã sửa · `020e8de` |
 | 18 | Chuyển qua lại giữa các bo đang mở chậm 0.5–3.3 s, không báo đang tải | FRIWO, PHAONUOC, CHAT_BOT_4 (mở cùng lúc) | Đã sửa · `71bf3a5` |
+| 19 | 2D / 3D mất lõi bo: vùng tô trong lớp viền làm khung bo bị gán sai kiểu | Anh Nhat — Gerber Anh Nhat (+ 2 bộ) | Đã sửa · `dbbea67` |
 
 ---
 
@@ -309,6 +310,20 @@ tam giác chéo sai; Rosario: rãnh móc câu nhất quán là lỗ).
   chưa từng xem (nhờ dựng sẵn) 0.055 s. Chi tiết: `2026-09-22-khao-sat-chuyen-bo-cham.md`.
 - **Còn lại:** bấm ngay khi lớp nặng đang dựng dở ở nền thì chờ lớp đó xong (đo được 1.6 s).
 
+## 19. 2D / 3D mất lõi bo — Anh Nhat
+
+- **Bộ file:** `D:\JobDatMach\Anh Nhat\16-08-23\Gerber Anh Nhat.zip` (Altium, inch)
+- **Hiện tượng:** CAM đúng (80 × 75 mm, bo góc); 2D/3D trắng mảng lớn góc trên trái và quanh
+  cổng USB J1 — đúng những chỗ không có đồng ở cả hai mặt: lõi bo (FR-4 + mask) không được vẽ.
+- **Nguyên nhân:** `BAI111.GKO` có một vùng tô G36 (rãnh khoét dưới anten Module1) đứng
+  **trước** khung bo. `stitchOutline` bọc mỗi đoạn viền theo **mẫu = phần tử đầu tiên** → cả 8
+  đoạn khung bo thành 8 "vùng tô" một đoạn; tô đặc ra **0 đỉnh**. CAM vẽ nét nên không lộ.
+- **Cách giải quyết** (`geometry.ts`): mẫu lấy **nét vẽ đầu tiên**; lớp chỉ có vùng tô thì giữ
+  như cũ. Test mới dựng lại đúng dáng file.
+- **Kiểm:** thân bo 0 → 756 đỉnh, 2D phủ kín bo, rãnh khoét vẫn là lỗ. Hồi quy 157 bộ: đúng 3
+  bộ đổi (Anh Nhat, Dao Quoc Thai 5pcs, CM5-gerber), cả 3 từ lõi bo rỗng → có lõi; kích thước và
+  cách tách vòng giữ nguyên; 154 bộ còn lại không đổi. Chi tiết: `2026-09-22-khao-sat-anh-nhat.md`.
+
 ## Tính năng mới (22/09): nhận biết file ghép, mũi khoan nhỏ nhất — `6249b00`
 
 Khung thông báo ở góc khung xem thêm hai dòng:
@@ -354,7 +369,7 @@ tưởng mất logo. Tải lại tab là hết. Từ nay kiểm clipboard/ảnh 
 
 ## Cách kiểm lại
 
-- `npx vitest run test/*.test.ts` — 150 test.
+- `npx vitest run test/*.test.ts` — 151 test.
 - `npm run build` — build thật (`tsc -b` chặt hơn `tsc --noEmit`; lỗi build Vercel ở
   `f12b339` là do chỉ chạy lệnh nhẹ).
 - Hồi quy corpus: script trong `test/_scratch/` (không commit) so bản cũ/mới trên

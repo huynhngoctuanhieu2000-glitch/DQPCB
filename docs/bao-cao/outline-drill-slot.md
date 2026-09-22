@@ -27,6 +27,7 @@ nằm trong `src/lib/gerber-reader/` (`geometry.ts`, `outlineLoops.ts`, `identif
 | Giữ vòng | ≥ 3 đoạn (kể cả hở); 1–2 đoạn chỉ giữ khi khép kín và có cung (lỗ tròn EasyEDA = 2 cung 180°, bo tròn CAM350 = 1 cung 360°) |
 | **Rãnh một nét** | Nét thẳng 1–2 đoạn, nằm hẳn trong bo (cách mép ≥ 1 mm), rộng ≥ 0.3 mm, đứng riêng, bề rộng không dùng cho đường vẽ nhiều khúc → dựng hình thuôn rộng bằng nét, thành lỗ khoét *(22/09, `706ea9f`, CHAT_BOT_4)* |
 | Kích thước | Ô bao của các vòng đã nối + nửa nét — không dùng số thô (chấm lẻ Edge_Cuts KiCad làm bo 41.5 mm thành 89.68 mm) |
+| Kiểu phần tử | Mỗi đoạn viền đã nối bọc theo **nét vẽ đầu tiên** của lớp, không theo vùng tô: vùng tô G36 đứng trước khung bo làm khung thành "vùng tô một đoạn", 2D/3D mất lõi bo *(22/09, `dbbea67`, Anh Nhat)* |
 
 ### A3. Vòng nào là thân bo, lỗ khoét hay nét phay (`splitOutlineLoops`)
 
