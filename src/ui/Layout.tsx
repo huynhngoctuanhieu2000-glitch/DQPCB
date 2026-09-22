@@ -1132,7 +1132,13 @@ export const Layout: React.FC = () => {
                 />
               </div>
             ) : (
-              <Viewer2DWebGL />
+              // Lọc "Bot Side" ở 2D/3D: phải NHÌN TỪ DƯỚI LÊN (lật gương như khung Bot của
+              // 2 Mặt). Chỉ ẩn lớp mặt trên thì camera vẫn nhìn từ trên, lõi bo + mask che
+              // hết đồng/lụa mặt dưới — bo FRIWO 55807.931-90FE chỉ thấy mảng xanh với lỗ.
+              // CAM giữ nhìn từ trên: đó là chỗ soi file đúng toạ độ gốc.
+              <Viewer2DWebGL
+                faceSide={boardState.sideFilter === 'bottom' && boardState.activeView !== 'CAM' ? 'bottom' : 'top'}
+              />
             ))}
 
           {/* Error notice if any */}
