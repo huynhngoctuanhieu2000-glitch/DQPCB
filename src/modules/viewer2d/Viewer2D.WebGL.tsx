@@ -130,14 +130,14 @@ const MAX_CACHED_BOARDS = 5
  */
 const HEAVY_SHAPES = 50000
 /**
- * Trên mức này thì KHÔNG cho vẽ, kể cả khi bấm "vẽ luôn": lớp in lụa 150.500 hình của
- * "P84390-S02" ngốn hết bộ nhớ trang (4.4 GB) và treo hẳn — bấm thử 6 phút không xong.
+ * Tổng số hình của các lớp nặng mà app TỰ vẽ dần (không cần bấm). Lụa 150.500 + 85.570 hình
+ * của "P84390-S02" (236k) vẽ xong trong ~54 s ở nền, giao diện vẫn bấm được (trễ 1–5 ms).
+ * Trên mức này thì để người lập tự quyết bằng nút "Vẽ luôn" — bo càng nhiều hình càng ngốn
+ * bộ nhớ (236k hình ≈ 29 triệu đỉnh).
  */
-const IMPOSSIBLE_SHAPES = 120000
+const AUTO_HEAVY_SHAPES = 250000
 const shapeCount = (raw: any) => raw?.imageTree?.children?.length ?? 0
 export const isHeavyLayer = (raw: any) => shapeCount(raw) > HEAVY_SHAPES
-/** Lớp lớn tới mức không dựng nổi — badge không cho bấm "vẽ luôn". */
-export const isTooBigLayer = (raw: any) => shapeCount(raw) > IMPOSSIBLE_SHAPES
 /** layers của bo → hình đã dựng của bo đó. Thứ tự trong Map = thứ tự dùng (cuối = mới nhất). */
 const boardCaches = new Map<object, Map<string, BuildEntry>>()
 /**
@@ -417,9 +417,37 @@ const buildLayerObject = (
       if (hole) cutouts.push(hole)
     }
   } else {
-    obj = renderThree(plotted, color, undefined, fillOutline)
+    obj = renderInChunks(plotted, color, fillOutline)
   }
   return obj ? { obj, cutouts } : null
+}
+
+/**
+ * Số hình tối đa dựng trong MỘT lần gọi renderThree.
+ *
+ * renderThree gom hình học của cả lớp vào một mảng rồi gộp một lần: lớp in lụa 150.500 hình
+ * của "P84390-S02" (FRIWO, 23/09/2026) làm mảng tạm phình tới trần bộ nhớ trang (4.4 GB) rồi
+ * treo hẳn. Dựng theo từng mẻ thì bộ nhớ tạm chỉ bằng một mẻ; các mẻ gắn làm con của cùng một
+ * object nên hình vẽ ra y hệt, chỉ tốn thêm vài lần gọi vẽ.
+ */
+const CHUNK_SHAPES = 20000
+
+/** Dựng một mẻ hình (các phần tử từ `from` đến `from + CHUNK_SHAPES`). */
+const renderChunk = (plotted: any, color: number, fillOutline: boolean, from: number) =>
+  renderThree({ ...plotted, children: (plotted?.children ?? []).slice(from, from + CHUNK_SHAPES) }, color, undefined, fillOutline)
+
+/** Dựng một lớp, chia mẻ nếu quá nhiều hình (dùng khi dựng đồng bộ). */
+const renderInChunks = (plotted: any, color: number, fillOutline: boolean) => {
+  const children = plotted?.children ?? []
+  if (children.length <= CHUNK_SHAPES) return renderThree(plotted, color, undefined, fillOutline)
+  let root: any
+  for (let i = 0; i < children.length; i += CHUNK_SHAPES) {
+    const part = renderChunk(plotted, color, fillOutline, i)
+    if (!part) continue
+    if (!root) root = part
+    else root.add(part)
+  }
+  return root
 }
 
 export interface Viewer2DWebGLProps {
@@ -489,6 +517,8 @@ export const Viewer2DWebGL: React.FC<Viewer2DWebGLProps> = ({
   /** Lớp quá nặng đã bỏ qua, và cờ người lập bấm "vẽ luôn" (xem HEAVY_SHAPES). */
   const [heavySkipped, setHeavySkipped] = useState<{ name: string; tooBig: boolean }[]>([])
   const [drawHeavy, setDrawHeavy] = useState(false)
+  /** % đã vẽ xong của các lớp nặng đang vẽ dần; null = không vẽ gì. */
+  const [heavyProgress, setHeavyProgress] = useState<number | null>(null)
   // Badge: file có ghép không (và nhận ra bằng cách nào), mũi khoan nhỏ nhất. Tính một lần
   // cho mỗi bộ lớp (detectPanel tự nhớ kết quả).
   const panel = useMemo(
@@ -531,10 +561,20 @@ export const Viewer2DWebGL: React.FC<Viewer2DWebGLProps> = ({
     }
 
     const t0 = performance.now()
+    // Đổi bo / đổi chế độ thì ngừng vẽ dở các lớp nặng của cảnh cũ.
+    let cancelled = false
     const bad: string[] = []
     /** Lớp bỏ qua vì quá nặng — badge cho bấm vẽ nếu người lập muốn chờ. */
     const heavy: { name: string; tooBig: boolean }[] = []
+    /** Lớp nặng sẽ vẽ dần sau khi cảnh đã hiện. */
+    const heavyLater: { raw: any; spec: ReturnType<typeof layerSpec>; holder: any }[] = []
     const palette = realPalette(board.maskColor)
+    // Lớp nặng: tự vẽ dần nếu cả bo còn trong mức chịu được, không thì chờ người lập bấm.
+    const heavyTotal = board.layers
+      .filter((l) => isHeavyLayer(l))
+      .reduce((n, l) => n + (l.imageTree?.children?.length ?? 0), 0)
+    const autoHeavy = heavyTotal > 0 && heavyTotal <= AUTO_HEAVY_SHAPES
+
     const cache = cacheFor(board.layers)
     pruneCaches(board.layers)
     let cacheHits = 0
@@ -575,8 +615,8 @@ export const Viewer2DWebGL: React.FC<Viewer2DWebGLProps> = ({
     for (const raw of board.layers) {
       const id = { type: raw.type, side: raw.side }
       if (!inScene(raw, drillUse)) continue
-      if (isHeavyLayer(raw) && (!drawHeavy || isTooBigLayer(raw))) {
-        heavy.push({ name: raw.filename, tooBig: isTooBigLayer(raw) })
+      if (isHeavyLayer(raw) && !drawHeavy && !autoHeavy) {
+        heavy.push({ name: raw.filename, tooBig: false })
         continue
       }
 
@@ -595,6 +635,15 @@ export const Viewer2DWebGL: React.FC<Viewer2DWebGLProps> = ({
 
         // Màu, khoá cache, tô đặc hay vẽ viền: xem layerSpec.
         const spec = layerSpec(raw, camMode, palette)
+        // Lớp nặng người lập đã bấm "vẽ luôn" và chưa có sẵn: đặt một object RỖNG vào cảnh
+        // rồi vẽ dần từng mẻ lúc máy rảnh (xem drawHeavyLater) — vẽ thẳng thì app đứng hình
+        // cả phút (lụa 150.500 hình của P84390: 46 s).
+        if (isHeavyLayer(raw) && !cache.get(spec.key)) {
+          const holder = emptyObj()
+          cache.set(spec.key, { obj: holder, cutouts: [] })
+          claimGpu(holder)
+          heavyLater.push({ raw, spec, holder })
+        }
         let hit = cache.get(spec.key)
         if (hit) {
           cacheHits++
@@ -841,7 +890,7 @@ export const Viewer2DWebGL: React.FC<Viewer2DWebGLProps> = ({
     const addExtra = (raw: any) => {
       if (!camMode || byFile.has(raw.filename) || !raw.imageTree) return
       // Lớp nặng đã bị vòng chính bỏ qua thì đừng dựng lại ở đây (xem HEAVY_SHAPES).
-      if (isHeavyLayer(raw) && (!drawHeavy || isTooBigLayer(raw))) return
+      if (isHeavyLayer(raw) && !drawHeavy) return
       try {
         const swatch = parseInt(String(raw.color).replace('#', ''), 16)
         const color = Number.isNaN(swatch) ? CAM_FALLBACK : swatch
@@ -1388,10 +1437,43 @@ export const Viewer2DWebGL: React.FC<Viewer2DWebGLProps> = ({
         ? `${drillPlan.map((d) => d.name.split(/[\\/]/).pop()).join(', ')} · ${drillHoles} lỗ`
         : 'không có'
     )
+    // Lớp nặng: vẽ dần từng mẻ lúc máy rảnh, gắn vào object rỗng đã đặt sẵn trong cảnh.
+    // Mỗi mẻ CHUNK_SHAPES hình (~1–2 s) rồi nhả luồng, nên giao diện vẫn bấm được và hình
+    // hiện lên từ từ.
+    if (heavyLater.length > 0) {
+      const jobs = heavyLater.map((h) => ({ ...h, at: 0, total: h.raw.imageTree?.children?.length ?? 0 }))
+      const stepHeavy = () => {
+        if (cancelled) return
+        const job = jobs.find((j) => j.at < j.total)
+        if (!job) {
+          setHeavyProgress(null)
+          return
+        }
+        try {
+          const part = renderChunk(job.raw.imageTree, job.spec.color, job.spec.fillOutline, job.at)
+          if (part) {
+            if (job.raw.imageTree.units === 'in') part.scale.set(25.4, 25.4, part.scale.z)
+            job.holder.add(part)
+            claimGpu(part)
+          }
+        } catch (e) {
+          console.warn('[WebGL] vẽ lớp nặng lỗi', job.raw.filename, e)
+          job.at = job.total
+        }
+        job.at += CHUNK_SHAPES
+        const done = jobs.reduce((n, j) => n + Math.min(j.at, j.total), 0)
+        const all = jobs.reduce((n, j) => n + j.total, 0)
+        setHeavyProgress(job.at >= job.total && !jobs.some((j) => j.at < j.total) ? null : Math.round((done / all) * 100))
+        whenIdle(stepHeavy)
+      }
+      whenIdle(stepHeavy)
+    }
+
     // Bo đang xem đã hiện: tranh thủ lúc rảnh dựng sẵn các bo còn lại (xem schedulePrebuild).
     schedulePrebuild()
 
     return () => {
+      cancelled = true
       cleanups.forEach((fn) => fn())
       sceneRef.current = null
 
@@ -1523,18 +1605,19 @@ export const Viewer2DWebGL: React.FC<Viewer2DWebGLProps> = ({
               Kéo chuột để xoay (kéo lên để lật xem mặt Bot) · lăn để zoom
             </div>
           )}
+          {heavyProgress !== null && (
+            <div style={{ color: '#93c5fd', marginTop: 4 }}>Đang vẽ lớp nặng… {heavyProgress}%</div>
+          )}
           {heavySkipped.length > 0 && (
             <div style={{ color: '#fbbf24', marginTop: 4 }}>
-              ⚠ {heavySkipped.length} lớp quá nặng, không vẽ:{' '}
-              {heavySkipped
-                .map((f) => `${f.name.split(/[\/]/).pop()}${f.tooBig ? ' (quá lớn, không vẽ được)' : ''}`)
-                .join(', ')}
-              {heavySkipped.some((f) => !f.tooBig) && (
+              ⚠ {heavySkipped.length} lớp quá nặng, chưa vẽ:{' '}
+              {heavySkipped.map((f) => f.name.split(/[\/]/).pop()).join(', ')}
+              {heavySkipped.length > 0 && (
                 <Button
                   variant="chip"
                   size="sm"
                   onClick={() => {
-                    if (window.confirm('Lớp này rất nặng: dựng có thể mất vài phút và app đứng hình trong lúc đó. Vẫn vẽ?')) setDrawHeavy(true)
+                    if (window.confirm('Lớp này rất nặng — vẽ dần trong nền, có thể mất một hai phút. Vẫn vẽ?')) setDrawHeavy(true)
                   }}
                   title="Dựng cả lớp nặng — có thể mất vài phút và app đứng hình trong lúc dựng"
                   style={{ marginTop: 4 }}
