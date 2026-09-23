@@ -9,12 +9,13 @@
  * không phải chờ tới lúc báo giá cho khách mới biết.
  */
 import { C } from '../../ui/theme'
-import React, { useMemo, useState } from 'react'
+import React, { useMemo, useRef, useState } from 'react'
 import { NumberInput } from '../../ui/NumberInput'
 import { PricingStore } from '../pricing/PricingStore'
 import { useIsMobile } from '../../ui/useIsMobile'
 import { Icon } from '../../ui/Icon'
 import { useBackToClose } from '../../ui/useBackToClose'
+import { applyBackup, backupFileName, buildBackup, describeBackup, parseBackup } from './backup'
 import { CaptureSettings, DEFAULT_CAPTURE_SETTINGS, type CaptureSettingsData } from './CaptureSettings'
 import {
   DEFAULT_CONFIG,
@@ -82,6 +83,8 @@ export const SettingsPanel: React.FC<{ onClose: () => void }> = ({ onClose }) =>
   const T = F.tiered
 
   const isMobile = useIsMobile()
+  /** Ô chọn file ẩn cho nút Nhập cấu hình. */
+  const importRef = useRef<HTMLInputElement>(null)
   // Back / vuốt lùi của điện thoại đóng hộp thay vì rời trang.
   useBackToClose(true, onClose)
 
@@ -567,6 +570,52 @@ export const SettingsPanel: React.FC<{ onClose: () => void }> = ({ onClose }) =>
           >
             {isMobile ? 'Mặc định' : 'Về mặc định'}
           </button>
+          {/* Sao lưu: cấu hình chỉ nằm trong localStorage của máy này — xoá dữ liệu trình
+              duyệt hay đổi máy là mất bảng giá đã gõ tay. */}
+          <button
+            style={S.btnGhost}
+            title="Lưu bảng giá và cài đặt ra một file JSON để cất hoặc gửi sang máy khác"
+            onClick={() => {
+              // Xuất đúng cái đang LƯU, không phải cái đang sửa dở trên màn hình.
+              const blob = new Blob([JSON.stringify(buildBackup(), null, 2)], { type: 'application/json' })
+              const url = URL.createObjectURL(blob)
+              const a = document.createElement('a')
+              a.href = url
+              a.download = backupFileName()
+              a.click()
+              setTimeout(() => URL.revokeObjectURL(url), 10000)
+            }}
+          >
+            {isMobile ? 'Xuất' : 'Xuất cấu hình'}
+          </button>
+          <button
+            style={S.btnGhost}
+            title="Nhập lại bảng giá và cài đặt từ file JSON đã xuất"
+            onClick={() => importRef.current?.click()}
+          >
+            {isMobile ? 'Nhập' : 'Nhập cấu hình'}
+          </button>
+          <input
+            ref={importRef}
+            type="file"
+            accept="application/json,.json"
+            style={{ display: 'none' }}
+            onChange={async (e) => {
+              const file = e.target.files?.[0]
+              e.target.value = '' // chọn lại đúng file vừa chọn vẫn chạy onChange
+              if (!file) return
+              try {
+                const backup = parseBackup(await file.text())
+                if (!window.confirm(`${describeBackup(backup)}\n\nGhi đè cấu hình đang dùng?`)) return
+                applyBackup(backup)
+                setCfg(PricingStore.getConfig())
+                setCapture(CaptureSettings.get())
+                setSaved(true)
+              } catch (err) {
+                window.alert(err instanceof Error ? err.message : 'Không đọc được file')
+              }
+            }}
+          />
           <button style={S.btnGhost} onClick={onClose}>
             Đóng
           </button>
