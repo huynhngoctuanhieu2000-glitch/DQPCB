@@ -12,6 +12,7 @@ import {
 } from '../../lib/webgerber'
 
 import { Button } from '../../ui/Button'
+import { buildFastLayer } from './fastLayer'
 import { C, RADIUS } from '../../ui/theme'
 import { useIsMobile } from '../../ui/useIsMobile'
 
@@ -129,13 +130,6 @@ const MAX_CACHED_BOARDS = 5
  * muốn chờ.
  */
 const HEAVY_SHAPES = 50000
-/**
- * Tổng số hình của các lớp nặng mà app TỰ vẽ dần (không cần bấm). Lụa 150.500 + 85.570 hình
- * của "P84390-S02" (236k) vẽ xong trong ~54 s ở nền, giao diện vẫn bấm được (trễ 1–5 ms).
- * Trên mức này thì để người lập tự quyết bằng nút "Vẽ luôn" — bo càng nhiều hình càng ngốn
- * bộ nhớ (236k hình ≈ 29 triệu đỉnh).
- */
-const AUTO_HEAVY_SHAPES = 250000
 const shapeCount = (raw: any) => raw?.imageTree?.children?.length ?? 0
 export const isHeavyLayer = (raw: any) => shapeCount(raw) > HEAVY_SHAPES
 /** layers của bo → hình đã dựng của bo đó. Thứ tự trong Map = thứ tự dùng (cuối = mới nhất). */
@@ -306,7 +300,7 @@ const schedulePrebuild = () => {
     const palette = realPalette(b.maskColor)
     const { drillUse } = drillPlanOf(b.layers)
     let copperPoints: number[][] | null = null
-    for (const raw of b.layers.filter((l) => inScene(l, drillUse) && !isHeavyLayer(l))) {
+    for (const raw of b.layers.filter((l) => inScene(l, drillUse))) {
       queue.push(() => {
         const spec = layerSpec(raw, camMode, palette)
         const cache = cacheFor(b.layers, false)
@@ -314,7 +308,8 @@ const schedulePrebuild = () => {
         copperPoints ??= copperSamplePoints(b.layers)
         let made: BuildEntry | null = null
         try {
-          made = buildLayerObject(raw.imageTree, { ...spec, holeColor: HOLE, copperPoints })
+          const fast = isHeavyLayer(raw) ? buildFastLayer(raw.imageTree, spec.color) : null
+          made = fast ? { obj: fast, cutouts: [] } : buildLayerObject(raw.imageTree, { ...spec, holeColor: HOLE, copperPoints })
         } catch (e) {
           // Dựng hỏng (thường là hết bộ nhớ) thì vẫn ghi vào cache: không thử lại mỗi lần.
           console.warn('[WebGL] dựng sẵn lỗi', raw.filename, e)
@@ -514,11 +509,8 @@ export const Viewer2DWebGL: React.FC<Viewer2DWebGLProps> = ({
   const [status, setStatus] = useState('Chưa tải dữ liệu')
   const [totalMs, setTotalMs] = useState<number | null>(null)
   const [failed, setFailed] = useState<string[]>([])
-  /** Lớp quá nặng đã bỏ qua, và cờ người lập bấm "vẽ luôn" (xem HEAVY_SHAPES). */
-  const [heavySkipped, setHeavySkipped] = useState<{ name: string; tooBig: boolean }[]>([])
-  const [drawHeavy, setDrawHeavy] = useState(false)
-  /** % đã vẽ xong của các lớp nặng đang vẽ dần; null = không vẽ gì. */
-  const [heavyProgress, setHeavyProgress] = useState<number | null>(null)
+  /** Lớp dựng bằng đường nhanh (xem fastLayer.ts) — badge ghi lại cho người lập biết. */
+  const [lightLayers, setLightLayers] = useState<string[]>([])
   // Badge: file có ghép không (và nhận ra bằng cách nào), mũi khoan nhỏ nhất. Tính một lần
   // cho mỗi bộ lớp (detectPanel tự nhớ kết quả).
   const panel = useMemo(
@@ -531,8 +523,6 @@ export const Viewer2DWebGL: React.FC<Viewer2DWebGLProps> = ({
   const smallest = useMemo(() => minDrill(board.layers.filter((l) => l.holeCount > 0)), [board.layers])
 
   useEffect(() => BoardDataModel.subscribe(setBoard), [])
-  // Bo khác thì bỏ lớp nặng lại như mặc định.
-  useEffect(() => setDrawHeavy(false), [board.activeBoardId])
 
   const effectiveView = viewOverride ?? board.activeView
   const camMode = effectiveView === 'CAM'
@@ -561,20 +551,8 @@ export const Viewer2DWebGL: React.FC<Viewer2DWebGLProps> = ({
     }
 
     const t0 = performance.now()
-    // Đổi bo / đổi chế độ thì ngừng vẽ dở các lớp nặng của cảnh cũ.
-    let cancelled = false
     const bad: string[] = []
-    /** Lớp bỏ qua vì quá nặng — badge cho bấm vẽ nếu người lập muốn chờ. */
-    const heavy: { name: string; tooBig: boolean }[] = []
-    /** Lớp nặng sẽ vẽ dần sau khi cảnh đã hiện. */
-    const heavyLater: { raw: any; spec: ReturnType<typeof layerSpec>; holder: any }[] = []
     const palette = realPalette(board.maskColor)
-    // Lớp nặng: tự vẽ dần nếu cả bo còn trong mức chịu được, không thì chờ người lập bấm.
-    const heavyTotal = board.layers
-      .filter((l) => isHeavyLayer(l))
-      .reduce((n, l) => n + (l.imageTree?.children?.length ?? 0), 0)
-    const autoHeavy = heavyTotal > 0 && heavyTotal <= AUTO_HEAVY_SHAPES
-
     const cache = cacheFor(board.layers)
     pruneCaches(board.layers)
     let cacheHits = 0
@@ -584,6 +562,10 @@ export const Viewer2DWebGL: React.FC<Viewer2DWebGLProps> = ({
 
     // --- Chọn file khoan --- (xem drillPlanOf)
     const { drillPlan, drillUse, drillHoles } = drillPlanOf(board.layers)
+
+    /** Lớp vẽ bằng đường nhanh (fastLayer) — tính từ chính danh sách lớp, không từ lần dựng
+     *  này: dựng lại mà lấy hết từ cache thì badge vẫn phải ghi. */
+    const light = board.layers.filter((l) => inScene(l, drillUse) && isHeavyLayer(l)).map((l) => l.filename)
 
     // Bounds tính từ ImageTree.size (không đụng tới three)
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
@@ -615,10 +597,6 @@ export const Viewer2DWebGL: React.FC<Viewer2DWebGLProps> = ({
     for (const raw of board.layers) {
       const id = { type: raw.type, side: raw.side }
       if (!inScene(raw, drillUse)) continue
-      if (isHeavyLayer(raw) && !drawHeavy && !autoHeavy) {
-        heavy.push({ name: raw.filename, tooBig: false })
-        continue
-      }
 
       const isOutline = id.type === 'outline'
       try {
@@ -635,22 +613,16 @@ export const Viewer2DWebGL: React.FC<Viewer2DWebGLProps> = ({
 
         // Màu, khoá cache, tô đặc hay vẽ viền: xem layerSpec.
         const spec = layerSpec(raw, camMode, palette)
-        // Lớp nặng người lập đã bấm "vẽ luôn" và chưa có sẵn: đặt một object RỖNG vào cảnh
-        // rồi vẽ dần từng mẻ lúc máy rảnh (xem drawHeavyLater) — vẽ thẳng thì app đứng hình
-        // cả phút (lụa 150.500 hình của P84390: 46 s).
-        if (isHeavyLayer(raw) && !cache.get(spec.key)) {
-          const holder = emptyObj()
-          cache.set(spec.key, { obj: holder, cutouts: [] })
-          claimGpu(holder)
-          heavyLater.push({ raw, spec, holder })
-        }
         let hit = cache.get(spec.key)
         if (hit) {
           cacheHits++
         } else {
           let made: BuildEntry | null = null
           try {
-            made = buildLayerObject(plotted, { ...spec, holeColor: HOLE, copperPoints: copperPoints() })
+            // Lớp rất nhiều hình dựng bằng đường NHANH (xem fastLayer.ts): renderThree ra
+            // 180 triệu đỉnh cho lớp in lụa 150.220 vùng và làm trình duyệt hết bộ nhớ.
+            const fast = isHeavyLayer(raw) ? buildFastLayer(plotted, spec.color) : null
+            made = fast ? { obj: fast, cutouts: [] } : buildLayerObject(plotted, { ...spec, holeColor: HOLE, copperPoints: copperPoints() })
           } catch (e) {
             // Hết bộ nhớ khi dựng lớp rất nặng: ghi cache rỗng để không dựng lại mỗi lần
             // đổi chế độ / đổi bo, và báo lên badge.
@@ -889,8 +861,6 @@ export const Viewer2DWebGL: React.FC<Viewer2DWebGLProps> = ({
     const extraZ = (pcb.Top.SolderMask?.position?.z ?? 0) + 1
     const addExtra = (raw: any) => {
       if (!camMode || byFile.has(raw.filename) || !raw.imageTree) return
-      // Lớp nặng đã bị vòng chính bỏ qua thì đừng dựng lại ở đây (xem HEAVY_SHAPES).
-      if (isHeavyLayer(raw) && !drawHeavy) return
       try {
         const swatch = parseInt(String(raw.color).replace('#', ''), 16)
         const color = Number.isNaN(swatch) ? CAM_FALLBACK : swatch
@@ -1427,7 +1397,7 @@ export const Viewer2DWebGL: React.FC<Viewer2DWebGLProps> = ({
     const mode = camMode ? 'CAM' : threeDMode ? '3D' : 'Real'
     console.info(`[WebGL] dựng ${fromBelow ? 'bottom' : 'top'}/${mode}: ${totalMs} ms, ${ok} lớp, ${cacheHits} từ cache`)
     setFailed(bad)
-    setHeavySkipped(heavy)
+    setLightLayers(light)
     // Báo cho khung ngoài biết bo nào vừa hiện lên màn hình — màn chờ mở file chỉ tắt
     // khi đúng bo mới đã dựng xong, không tắt lúc còn đang hiện bo cũ.
     window.dispatchEvent(new CustomEvent(BOARD_RENDERED_EVENT, { detail: board.activeBoardId }))
@@ -1440,40 +1410,10 @@ export const Viewer2DWebGL: React.FC<Viewer2DWebGLProps> = ({
     // Lớp nặng: vẽ dần từng mẻ lúc máy rảnh, gắn vào object rỗng đã đặt sẵn trong cảnh.
     // Mỗi mẻ CHUNK_SHAPES hình (~1–2 s) rồi nhả luồng, nên giao diện vẫn bấm được và hình
     // hiện lên từ từ.
-    if (heavyLater.length > 0) {
-      const jobs = heavyLater.map((h) => ({ ...h, at: 0, total: h.raw.imageTree?.children?.length ?? 0 }))
-      const stepHeavy = () => {
-        if (cancelled) return
-        const job = jobs.find((j) => j.at < j.total)
-        if (!job) {
-          setHeavyProgress(null)
-          return
-        }
-        try {
-          const part = renderChunk(job.raw.imageTree, job.spec.color, job.spec.fillOutline, job.at)
-          if (part) {
-            if (job.raw.imageTree.units === 'in') part.scale.set(25.4, 25.4, part.scale.z)
-            job.holder.add(part)
-            claimGpu(part)
-          }
-        } catch (e) {
-          console.warn('[WebGL] vẽ lớp nặng lỗi', job.raw.filename, e)
-          job.at = job.total
-        }
-        job.at += CHUNK_SHAPES
-        const done = jobs.reduce((n, j) => n + Math.min(j.at, j.total), 0)
-        const all = jobs.reduce((n, j) => n + j.total, 0)
-        setHeavyProgress(job.at >= job.total && !jobs.some((j) => j.at < j.total) ? null : Math.round((done / all) * 100))
-        whenIdle(stepHeavy)
-      }
-      whenIdle(stepHeavy)
-    }
-
     // Bo đang xem đã hiện: tranh thủ lúc rảnh dựng sẵn các bo còn lại (xem schedulePrebuild).
     schedulePrebuild()
 
     return () => {
-      cancelled = true
       cleanups.forEach((fn) => fn())
       sceneRef.current = null
 
@@ -1498,7 +1438,7 @@ export const Viewer2DWebGL: React.FC<Viewer2DWebGLProps> = ({
     }
     // threeDMode phải nằm trong deps: chuyển Real 2D → 3D View không đổi camMode
     // (cả hai đều false) nên effect không chạy lại và cảnh vẫn là ảnh 2D phẳng.
-  }, [board.isLoaded, board.layers, board.maskColor, camMode, threeDMode, fromBelow, fitPadding, captureRef, drawHeavy])
+  }, [board.isLoaded, board.layers, board.maskColor, camMode, threeDMode, fromBelow, fitPadding, captureRef])
 
   // Bật/tắt lớp theo checkbox ở sidebar — chỉ đổi .visible, không dựng lại scene.
   // Sidebar được dựng từ GerberParser (tracespace), mà tracespace parse fail nhiều lớp
@@ -1605,26 +1545,10 @@ export const Viewer2DWebGL: React.FC<Viewer2DWebGLProps> = ({
               Kéo chuột để xoay (kéo lên để lật xem mặt Bot) · lăn để zoom
             </div>
           )}
-          {heavyProgress !== null && (
-            <div style={{ color: '#93c5fd', marginTop: 4 }}>Đang vẽ lớp nặng… {heavyProgress}%</div>
-          )}
-          {heavySkipped.length > 0 && (
-            <div style={{ color: '#fbbf24', marginTop: 4 }}>
-              ⚠ {heavySkipped.length} lớp quá nặng, chưa vẽ:{' '}
-              {heavySkipped.map((f) => f.name.split(/[\/]/).pop()).join(', ')}
-              {heavySkipped.length > 0 && (
-                <Button
-                  variant="chip"
-                  size="sm"
-                  onClick={() => {
-                    if (window.confirm('Lớp này rất nặng — vẽ dần trong nền, có thể mất một hai phút. Vẫn vẽ?')) setDrawHeavy(true)
-                  }}
-                  title="Dựng cả lớp nặng — có thể mất vài phút và app đứng hình trong lúc dựng"
-                  style={{ marginTop: 4 }}
-                >
-                  Vẽ luôn
-                </Button>
-              )}
+          {lightLayers.length > 0 && (
+            <div style={{ color: '#93c5fd', marginTop: 4 }} title="Lớp rất nhiều hình được vẽ đơn giản hơn (nét không bo tròn đầu) để xem được — xem fastLayer.ts">
+              {lightLayers.length} lớp nhiều hình vẽ ở chế độ nhẹ:{' '}
+              {lightLayers.map((f) => f.split(/[/]/).pop()).join(', ')}
             </div>
           )}
           {failed.length > 0 && (
