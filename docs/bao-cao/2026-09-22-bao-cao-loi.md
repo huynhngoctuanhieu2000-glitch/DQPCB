@@ -371,13 +371,21 @@ tam giác chéo sai; Rosario: rãnh móc câu nhất quán là lỗ).
 | P84241 / P84390 đếm bo | 2 bo (khung tính là bo) → nhắc nhầm "file ghép sẵn" | **1 bo** |
 | Kích thước P84390 | 185.23 × 205.66 mm | **170.00 × 199.00 mm** |
 
-- **Lớp quá nặng — vẽ dần ở nền** (`e9b048d`): `renderThree` gộp cả lớp trong MỘT lần nên lụa
-  150.500 hình làm đầy bộ nhớ trang rồi treo (bấm "Vẽ luôn" bản trước: 4.4 GB, 6 phút không
-  xong). Nay dựng theo **mẻ 20.000 hình**, và lớp > 50.000 hình được vẽ **dần từng mẻ lúc máy
-  rảnh** vào một object rỗng đã đặt sẵn trong cảnh. Bo hiện ngay sau 3.1 s, chữ in lụa hiện
-  dần trong ~20 s, giao diện vẫn phản hồi 1–5 ms; cuối cùng vẽ đủ cả hai lớp lụa (28.8 triệu
-  đỉnh). Bo có tổng lớp nặng ≤ 250.000 hình thì tự vẽ, trên mức đó badge vẫn để nút "Vẽ luôn".
-  Lớp dựng lỗi được nhớ lại nên không dựng lại mỗi lần; dựng sẵn ở nền bỏ qua lớp nặng.
+- **Lớp quá nặng — tự ráp lưới, vẽ đủ** (`bf511b8`): `renderThree` dựng MỖI hình thành một
+  khối riêng, nên lụa 150.220 vùng tô ra **180 triệu đỉnh** trong 30–42 s và tab hết bộ nhớ.
+  Nay lớp > 50.000 hình đi đường riêng (`fastLayer.ts`): **một lưới tam giác cho cả lớp** —
+  vùng tô chia quạt, mỗi nét một chữ nhật theo bề rộng, mỗi pad một đa giác.
+
+  | P84390-S02 | renderThree | Lưới nhanh |
+  |---|---|---|
+  | Lụa mặt dưới (85.570 hình) | 102.5 triệu đỉnh | **758.766 đỉnh** |
+  | Mở cả bộ | 75.3 s | **9.0 s** |
+  | Bộ nhớ trang | 4.5 GB | **1.2 GB** |
+
+  Vẽ **đủ cả hai lớp lụa**, phóng to đọc được chữ. Đánh đổi: đầu nét vuông (không bo tròn),
+  hình phẳng không có bề dày, bỏ hình đảo cực — với lớp in lụa thì chấp nhận được. Badge ghi
+  "N lớp nhiều hình vẽ ở chế độ nhẹ: …", tính từ danh sách lớp nên lấy từ cache vẫn ghi.
+  Lớp dựng lỗi được nhớ lại nên không dựng lại mỗi lần.
 - **Số lớp** lấy theo số lớp đồng đọc được (bo một mặt = 1 lớp, có sẵn phương án giá L1).
 - **Khung bao một bo** không tính là bo (so bằng bao trọn ô, không so tâm).
 - **Kích thước** chỉ tính theo vòng thân bo — bỏ lỗ khoét, khấc và chữ / nét chú thích vẽ
@@ -389,8 +397,8 @@ tam giác chéo sai; Rosario: rãnh móc câu nhất quán là lỗ).
   75.75 — đều bằng đúng vòng thân bo); khung không còn tính là bo (PCB HMI V16-x4 2 → 1);
   hai bộ trước đếm bo hỏng (0) giờ ra 3. Test mới 3 cái, tổng 186 test. Checklist giao diện
   điện thoại 375 / 360 và khung 1366 sạch.
-- **Còn lại:** bo nặng cỡ này ngốn ~10 GB bộ nhớ trang khi vẽ đủ — máy yếu nên tránh mở
-  nhiều bo như vậy cùng lúc.
+- **Còn lại:** lụa vẽ ở chế độ nhẹ hơi khác bản thật ở chỗ đầu nét — chỉ để xem, không dùng
+  để đo.
 
 ## Tính năng mới (22/09): nhận biết file ghép, mũi khoan nhỏ nhất — `6249b00`
 
