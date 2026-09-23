@@ -532,3 +532,36 @@ describe('bo Dao Quoc Thai 5pcs: khấc mép, file chỉ có rãnh, aperture kh�
     expect(defineMissingApertures(out)).toBe(out)
   })
 })
+
+describe('bo FRIWO 23/09: bo một mặt, khung bao bo, chữ ngoài khung', () => {
+  it('bo chỉ có một lớp đồng thì số lớp là 1', async () => {
+    const [b] = await GerberParser.parseInputFiles([asFile('BO.GBL', copper), asFile('BO.GKO', outlineWithRoundHole)])
+    expect(b.layerCount).toBe(1)
+  })
+
+  it('khung bao quanh một bo không tính là bo thứ hai', async () => {
+    // Khung 20 × 20 mm bao bo 14 × 14 mm.
+    const gko = gbr(
+      [
+        'G01X0Y0D02*', 'X2000000Y0D01*', 'X2000000Y2000000D01*', 'X0Y2000000D01*', 'X0Y0D01*',
+        'G01X300000Y300000D02*', 'X1700000Y300000D01*', 'X1700000Y1700000D01*', 'X300000Y1700000D01*', 'X300000Y300000D01*',
+      ].join('\n'),
+    )
+    const [b] = await GerberParser.parseInputFiles([asFile('BO.GTL', copper), asFile('BO.GKO', gko)])
+    const { countBoards } = await import('../src/lib/gerber-reader')
+    expect(countBoards(b.layers)).toEqual({ count: 1, cols: 1, rows: 1 })
+  })
+
+  it('chữ / nét chú thích ngoài khung không tính vào kích thước', async () => {
+    // Bo 10 × 10 mm + một ô chữ nhật nhỏ (chữ) cách bo 5 mm về bên phải.
+    const gko = gbr(
+      [
+        'G01X0Y0D02*', 'X1000000Y0D01*', 'X1000000Y1000000D01*', 'X0Y1000000D01*', 'X0Y0D01*',
+        'G01X1500000Y400000D02*', 'X1600000Y400000D01*', 'X1600000Y500000D01*', 'X1500000Y500000D01*', 'X1500000Y400000D01*',
+      ].join('\n'),
+    )
+    const [b] = await GerberParser.parseInputFiles([asFile('BO.GTL', copper), asFile('BO.GKO', gko)])
+    expect(b.bounds.widthMM).toBeCloseTo(10, 0)
+    expect(b.bounds.heightMM).toBeCloseTo(10, 0)
+  })
+})

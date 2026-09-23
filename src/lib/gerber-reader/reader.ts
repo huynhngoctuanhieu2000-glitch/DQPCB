@@ -27,6 +27,11 @@ import { buildEstimatedOutline, extractProfileGerber, plotOutline } from './outl
  * Một gói file đã giải nén, tương ứng ĐÚNG MỘT bo.
  * Mỗi archive thả vào là một gói; các file Gerber rời thả cùng lượt gộp thành một gói.
  */
+/** Ảnh yêu cầu của khách: tên có "spec" (PCB_Specifications.png, *_PCB_Spec.png…). */
+const isSpecImage = (name: string) => /spec/i.test(name) && /.(png|jpe?g|webp)$/i.test(name)
+const imageUrl = (name: string, base64: string) =>
+  `data:image/${/.png$/i.test(name) ? 'png' : /.webp$/i.test(name) ? 'webp' : 'jpeg'};base64,${base64}`
+
 interface InputBundle {
   projectName: string
   /** Tên file archive đã sinh ra gói này — để ghép lại đường dẫn thật ở tầng UI. */
@@ -34,6 +39,7 @@ interface InputBundle {
   rawFiles: { name: string; content: string }[]
   orcadLisText: string
   orcadGtdText: string
+  specImages: { name: string; url: string }[]
 }
 
 type Box = [number, number, number, number]
@@ -290,10 +296,12 @@ export class GerberParser {
       rawFiles: [],
       orcadLisText: '',
       orcadGtdText: '',
+      specImages: [],
     }
 
     for (const file of files) {
       let rawFiles: { name: string; content: string }[] = []
+      const specImages: { name: string; url: string }[] = []
       let projectName = 'PCB_Project'
       let orcadLisText = ''
       let orcadGtdText = ''
@@ -314,6 +322,8 @@ export class GerberParser {
           if (lower.endsWith('.gtd')) {
             orcadGtdText = await entry.async('text')
           }
+          const specName = entryName.split(/[\/]/).pop() || entryName
+          if (isSpecImage(specName)) specImages.push({ name: specName, url: imageUrl(specName, await entry.async('base64')) })
         }
 
         for (const [entryName, entry] of Object.entries(zip.files)) {
@@ -338,7 +348,7 @@ export class GerberParser {
             console.warn('Could not read zip entry:', entryName, e)
           }
         }
-        bundles.push({ projectName, sourceFile: file.name, rawFiles, orcadLisText, orcadGtdText })
+        bundles.push({ projectName, sourceFile: file.name, rawFiles, orcadLisText, orcadGtdText, specImages })
       } else if (lowerName.endsWith('.rar')) {
         projectName = file.name.replace(/\.[^/.]+$/, '')
         const arrayBuffer = await file.arrayBuffer()
@@ -368,6 +378,12 @@ export class GerberParser {
             if (lower.endsWith('.gtd')) {
               orcadGtdText = new TextDecoder('utf-8').decode(f.extraction)
             }
+            const specName = entryName.split(/[\/]/).pop() || entryName
+            if (isSpecImage(specName) && f.extraction) {
+              let bin = ''
+              for (const byte of f.extraction) bin += String.fromCharCode(byte)
+              specImages.push({ name: specName, url: imageUrl(specName, btoa(bin)) })
+            }
           }
           
           for (const f of rarFiles) {
@@ -389,7 +405,7 @@ export class GerberParser {
               rawFiles.push({ name: baseName, content })
             }
           }
-          bundles.push({ projectName, sourceFile: file.name, rawFiles, orcadLisText, orcadGtdText })
+          bundles.push({ projectName, sourceFile: file.name, rawFiles, orcadLisText, orcadGtdText, specImages })
         } catch (e) {
           console.error('Failed to parse RAR:', e)
           throw new Error('Không thể đọc file RAR. Vui lòng đảm bảo thư viện node-unrar-js được cài đặt đúng cách.')
@@ -1028,10 +1044,14 @@ export class GerberParser {
         widthMM: Number(widthMM.toFixed(2)),
         heightMM: Number(heightMM.toFixed(2)),
       },
-      layerCount: Math.max(copperLayers.length, 2),
+      // Bo một mặt chỉ có MỘT lớp đồng — trước đây ép tối thiểu 2 nên bo 1 lớp bị báo giá
+      // như bo 2 lớp (FRIWO "P84241-S02", 23/09/2026: khách ghi rõ "Single side"; JLC cũng
+      // đọc ra 1 lớp). Không đọc được lớp đồng nào thì vẫn để 2 như cũ.
+      layerCount: copperLayers.length || 2,
       drillCount: drillLayers.length,
       ignoredFiles,
       failedFiles,
+      specImages: bundle.specImages,
       source: bundle,
       layerOverrides: overrides,
     }

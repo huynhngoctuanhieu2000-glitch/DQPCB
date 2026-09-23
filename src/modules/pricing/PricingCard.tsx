@@ -16,6 +16,7 @@ import { MASK_COLORS } from '../../models/MaskColors'
 import type { QuotationSeed } from '../quotation/QuotationPanel'
 import { panelNote, stencilSideFromBoard, stencilSizeLabel, type StencilSide } from '../quotation/QuotationModel'
 import { PricingStore } from './PricingStore'
+import { Button } from '../../ui/Button'
 import { Icon } from '../../ui/Icon'
 import { NumberInput } from '../../ui/NumberInput'
 import { PanelPreview, type BoardShape, type PanelKind } from './PanelPreview'
@@ -117,6 +118,8 @@ export const PricingCard: React.FC<{
   const [qtyFrom, setQtyFrom] = useState<'pcs' | 'sets'>('pcs')
   /** Số set nhập tay, chỉ dùng khi qtyFrom = 'sets'. */
   const [setCount, setSetCount] = useState<number | null>(1)
+  /** Mở/đóng ảnh thông số của khách kèm trong bộ file. */
+  const [showSpec, setShowSpec] = useState(false)
   /** Kiểu ghép: V-cut cần tấm đủ lớn cho máy cắt; mouse bite (phay + cầu) thì không. */
   const [panelKind, setPanelKind] = useState<PanelKind>('vcut')
   const [spec, setSpec] = useState<BoardSpec>(() => defaultSpec(2))
@@ -831,6 +834,27 @@ export const PricingCard: React.FC<{
       {/* Thư mục là nguồn để đoán tên khách và chọn chỗ lưu báo giá. Chỉ có khi chạy
           trong Electron, nên hiện luôn ra đây để biết ngay app có đọc được đường dẫn không. */}
       <InfoRow label="Thư mục">{folder}</InfoRow>
+      {/* Ảnh yêu cầu của khách kèm trong bộ file (PCB_Specifications.png của FRIWO…):
+          app không đọc chữ trong ảnh, chỉ mở ra để người lập đối chiếu số lớp / bề dày /
+          bề mặt với thông số đang chọn. */}
+      {board.specImages.length > 0 && (
+        <div style={{ padding: '6px 0' }}>
+          <Button variant="secondary" size="sm" icon="eye" onClick={() => setShowSpec((v) => !v)}>
+            {showSpec ? 'Ẩn' : 'Xem'} ảnh thông số của khách
+            {board.specImages.length > 1 ? ` (${board.specImages.length})` : ''}
+          </Button>
+          {showSpec &&
+            board.specImages.map((img) => (
+              <img
+                key={img.name}
+                src={img.url}
+                alt={img.name}
+                title={img.name}
+                style={{ display: 'block', width: '100%', marginTop: 6, borderRadius: 4, border: `1px solid ${C.border}` }}
+              />
+            ))}
+        </div>
+      )}
 
       {/* ── Báo giá ──────────────────────────────────────── */}
       <div style={S.head}>

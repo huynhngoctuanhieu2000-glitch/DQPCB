@@ -60,6 +60,11 @@ export interface BoardParsedData {
   ignoredFiles: string[]
   /** File có vẻ là Gerber/Drill nhưng parser không đọc được */
   failedFiles: { name: string; reason: string }[]
+  /**
+   * Ảnh yêu cầu của khách kèm trong bộ file (`*spec*.png/jpg`) — app không đọc chữ trong
+   * ảnh, chỉ cho người lập mở xem để đối chiếu số lớp / bề dày / bề mặt.
+   */
+  specImages?: { name: string; url: string }[]
   /** Gói file gốc — giữ để đọc lại khi người dùng chọn tay loại lớp (rebuildBoard). */
   source?: unknown
   /** Loại lớp chọn tay: tên file → khoá META. */

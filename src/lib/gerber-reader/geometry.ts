@@ -593,11 +593,15 @@ export const outlineSize = (tree: any): [number, number, number, number] | null 
   const parts = tree?.parts
   if (!Array.isArray(parts) || parts.length === 0) return null
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity, stroke = 0
-  // Khấc phay bỏ vắt ngang mép bo (xem splitOutlineLoops) không phải vật liệu — không tính
-  // vào kích thước. Bo "Dao Quoc Thai 5pcs": khấc thò ra ngoài 3.6 mm, bo 66.28 thành 70.01 mm.
-  const { notches } = splitOutlineLoops(parts, { scale: tree.units === 'in' ? 25.4 : 1 })
-  for (const part of parts) {
-    if (notches.includes(part)) continue
+  // Kích thước bo tính theo CÁC VÒNG THÂN BO, không tính lỗ khoét, khấc phay bỏ hay nét
+  // chú thích vẽ trong lớp viền:
+  //  - bo "Dao Quoc Thai 5pcs" (22/09) có khấc thò ra ngoài 3.6 mm → 66.28 thành 70.01 mm;
+  //  - bo FRIWO "P84390-S02" (23/09) có chữ và nét chỉ dẫn ngoài khung → 170 × 199 thành
+  //    185 × 206 mm.
+  const sc = tree.units === 'in' ? 25.4 : 1
+  const { body } = splitOutlineLoops(parts, { scale: sc })
+  const used = body.length > 0 ? body : parts
+  for (const part of used) {
     for (const child of part?.children ?? []) {
       if (typeof child?.width === 'number') stroke = Math.max(stroke, child.width)
       for (const seg of child?.segments ?? []) {

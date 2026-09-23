@@ -40,6 +40,8 @@ export interface Board {
   parsed: BoardParsedData | null
   /** Loại lớp chọn tay: tên file → khoá META. */
   layerOverrides: Record<string, string>
+  /** Ảnh yêu cầu của khách kèm trong bộ file (*spec*.png) — chỉ để mở xem. */
+  specImages: { name: string; url: string }[]
 }
 
 /**
@@ -77,6 +79,7 @@ const emptyBoard = (): Board => ({
   layersOverride: null,
   parsed: null,
   layerOverrides: {},
+  specImages: [],
 })
 
 let boards: Board[] = []
@@ -134,6 +137,7 @@ const toBoard = (data: BoardParsedData, sourceDir = '', parseMs = 0): Board => (
   layersOverride: null,
   parsed: data,
   layerOverrides: data.layerOverrides ?? {},
+  specImages: data.specImages ?? [],
 })
 
 export const BoardDataModel = {

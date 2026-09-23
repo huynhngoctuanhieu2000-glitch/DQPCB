@@ -275,11 +275,17 @@ export const countBoards = (
   const biggest = Math.max(...boxes.map(area))
   let boards = boxes.filter((b: number[]) => Math.min(b[2] - b[0], b[3] - b[1]) >= 8 && area(b) >= biggest * 0.1)
   const centre = (b: number[]) => [(b[0] + b[2]) / 2, (b[1] + b[3]) / 2]
-  const holds = (outer: number[], inner: number[]) => {
-    const [x, y] = centre(inner)
-    return inner !== outer && x > outer[0] && x < outer[2] && y > outer[1] && y < outer[3]
-  }
-  boards = boards.filter((b: number[]) => boards.filter((o: number[]) => holds(b, o)).length < 2)
+  // Khung / rail bao quanh bo thì không phải bo, kể cả khi chỉ bao MỘT bo: FRIWO
+  // "P84241-S02" (23/09/2026) là một bo 160 × 174 mm nằm trong khung 170 × 199 mm — app đếm
+  // 2 bo và nhắc "file ghép sẵn". Chỉ bỏ khi vẫn còn bo khác, để bo đơn không bị bỏ sạch.
+  // Bao TRỌN (chừa 1 mm), không xét theo tâm: tâm của khung cũng nằm trong bo nên xét tâm
+  // thì cả hai cùng bị loại.
+  const wraps = (outer: number[], inner: number[]) =>
+    inner !== outer &&
+    inner[0] >= outer[0] - 1 && inner[1] >= outer[1] - 1 &&
+    inner[2] <= outer[2] + 1 && inner[3] <= outer[3] + 1
+  const framed = boards.filter((b: number[]) => !boards.some((o: number[]) => wraps(b, o)))
+  if (framed.length > 0) boards = framed
   if (boards.length === 0) return null
 
   // Gom tâm theo từng trục: hai tâm cách nhau dưới nửa bề rộng bo là cùng cột/hàng.
