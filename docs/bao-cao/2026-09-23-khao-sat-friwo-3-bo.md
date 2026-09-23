@@ -78,8 +78,11 @@ Mỗi bộ có một ảnh PNG ghi yêu cầu, app xếp vào "file phụ trợ 
 
 - Lớp > 50.000 hình: **tự ráp một lưới tam giác cho cả lớp** (`bf511b8`, `fastLayer.ts`) thay
   cho `renderThree`. Lụa mặt dưới 85.570 hình: 102.5 triệu đỉnh → **758.766 đỉnh**; mở cả bộ
-  75.3 s → **9.0 s**; bộ nhớ trang 4.5 GB → **1.2 GB**. Vẽ đủ cả hai lớp lụa, phóng to đọc
-  được chữ. Đánh đổi: đầu nét vuông, hình phẳng, bỏ hình đảo cực.
+  75.3 s → **9.0 s**; bộ nhớ trang 4.5 GB → **1.2 GB**. Vẽ đủ cả hai lớp lụa ở cả bốn chế độ
+  xem, phóng to đọc được chữ. Đánh đổi: hình phẳng, bỏ hình đảo cực.
+  - Sửa tiếp `2316510`: tô vùng lõm phải cắt tai chứ không chia quạt (chia quạt làm đầy ruột
+    chữ, diện tích gấp 3,6 lần thật) và lưới phải bọc trong Group (three xếp thứ tự vẽ theo
+    groupOrder trước, Mesh trần bị mask/đồng đè — 2 Mặt / 2D / 3D không thấy in lụa).
 - Lớp dựng lỗi được ghi nhớ (không dựng lại mỗi lần); dựng sẵn ở nền bỏ qua lớp nặng.
 - Số lớp theo lớp đồng đọc được; khung bao một bo không tính là bo; kích thước chỉ theo vòng
   thân bo (bỏ chữ / nét chú thích trong lớp viền).

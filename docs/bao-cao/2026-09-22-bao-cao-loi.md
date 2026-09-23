@@ -374,7 +374,8 @@ tam giác chéo sai; Rosario: rãnh móc câu nhất quán là lỗ).
 - **Lớp quá nặng — tự ráp lưới, vẽ đủ** (`bf511b8`): `renderThree` dựng MỖI hình thành một
   khối riêng, nên lụa 150.220 vùng tô ra **180 triệu đỉnh** trong 30–42 s và tab hết bộ nhớ.
   Nay lớp > 50.000 hình đi đường riêng (`fastLayer.ts`): **một lưới tam giác cho cả lớp** —
-  vùng tô chia quạt, mỗi nét một chữ nhật theo bề rộng, mỗi pad một đa giác.
+  vùng tô cắt tai (hình lồi thì chia quạt cho rẻ), mỗi nét một chữ nhật theo bề rộng,
+  mỗi pad một đa giác.
 
   | P84390-S02 | renderThree | Lưới nhanh |
   |---|---|---|
@@ -382,10 +383,20 @@ tam giác chéo sai; Rosario: rãnh móc câu nhất quán là lỗ).
   | Mở cả bộ | 75.3 s | **9.0 s** |
   | Bộ nhớ trang | 4.5 GB | **1.2 GB** |
 
-  Vẽ **đủ cả hai lớp lụa**, phóng to đọc được chữ. Đánh đổi: đầu nét vuông (không bo tròn),
-  hình phẳng không có bề dày, bỏ hình đảo cực — với lớp in lụa thì chấp nhận được. Badge ghi
-  "N lớp nhiều hình vẽ ở chế độ nhẹ: …", tính từ danh sách lớp nên lấy từ cache vẫn ghi.
-  Lớp dựng lỗi được nhớ lại nên không dựng lại mỗi lần.
+  Vẽ **đủ cả hai lớp lụa** ở cả bốn chế độ xem, phóng to đọc được chữ. Đánh đổi: hình phẳng
+  không có bề dày, bỏ hình đảo cực — với lớp in lụa thì chấp nhận được. Badge ghi "N lớp
+  nhiều hình vẽ ở chế độ nhẹ: …", tính từ danh sách lớp nên lấy từ cache vẫn ghi. Lớp dựng
+  lỗi được nhớ lại nên không dựng lại mỗi lần.
+
+  **Sửa tiếp (`2316510`)** — bản đầu vẽ sai hai chỗ:
+  - `plot()` biến MỌI nét vẽ thành vùng tô viền quanh nét, nên cả một nét gấp khúc (nguyên
+    chữ "R441" vẽ liền tay) là MỘT vùng lõm sâu. Tô kiểu chia quạt làm đầy luôn ruột chữ —
+    diện tích tô ra **gấp 3,6 lần** thật ở lụa mặt trên, chữ bết thành cục. Nay cắt tai
+    (ear clipping) nên đúng **1,0000 lần**; cung cũng bẻ ra đoạn 0,02 mm để đầu nét bo tròn.
+  - Lưới phải bọc trong Group: three xếp thứ tự vẽ theo **groupOrder** (lấy từ Group cha)
+    TRƯỚC rồi mới tới renderOrder, nên Mesh trần nằm thẳng trong Scene luôn bị vẽ đầu và lớp
+    mask / đồng phủ đè lên — **2 Mặt, 2D, 3D không thấy in lụa**. Nay cả bốn chế độ đều hiện.
+
 - **Số lớp** lấy theo số lớp đồng đọc được (bo một mặt = 1 lớp, có sẵn phương án giá L1).
 - **Khung bao một bo** không tính là bo (so bằng bao trọn ô, không so tâm).
 - **Kích thước** chỉ tính theo vòng thân bo — bỏ lỗ khoét, khấc và chữ / nét chú thích vẽ
@@ -397,8 +408,8 @@ tam giác chéo sai; Rosario: rãnh móc câu nhất quán là lỗ).
   75.75 — đều bằng đúng vòng thân bo); khung không còn tính là bo (PCB HMI V16-x4 2 → 1);
   hai bộ trước đếm bo hỏng (0) giờ ra 3. Test mới 3 cái, tổng 186 test. Checklist giao diện
   điện thoại 375 / 360 và khung 1366 sạch.
-- **Còn lại:** lụa vẽ ở chế độ nhẹ hơi khác bản thật ở chỗ đầu nét — chỉ để xem, không dùng
-  để đo.
+- **Còn lại:** lụa vẽ ở chế độ nhẹ là hình phẳng, không có bề dày như lớp thường — chỉ để
+  xem, không dùng để đo.
 
 ## Tính năng mới (22/09): nhận biết file ghép, mũi khoan nhỏ nhất — `6249b00`
 

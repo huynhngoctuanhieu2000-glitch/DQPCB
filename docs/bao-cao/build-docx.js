@@ -309,13 +309,13 @@ const bugs = [
     t: 'Lỗi 21 — Ba bộ FRIWO ngày 23/09',
     rows: [
       ['Bộ file', 'D:\\JobDatMach\\FRIWO\\2026\\23-09\\FRIWO\\ — 55807.930-90FE, P84241-S02, P84390-S02 (Pulsonix, kèm ảnh *spec*.png của khách)'],
-      ['Treo app', 'P84390-S02 có lớp in lụa 150.220 vùng tô: renderThree dựng mỗi hình một khối nên ra 180 triệu đỉnh, hết bộ nhớ và mất 198 s, app đứng hình. Sửa: lớp > 50.000 hình tự ráp MỘT lưới tam giác cho cả lớp (bf511b8, fastLayer.ts). Lụa mặt dưới 85.570 hình: 102,5 triệu đỉnh → 758.766 đỉnh; mở cả bộ 75,3 s → 9,0 s; bộ nhớ trang 4,5 GB → 1,2 GB. Vẽ ĐỦ cả hai lớp lụa, phóng to đọc được chữ. Đánh đổi: đầu nét vuông, hình phẳng, bỏ hình đảo cực.'],
+      ['Treo app', 'P84390-S02 có lớp in lụa 150.220 vùng tô: renderThree dựng mỗi hình một khối nên ra 180 triệu đỉnh, hết bộ nhớ và mất 198 s, app đứng hình. Sửa: lớp > 50.000 hình tự ráp MỘT lưới tam giác cho cả lớp (bf511b8, fastLayer.ts). Lụa mặt dưới 85.570 hình: 102,5 triệu đỉnh → 758.766 đỉnh; mở cả bộ 75,3 s → 9,0 s; bộ nhớ trang 4,5 GB → 1,2 GB. Vẽ ĐỦ cả hai lớp lụa ở cả bốn chế độ xem, phóng to đọc được chữ. Đánh đổi: hình phẳng, bỏ hình đảo cực. Sửa tiếp 2316510: vùng tô lõm phải cắt tai chứ không chia quạt (chia quạt làm đầy ruột chữ — diện tích gấp 3,6 lần thật, chữ bết thành cục) và lưới phải bọc trong Group (three xếp thứ tự vẽ theo groupOrder trước, Mesh trần bị mask/đồng đè nên 2 Mặt / 2D / 3D không thấy in lụa).'],
       ['Số lớp', 'Bo một mặt (P84241-S02) vẫn ghi 2 lớp → giá tính như bo 2 lớp. Sửa: số lớp theo số lớp đồng đọc được → **1 lớp** (khớp ảnh thông số của khách và JLC).'],
       ['Đếm bo', 'Khung bao quanh một bo bị tính là bo thứ hai → nhắc nhầm "file ghép sẵn". Sửa: khung bao TRỌN một bo không phải bo.'],
       ['Kích thước', 'Chữ và nét chú thích vẽ trong lớp viền cộng vào kích thước (P84390 185.23 × 205.66). Sửa: chỉ tính theo vòng thân bo → **170.00 × 199.00 mm**.'],
       ['Ảnh thông số', 'Ảnh *spec*.png của khách trước bị bỏ qua; nay giữ lại, thẻ thông tin bo có nút "Xem ảnh thông số của khách" (app không đọc chữ trong ảnh).'],
       ['Kiểm', 'Hồi quy 521 bộ: 495 không đổi; 26 đổi — 12 bộ bo một mặt về 1 lớp, vài bộ kích thước bỏ phần chú thích (TDM2409 63.13 → 50.95; butterfly_panel 114.01 → 100.00), khung không còn tính là bo, 2 bộ trước đếm bo hỏng nay ra 3. 186 test. Checklist giao diện điện thoại 375 / 360 và khung 1366 sạch.'],
-      ['Còn lại', 'Lụa vẽ ở chế độ nhẹ hơi khác bản thật ở chỗ đầu nét — chỉ để xem, không dùng để đo.'],
+      ['Còn lại', 'Lụa vẽ ở chế độ nhẹ là hình phẳng, không có bề dày như lớp thường — chỉ để xem, không dùng để đo.'],
     ],
   },
 ]
