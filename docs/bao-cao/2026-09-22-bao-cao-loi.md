@@ -27,6 +27,7 @@ Tóm tắt:
 | 18 | Chuyển qua lại giữa các bo đang mở chậm 0.5–3.3 s, không báo đang tải | FRIWO, PHAONUOC, CHAT_BOT_4 (mở cùng lúc) | Đã sửa · `71bf3a5` |
 | 19 | 2D / 3D mất lõi bo: vùng tô trong lớp viền làm khung bo bị gán sai kiểu | Anh Nhat — Gerber Anh Nhat (+ 2 bộ) | Đã sửa · `dbbea67` |
 | 20 | Mất rãnh của file khoan chỉ có rãnh; khấc mép tính là thân bo (bo rộng thêm); nét viền dày | Dao Quoc Thai 5pcs (+ Ghep, Gateway, Thu Van, 5 bộ đổi kích thước) | Đã sửa · `5a8b10f` |
+| 21 | Lớp in lụa 150k hình treo app 3 phút và lỗi hết bộ nhớ; bo một mặt ghi 2 lớp; khung bao bo tính là bo; chữ trong lớp viền cộng vào kích thước | FRIWO 23/09 — 55807.930, P84241-S02, P84390-S02 | Đã sửa · `7b90b45`, `e52458f` |
 
 ---
 
@@ -357,6 +358,38 @@ tam giác chéo sai; Rosario: rãnh móc câu nhất quán là lỗ).
   — đã loại. 3 test mới.
 - **Còn lại:** phần khấc thò ra ngoài mép vẫn vẽ thành ô trắng nhạt ngoài bo ở 2D (chỉ là hình).
 
+## 21. Ba bộ FRIWO ngày 23/09
+
+- **Thư mục:** `D:\JobDatMach\FRIWO\2026\23-09\FRIWO\` (Pulsonix: viền `(Keep Out)`, khoan
+  `(Drilling Data).drl`, kèm ảnh `*spec*.png` ghi yêu cầu của khách).
+- Chi tiết khảo sát: `2026-09-23-khao-sat-friwo-3-bo.md`.
+
+| | Trước | Sau |
+|---|---|---|
+| Mở P84390-S02 | dựng **198 s**, app đứng hình, lụa mặt trên lỗi hết bộ nhớ | **9.3 s** (dựng 3.7 s) |
+| P84241-S02 | 2 lớp | **1 lớp** (khách ghi "Single side", JLC cũng đọc 1 lớp) |
+| P84241 / P84390 đếm bo | 2 bo (khung tính là bo) → nhắc nhầm "file ghép sẵn" | **1 bo** |
+| Kích thước P84390 | 185.23 × 205.66 mm | **170.00 × 199.00 mm** |
+
+- **Lớp quá nặng:** trên 50.000 hình thì không dựng, badge ghi tên lớp kèm nút **"Vẽ luôn"**
+  (hỏi xác nhận trước). Trên **120.000 hình** thì không cho vẽ — bấm thử trên lụa 150.500 hình:
+  bộ nhớ trang chạm trần 4.4 GB, 6 phút không xong, treo hẳn (`e52458f`). Lụa 85.570 hình vẽ
+  được trong 12 s. Lớp dựng lỗi được nhớ lại nên không dựng lại mỗi lần; dựng sẵn ở nền bỏ
+  qua lớp nặng.
+- **Số lớp** lấy theo số lớp đồng đọc được (bo một mặt = 1 lớp, có sẵn phương án giá L1).
+- **Khung bao một bo** không tính là bo (so bằng bao trọn ô, không so tâm).
+- **Kích thước** chỉ tính theo vòng thân bo — bỏ lỗ khoét, khấc và chữ / nét chú thích vẽ
+  trong lớp viền.
+- **Ảnh thông số của khách** (`*spec*.png`) giữ lại, thẻ thông tin bo có nút "Xem ảnh thông
+  số của khách" để đối chiếu bề dày / bề mặt / số lớp (app không đọc chữ trong ảnh).
+- **Kiểm:** hồi quy 521 bộ — 495 không đổi; 26 đổi: 12 bộ bo một mặt về 1 lớp; kích thước bỏ
+  phần chú thích (TDM2409 63.13 → 50.95, butterfly_panel 114.01 → 100.00, PRO-HP-ESP 82.75 →
+  75.75 — đều bằng đúng vòng thân bo); khung không còn tính là bo (PCB HMI V16-x4 2 → 1);
+  hai bộ trước đếm bo hỏng (0) giờ ra 3. Test mới 3 cái, tổng 186 test. Checklist giao diện
+  điện thoại 375 / 360 và khung 1366 sạch.
+- **Còn lại:** lụa 150.500 hình vẫn không xem được — muốn xem phải giảm số hình khi xuất
+  (Pulsonix vẽ chữ thành hàng vạn nét nhỏ).
+
 ## Tính năng mới (22/09): nhận biết file ghép, mũi khoan nhỏ nhất — `6249b00`
 
 Khung thông báo ở góc khung xem thêm hai dòng:
@@ -402,7 +435,7 @@ tưởng mất logo. Tải lại tab là hết. Từ nay kiểm clipboard/ảnh 
 
 ## Cách kiểm lại
 
-- `npx vitest run test/*.test.ts` — 154 test.
+- `npx vitest run test/*.test.ts` — 186 test.
 - `npm run build` — build thật (`tsc -b` chặt hơn `tsc --noEmit`; lỗi build Vercel ở
   `f12b339` là do chỉ chạy lệnh nhẹ).
 - Hồi quy corpus: script trong `test/_scratch/` (không commit) so bản cũ/mới trên

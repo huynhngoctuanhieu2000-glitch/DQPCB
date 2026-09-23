@@ -26,7 +26,7 @@ nằm trong `src/lib/gerber-reader/` (`geometry.ts`, `outlineLoops.ts`, `identif
 | **Tách vòng "số 8"** | Chuỗi đi qua cùng một đỉnh hai lần (panel V-cut, hai bo chung cạnh) → tách thành vòng đơn. Chỉ đỉnh trùng khít và phần tách ≥ 1 mm² *(21/09)* |
 | Giữ vòng | ≥ 3 đoạn (kể cả hở); 1–2 đoạn chỉ giữ khi khép kín và có cung (lỗ tròn EasyEDA = 2 cung 180°, bo tròn CAM350 = 1 cung 360°) |
 | **Rãnh một nét** | Nét thẳng 1–2 đoạn, nằm hẳn trong bo (cách mép ≥ 1 mm), rộng ≥ 0.3 mm, đứng riêng, bề rộng không dùng cho đường vẽ nhiều khúc → dựng hình thuôn rộng bằng nét, thành lỗ khoét *(22/09, `706ea9f`, CHAT_BOT_4)* |
-| Kích thước | Ô bao của các vòng đã nối + nửa nét — không dùng số thô (chấm lẻ Edge_Cuts KiCad làm bo 41.5 mm thành 89.68 mm) |
+| Kích thước | Ô bao **các vòng thân bo** + nửa nét — không tính lỗ khoét, khấc phay bỏ hay chữ / nét chú thích vẽ trong lớp viền *(23/09, `7b90b45`, FRIWO P84390: 185 × 206 → 170 × 199 mm)*; không dùng số thô (chấm lẻ Edge_Cuts KiCad làm bo 41.5 mm thành 89.68 mm) |
 | Kiểu phần tử | Mỗi đoạn viền đã nối bọc theo **nét vẽ đầu tiên** của lớp, không theo vùng tô: vùng tô G36 đứng trước khung bo làm khung thành "vùng tô một đoạn", 2D/3D mất lõi bo *(22/09, `dbbea67`, Anh Nhat)* |
 | Aperture chưa khai | Lớp viền dùng `Dnn` không có `%AD` → khai nét 0.1 mm (web-gerber tự cho 1.75 mm: khung viền dày, kích thước cộng nửa nét) *(22/09, `5a8b10f`, Dao Quoc Thai)* |
 

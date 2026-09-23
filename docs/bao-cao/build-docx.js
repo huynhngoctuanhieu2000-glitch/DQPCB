@@ -106,6 +106,7 @@ children.push(
       ['18', 'Chuyển qua lại giữa các bo đang mở chậm 0.5–3.3 s, không báo đang tải', 'FRIWO, PHAONUOC, CHAT_BOT_4', 'Đã sửa · 71bf3a5'],
       ['19', '2D / 3D mất lõi bo: vùng tô trong lớp viền làm khung bo bị gán sai kiểu', 'Anh Nhat — Gerber Anh Nhat (+ 2 bộ)', 'Đã sửa · dbbea67'],
       ['20', 'Mất rãnh của file khoan chỉ có rãnh; khấc mép tính là thân bo; nét viền dày', 'Dao Quoc Thai 5pcs (+ 3 bộ thiếu rãnh, 5 bộ đổi kích thước)', 'Đã sửa · 5a8b10f'],
+      ['21', 'Lớp in lụa 150k hình treo app; bo một mặt ghi 2 lớp; khung bao bo tính là bo; chữ trong lớp viền cộng vào kích thước', 'FRIWO 23/09 (3 bộ)', 'Đã sửa · 7b90b45, e52458f'],
     ],
     [5, 42, 30, 23],
   ),
@@ -304,6 +305,19 @@ const bugs = [
       ['Còn lại', 'Phần khấc thò ra ngoài mép vẫn vẽ thành ô trắng nhạt ngoài bo ở 2D (chỉ là hình).'],
     ],
   },
+  {
+    t: 'Lỗi 21 — Ba bộ FRIWO ngày 23/09',
+    rows: [
+      ['Bộ file', 'D:\\JobDatMach\\FRIWO\\2026\\23-09\\FRIWO\\ — 55807.930-90FE, P84241-S02, P84390-S02 (Pulsonix, kèm ảnh *spec*.png của khách)'],
+      ['Treo app', 'P84390-S02 có lớp in lụa 150.500 hình: dựng hết bộ nhớ và mất 198 s, app đứng hình. Sửa: lớp > 50.000 hình không dựng, badge ghi tên + nút "Vẽ luôn" (hỏi xác nhận); lớp > 120.000 hình không cho vẽ (bấm thử: bộ nhớ trang chạm trần 4.4 GB, 6 phút không xong). Mở bộ này còn **9.3 s**.'],
+      ['Số lớp', 'Bo một mặt (P84241-S02) vẫn ghi 2 lớp → giá tính như bo 2 lớp. Sửa: số lớp theo số lớp đồng đọc được → **1 lớp** (khớp ảnh thông số của khách và JLC).'],
+      ['Đếm bo', 'Khung bao quanh một bo bị tính là bo thứ hai → nhắc nhầm "file ghép sẵn". Sửa: khung bao TRỌN một bo không phải bo.'],
+      ['Kích thước', 'Chữ và nét chú thích vẽ trong lớp viền cộng vào kích thước (P84390 185.23 × 205.66). Sửa: chỉ tính theo vòng thân bo → **170.00 × 199.00 mm**.'],
+      ['Ảnh thông số', 'Ảnh *spec*.png của khách trước bị bỏ qua; nay giữ lại, thẻ thông tin bo có nút "Xem ảnh thông số của khách" (app không đọc chữ trong ảnh).'],
+      ['Kiểm', 'Hồi quy 521 bộ: 495 không đổi; 26 đổi — 12 bộ bo một mặt về 1 lớp, vài bộ kích thước bỏ phần chú thích (TDM2409 63.13 → 50.95; butterfly_panel 114.01 → 100.00), khung không còn tính là bo, 2 bộ trước đếm bo hỏng nay ra 3. 186 test. Checklist giao diện điện thoại 375 / 360 và khung 1366 sạch.'],
+      ['Còn lại', 'Lụa 150.500 hình vẫn không xem được — muốn xem phải giảm số hình khi xuất file.'],
+    ],
+  },
 ]
 for (const b of bugs) children.push(H2(b.t), bugTable(b.rows), gap())
 children.push(H2('Ghi chú — "mất logo" khi chụp (không phải lỗi app)'))
@@ -446,7 +460,7 @@ children.push(T([
   ['Tách vòng "số 8"', 'Chuỗi đi qua cùng đỉnh hai lần → tách vòng đơn (đỉnh trùng khít, phần tách ≥ 1 mm²)'],
   ['Giữ vòng', '≥ 3 đoạn; 1–2 đoạn chỉ khi khép kín và có cung (lỗ tròn EasyEDA, bo tròn CAM350)'],
   ['Rãnh một nét', 'Nét thẳng 1–2 đoạn nằm hẳn trong bo (≥ 1 mm từ mép), rộng ≥ 0.3 mm, đứng riêng, bề rộng không dùng cho đường vẽ nhiều khúc → hình thuôn rộng bằng nét, thành lỗ khoét (CHAT_BOT_4)'],
-  ['Kích thước', 'Ô bao các vòng đã nối + nửa nét — không dùng số thô'],
+  ['Kích thước', 'Ô bao các VÒNG THÂN BO + nửa nét — không tính lỗ khoét, khấc phay bỏ, chữ / nét chú thích trong lớp viền (FRIWO P84390: 185 × 206 → 170 × 199 mm)'],
   ['Kiểu phần tử', 'Mỗi đoạn viền đã nối bọc theo nét vẽ đầu tiên, không theo vùng tô (vùng tô G36 đứng trước khung bo làm 2D/3D mất lõi bo — Anh Nhat)'],
 ], [25, 75]))
 children.push(H3('Vòng nào là thân bo, lỗ khoét hay nét phay'))
@@ -505,7 +519,7 @@ for (const s of [
 children.push(H2('5.2 Checklist khi sửa luật đọc file'))
 for (const s of [
   'Viết test trong test/ dựng lại đúng dáng file thật gây lỗi.',
-  'Chạy **npm run build** (tsc -b chặt hơn tsc --noEmit — lỗi build Vercel ở f12b339 là do chỉ chạy lệnh nhẹ) và npx vitest run (154 test).',
+  'Chạy **npm run build** (tsc -b chặt hơn tsc --noEmit — lỗi build Vercel ở f12b339 là do chỉ chạy lệnh nhẹ) và npx vitest run (186 test).',
   'Hồi quy corpus D:\\JobDatMach: so bản cũ/mới — kích thước bo, số vòng + thân/lỗ/nét, số lỗ và tỉ lệ lỗ nằm trong bo; xem hình cũ/mới các bộ bị đổi trước khi chốt.',
   'Mở lại bộ mẫu: FC_F405RGT6_Wing (KiCad 6 lớp), BOAD NUT NHAN (EasyEDA), AGVH7 (Altium inch, slot), Ceiling / Dynamic Master (panel inch), Slaver_Ceiling bản lẻ (GKO + GM1), ESP32_DR (Altium metric 4:3, RectHoles), CHAT_BOT_1 (panel 4 bo), DA82 (OrCAD Layout, thruhole.tap + .DRD), FRIWO 55807 (Pulsonix, khoan INCH không khai format), PCB_doline (Altium, khoan lệch gốc), 5395_1 (EasyEDA, NPTH phải giữ nguyên), CHAT_BOT_4 (rãnh một nét), PHAONUOC (đường vẽ 0.8 mm không thành rãnh), 3W NHUA XANH (CAM350, RAR).',
 ]) children.push(B(s))

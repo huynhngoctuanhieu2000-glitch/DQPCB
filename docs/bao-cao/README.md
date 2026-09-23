@@ -12,6 +12,7 @@ Mỗi báo cáo gắn với bộ file thật trong `D:\JobDatMach` để kiểm 
 | [2026-09-22-danh-gia-ux-nut-bam.md](2026-09-22-danh-gia-ux-nut-bam.md) | Đánh giá (không sửa code): nút bấm và thao tác — vùng chạm, nút phá huỷ, tương phản, điện thoại; kèm thứ tự nên sửa |
 | [2026-09-22-khao-sat-anh-nhat.md](2026-09-22-khao-sat-anh-nhat.md) | Khảo sát + đã sửa (`dbbea67`): bo Anh Nhat mất lõi bo ở 2D/3D — vùng tô trong lớp viền làm khung bo bị gán sai kiểu; 2 bộ khác cũng dính |
 | [2026-09-22-khao-sat-dao-quoc-thai.md](2026-09-22-khao-sat-dao-quoc-thai.md) | Khảo sát + đã sửa (`5a8b10f`): bo Dao Quoc Thai 5pcs — mất 3 rãnh phay của SqDrl.txt; khấc ở mép phải tính thành thân bo (70.01 → 66.28 mm); nét viền dày |
+| [2026-09-23-khao-sat-friwo-3-bo.md](2026-09-23-khao-sat-friwo-3-bo.md) | Khảo sát + đã sửa (`7b90b45`, `e52458f`): 3 bộ FRIWO 23/09 — lớp in lụa 150k hình treo app; bo một mặt ghi 2 lớp; khung bao bo tính là bo; chữ trong lớp viền cộng vào kích thước |
 | [dinh-dang-file.md](dinh-dang-file.md) | App đang đọc được những định dạng nào, nhận diện lớp theo thứ tự nào |
 | [outline-drill-slot.md](outline-drill-slot.md) | Quan trọng: cách đọc viền bo (outline), lỗ khoan (drill) và lỗ slot/rãnh |
 
