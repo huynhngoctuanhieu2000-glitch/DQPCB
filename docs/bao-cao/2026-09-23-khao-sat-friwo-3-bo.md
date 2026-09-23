@@ -76,9 +76,10 @@ Mỗi bộ có một ảnh PNG ghi yêu cầu, app xếp vào "file phụ trợ 
 | P84241 / P84390 số bo | 2 | **1** |
 | Kích thước P84390 | 185.23 × 205.66 | **170.00 × 199.00 mm** |
 
-- Lớp > 50.000 hình: không dựng, badge ghi tên + nút "Vẽ luôn" (hỏi xác nhận). Lớp > 120.000
-  hình: không cho vẽ — bấm thử trên lụa 150.500 hình thì bộ nhớ trang chạm trần 4.4 GB và
-  treo 6 phút không xong. Lụa 85.570 hình vẽ được trong 12 s.
+- Lớp > 50.000 hình: **vẽ dần từng mẻ 20.000 hình lúc máy rảnh** (`e9b048d`) — bo hiện ngay sau
+  3.1 s, lụa hiện dần trong ~20 s, giao diện vẫn phản hồi 1–5 ms, vẽ đủ cả hai lớp lụa
+  (28.8 triệu đỉnh, ~10 GB bộ nhớ trang). Bản trước dựng cả lớp một lần: 4.4 GB và treo 6 phút.
+  Bo có tổng lớp nặng ≤ 250.000 hình tự vẽ; trên mức đó badge để nút "Vẽ luôn".
 - Lớp dựng lỗi được ghi nhớ (không dựng lại mỗi lần); dựng sẵn ở nền bỏ qua lớp nặng.
 - Số lớp theo lớp đồng đọc được; khung bao một bo không tính là bo; kích thước chỉ theo vòng
   thân bo (bỏ chữ / nét chú thích trong lớp viền).

@@ -371,11 +371,13 @@ tam giác chéo sai; Rosario: rãnh móc câu nhất quán là lỗ).
 | P84241 / P84390 đếm bo | 2 bo (khung tính là bo) → nhắc nhầm "file ghép sẵn" | **1 bo** |
 | Kích thước P84390 | 185.23 × 205.66 mm | **170.00 × 199.00 mm** |
 
-- **Lớp quá nặng:** trên 50.000 hình thì không dựng, badge ghi tên lớp kèm nút **"Vẽ luôn"**
-  (hỏi xác nhận trước). Trên **120.000 hình** thì không cho vẽ — bấm thử trên lụa 150.500 hình:
-  bộ nhớ trang chạm trần 4.4 GB, 6 phút không xong, treo hẳn (`e52458f`). Lụa 85.570 hình vẽ
-  được trong 12 s. Lớp dựng lỗi được nhớ lại nên không dựng lại mỗi lần; dựng sẵn ở nền bỏ
-  qua lớp nặng.
+- **Lớp quá nặng — vẽ dần ở nền** (`e9b048d`): `renderThree` gộp cả lớp trong MỘT lần nên lụa
+  150.500 hình làm đầy bộ nhớ trang rồi treo (bấm "Vẽ luôn" bản trước: 4.4 GB, 6 phút không
+  xong). Nay dựng theo **mẻ 20.000 hình**, và lớp > 50.000 hình được vẽ **dần từng mẻ lúc máy
+  rảnh** vào một object rỗng đã đặt sẵn trong cảnh. Bo hiện ngay sau 3.1 s, chữ in lụa hiện
+  dần trong ~20 s, giao diện vẫn phản hồi 1–5 ms; cuối cùng vẽ đủ cả hai lớp lụa (28.8 triệu
+  đỉnh). Bo có tổng lớp nặng ≤ 250.000 hình thì tự vẽ, trên mức đó badge vẫn để nút "Vẽ luôn".
+  Lớp dựng lỗi được nhớ lại nên không dựng lại mỗi lần; dựng sẵn ở nền bỏ qua lớp nặng.
 - **Số lớp** lấy theo số lớp đồng đọc được (bo một mặt = 1 lớp, có sẵn phương án giá L1).
 - **Khung bao một bo** không tính là bo (so bằng bao trọn ô, không so tâm).
 - **Kích thước** chỉ tính theo vòng thân bo — bỏ lỗ khoét, khấc và chữ / nét chú thích vẽ
@@ -387,8 +389,8 @@ tam giác chéo sai; Rosario: rãnh móc câu nhất quán là lỗ).
   75.75 — đều bằng đúng vòng thân bo); khung không còn tính là bo (PCB HMI V16-x4 2 → 1);
   hai bộ trước đếm bo hỏng (0) giờ ra 3. Test mới 3 cái, tổng 186 test. Checklist giao diện
   điện thoại 375 / 360 và khung 1366 sạch.
-- **Còn lại:** lụa 150.500 hình vẫn không xem được — muốn xem phải giảm số hình khi xuất
-  (Pulsonix vẽ chữ thành hàng vạn nét nhỏ).
+- **Còn lại:** bo nặng cỡ này ngốn ~10 GB bộ nhớ trang khi vẽ đủ — máy yếu nên tránh mở
+  nhiều bo như vậy cùng lúc.
 
 ## Tính năng mới (22/09): nhận biết file ghép, mũi khoan nhỏ nhất — `6249b00`
 
