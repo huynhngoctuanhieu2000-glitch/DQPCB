@@ -2,14 +2,14 @@ import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { BoardDataModel } from '../../models/BoardDataModel'
 import { realPalette, HOLE, MASK_OPENING, BASE_BOARD } from '../../models/RealPalette'
 import { copperSamplePoints, detectPanel, isPartialDrillFile, isSlotOnlyDrill, minDrill, splitOutlineLoops } from '../../lib/gerber-reader'
-// @ts-ignore - web-gerber typings for named exports are incomplete
 import {
-  createParser,
-  plot,
-  renderThree,
   assemblyPCBToThreeJS,
-  NewRenderByElement,
-} from 'web-gerber'
+  emptyObject3D,
+  newRenderByElement,
+  renderThree,
+  setSceneBackground,
+  type GerberRender,
+} from '../../lib/webgerber'
 
 import { Button } from '../../ui/Button'
 import { C, RADIUS } from '../../ui/theme'
@@ -490,12 +490,12 @@ export const Viewer2DWebGL: React.FC<Viewer2DWebGLProps> = ({
 
     // OrbitControls nội bộ của web-gerber không được expose ra (render chỉ có Scene/Camera/Renderer)
     // và nó ghi đè camera mỗi frame với target (0,0,0) -> bo bị nghiêng. Tự làm pan/zoom thay thế.
-    const render: any = NewRenderByElement(el, {
+    const render: GerberRender = newRenderByElement(el, {
       AddAnimationLoop: true,
       AddOrbitControls: false,
       AddResizeListener: true,
     })
-    render.Scene.background?.set?.(camMode ? CAM_BACKGROUND : REAL.background)
+    setSceneBackground(render, camMode ? CAM_BACKGROUND : REAL.background)
     // Chỉ khi chạy dev: lộ cảnh ra window để soi material/light từ console mà không
     // phải sửa code — three của web-gerber không import được từ ngoài.
     if (import.meta.env.DEV) {
@@ -521,12 +521,9 @@ export const Viewer2DWebGL: React.FC<Viewer2DWebGLProps> = ({
 
     // assemblyPCBToThreeJS yêu cầu mọi slot là Object3D hợp lệ (không nhận null).
     // Tạo group rỗng bằng chính three nội bộ của web-gerber.
-    const emptyParser = createParser()
-    emptyParser.feed('%FSLAX24Y24*%\n%MOMM*%\nM02*')
-    const emptyPlot = plot(emptyParser.result(), false)
-    const emptyObj = () => renderThree(emptyPlot, 0x000000, undefined, false)
+    const emptyObj = emptyObject3D
 
-    const pcb: any = {
+    const pcb = {
       Top: { Copper: emptyObj(), SolderMask: emptyObj(), Silkscreen: emptyObj() },
       Btm: { Copper: emptyObj(), SolderMask: emptyObj(), Silkscreen: emptyObj() },
       OutLine: emptyObj(),

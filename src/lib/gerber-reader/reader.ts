@@ -7,8 +7,7 @@
  *   [web-gerber]     parse + plot Gerber/Excellon thành ImageTree
  */
 import JSZip from 'jszip'
-// @ts-ignore - web-gerber không kèm type cho các named export
-import { createParser, plot } from 'web-gerber'
+import { createParser, plot } from '../webgerber'
 import type { BoardParsedData, ParsedGerberLayer } from './types'
 import {
   META,

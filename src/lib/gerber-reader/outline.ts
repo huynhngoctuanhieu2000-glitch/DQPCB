@@ -4,8 +4,7 @@
  *
  * [DQPCB] Toàn bộ file này là của DQPCB (dùng createParser/plot của web-gerber để dựng).
  */
-// @ts-ignore - web-gerber không kèm type cho các named export
-import { createParser, plot } from 'web-gerber'
+import { createParser, plot } from '../webgerber'
 import type { ParsedGerberLayer } from './types'
 import { META } from './identify'
 import { flattenArcs, stitchOutline } from './geometry'
