@@ -13,5 +13,8 @@ export default defineConfig({
   plugins: [react()],
   test: {
     include: ['test/**/*.test.ts', 'test/**/*.test.tsx'],
+    // test/_scratch: file dò lỗi tạm của từng đợt làm việc, không phải test hồi quy —
+    // để chúng trong `npm test` thì bảng kết quả lúc nào cũng đỏ vì việc đang dở.
+    exclude: ['test/_scratch/**', 'node_modules/**', 'dist/**'],
   },
 })
