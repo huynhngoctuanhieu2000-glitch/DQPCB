@@ -1,18 +1,20 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
-import { BOARD_RENDERED_EVENT, Viewer2DWebGL, isBoardBuilt } from '../modules/viewer2d/Viewer2D.WebGL'
+import { BOARD_RENDERED_EVENT, isBoardBuilt } from '../modules/viewer2d/Viewer2D.WebGL'
 import type { CaptureFn } from '../modules/viewer2d/Viewer2D.WebGL'
 import { composeTwoSides, copyPng } from '../modules/viewer2d/captureBoard'
 import { canShareType, shareOrDownload } from '../modules/quotation/exportImage'
 import { BoardDataModel } from '../models/BoardDataModel'
-import type { BoardState } from '../models/BoardDataModel'
-import { GerberParser, LAYER_CHOICES, layerKeyOf } from '../lib/gerber-reader'
-import type { ParsedGerberLayer } from '../lib/gerber-reader'
+import { GerberParser } from '../lib/gerber-reader'
 import { QuotationPanel } from '../modules/quotation/QuotationPanel'
 import type { QuotationSeed } from '../modules/quotation/QuotationPanel'
 import { PricingCard } from '../modules/pricing/PricingCard'
 import { SettingsPanel } from '../modules/settings/SettingsPanel'
 import { useIsMobile } from './useIsMobile'
-import { Icon, IconLabel } from './Icon'
+import { Button } from './Button'
+import { LayerPanel } from './LayerPanel'
+import { BoardView, SPLIT_GAP_PX } from './BoardView'
+import { Toolbars } from './Toolbars'
+import { C, FS } from './theme'
 import { UndoToast, showUndo } from './undo'
 import { useBackToClose } from './useBackToClose'
 
@@ -37,6 +39,14 @@ export const Layout: React.FC = () => {
    * diện 1–3 s — không có màn chờ thì khung đứng im với bo cũ, người dùng tưởng treo.
    */
   /** Đóng một bo, kèm thanh Hoàn tác — nút ✕ nằm sát tên bo, bấm nhầm là chuyện thường. */
+  /** Đóng hết: hỏi trước (thao tác lớn, hiếm khi làm) rồi vẫn cho Hoàn tác. */
+  const closeAllBoardsWithUndo = () => {
+    const n = boardState.boards.length
+    if (n === 0 || !window.confirm(`Đóng cả ${n} bo đang mở?`)) return
+    const closed = BoardDataModel.reset()
+    showUndo(`Đã đóng ${n} bo`, () => BoardDataModel.restoreBoards(closed))
+  }
+
   const closeBoardWithUndo = (id: string) => {
     const closed = BoardDataModel.closeBoard(id)
     if (closed) showUndo(`Đã đóng ${closed.board.projectName}`, () => BoardDataModel.restoreBoards([closed]))
@@ -309,26 +319,15 @@ export const Layout: React.FC = () => {
 
   /** Nút + mở thêm bo, đặt cạnh dãy tab (máy tính) hoặc cạnh ô chọn bo (điện thoại). */
   const addBoardBtn = (
-    <button
+    <Button
+      size="icon"
+      variant="ghost"
+      icon="plus"
       onClick={() => openPicker(false)}
       title="Mở thêm file Gerber (ZIP, RAR hoặc file lẻ)"
       aria-label="Mở thêm bo"
-      style={{
-        flexShrink: 0,
-        width: 26,
-        height: 26,
-        padding: 0,
-        borderRadius: '4px',
-        border: '1px dashed #475569',
-        backgroundColor: 'transparent',
-        color: '#94a3b8',
-        fontSize: '15px',
-        lineHeight: 1,
-        cursor: 'pointer',
-      }}
-    >
-      <Icon name="plus" size={16} />
-    </button>
+      style={{ flexShrink: 0, borderStyle: 'dashed', borderColor: C.border }}
+    />
   )
 
   /** Đầu bảng trượt trên điện thoại: hai tab Lớp / Thông tin, cả hai ngăn dùng chung. */
@@ -345,14 +344,16 @@ export const Layout: React.FC = () => {
           <div
             key={key}
             onClick={() => setDrawer(key)}
+            role="tab"
+            aria-selected={on}
             style={{
               flex: 1,
               padding: '10px 8px',
               textAlign: 'center',
-              fontSize: '13px',
+              fontSize: FS.md,
               fontWeight: 600,
-              color: on ? '#38bdf8' : '#64748b',
-              borderBottom: `2px solid ${on ? '#38bdf8' : 'transparent'}`,
+              color: on ? C.accent : C.muted,
+              borderBottom: `2px solid ${on ? C.accent : 'transparent'}`,
               cursor: 'pointer',
             }}
           >
@@ -362,22 +363,15 @@ export const Layout: React.FC = () => {
       })}
       {/* Đóng ngay trên bảng: nút "✕ Đóng" ở thanh trên cùng xa ngón tay khi bảng đang
           chiếm nửa dưới màn hình. Giữ cả hai. */}
-      <button
+      <Button
+        size="icon"
+        variant="ghost"
+        icon="x"
         onClick={() => setDrawer(null)}
         title="Đóng bảng"
         aria-label="Đóng bảng"
-        style={{
-          minWidth: 48,
-          padding: '0 14px',
-          backgroundColor: 'transparent',
-          border: 'none',
-          borderLeft: '1px solid #282b34',
-          color: '#cbd5e1',
-          cursor: 'pointer',
-        }}
-      >
-        <Icon name="x" size={18} />
-      </button>
+        style={{ minWidth: 48, borderRadius: 0, borderLeftColor: C.line, color: C.text }}
+      />
     </div>
   )
 
@@ -419,819 +413,53 @@ export const Layout: React.FC = () => {
         style={{ display: 'none' }}
       />
 
-      {/* Hai thanh công cụ. Bình thường khối bọc là display:contents (như không có);
-          màn gọn mà thấp (điện thoại xoay ngang) thì CSS .bars gộp hai thanh thành một
-          hàng — hai thanh chồng nhau ăn 100/375px chiều cao. */}
-      <div className="bars">
-      {/* 1. TOP MENU BAR */}
-      <div
-        className="tap-bar"
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          height: isMobile ? '48px' : '34px',
-          backgroundColor: '#1a1c22',
-          borderBottom: '1px solid #282b34',
-          padding: '0 8px',
-          fontSize: '13px',
-          gap: isMobile ? '6px' : '12px',
-          flexShrink: 0,
-        }}
-      >
-        <div style={{ display: 'flex', gap: '8px', color: '#94a3b8', alignItems: 'center' }}>
-          <div style={{ position: 'relative' }}>
-            <button
-              aria-haspopup="menu"
-              aria-expanded={fileMenuOpen}
-              style={{
-                ...S_BAR.ghost,
-                backgroundColor: fileMenuOpen ? '#334155' : 'transparent',
-                color: fileMenuOpen ? '#e2e8f0' : '#cbd5e1',
-              }}
-              onClick={() => setFileMenuOpen((v) => !v)}
-            >
-              Tệp <Icon name="chevronDown" size={13} />
-            </button>
-            {fileMenuOpen && (
-              <>
-                {/* Bấm ra ngoài là đóng menu */}
-                <div style={{ position: 'fixed', inset: 0, zIndex: 90 }} onClick={() => setFileMenuOpen(false)} />
-                <div style={S_MENU.panel}>
-                  <MenuItem
-                    label="Mở file Gerber…"
-                    hint="ZIP, RAR hoặc file lẻ"
-                    onClick={() => {
-                      setFileMenuOpen(false)
-                      openPicker(false)
-                    }}
-                  />
-                  <MenuItem
-                    label="Mở thư mục…"
-                    hint="Cả thư mục Gerber chưa nén"
-                    onClick={() => {
-                      setFileMenuOpen(false)
-                      openPicker(true)
-                    }}
-                  />
-                  <div style={S_MENU.sep} />
-                  <MenuItem
-                    label="Đóng bo đang xem"
-                    disabled={!boardState.activeBoardId}
-                    onClick={() => {
-                      setFileMenuOpen(false)
-                      if (boardState.activeBoardId) closeBoardWithUndo(boardState.activeBoardId)
-                    }}
-                  />
-                  <MenuItem
-                    label="Đóng tất cả bo"
-                    danger
-                    hint={boardState.boards.length ? `${boardState.boards.length} bo đang mở` : undefined}
-                    disabled={boardState.boards.length === 0}
-                    onClick={() => {
-                      setFileMenuOpen(false)
-                      // Đóng hết là thao tác lớn, hiếm khi làm: hỏi trước, rồi vẫn cho Hoàn tác.
-                      const n = boardState.boards.length
-                      if (!window.confirm(`Đóng cả ${n} bo đang mở?`)) return
-                      const closed = BoardDataModel.reset()
-                      showUndo(`Đã đóng ${n} bo`, () => BoardDataModel.restoreBoards(closed))
-                    }}
-                  />
-                </div>
-              </>
-            )}
-          </div>
-          <button
-            onClick={() => setShowSettings(true)}
-            title="Cài đặt — công thức tính tiền"
-            aria-label="Cài đặt"
-            style={{ ...S_BAR.ghost, color: '#cbd5e1' }}
-          >
-            {isMobile ? <Icon name="settings" size={18} /> : 'Cài đặt'}
-          </button>
-        </div>
-
-        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: isMobile ? '6px' : '8px' }}>
-          {/* Một nút chính duy nhất: Mở Gerber (nền đặc). Báo giá là nút phụ (viền) —
-              hai nút đặc màu cạnh nhau thì mắt không biết đâu là việc chính. */}
-          <button
-            onClick={() => setShowQuotation(true)}
-            title="Lập báo giá Excel từ bo đang mở"
-            aria-label="Báo giá"
-            style={S_BAR.secondary}
-          >
-            <IconLabel icon="file" size={15}>{isMobile ? null : 'Báo giá'}</IconLabel>
-          </button>
-          <button onClick={() => openPicker(false)} title="Mở file Gerber (ZIP, RAR hoặc file lẻ)" style={S_BAR.primary}>
-            <IconLabel icon="plus" size={15}>{isMobile ? 'Mở' : 'Mở Gerber'}</IconLabel>
-          </button>
-        </div>
-      </div>
-
-      {/* 2. SUB-TOOLBAR / TAB ROW */}
-      <div
-        className="tap-bar"
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          height: isMobile ? '52px' : '40px',
-          backgroundColor: '#16181e',
-          borderBottom: '1px solid #282b34',
-          padding: '0 12px',
-          gap: '12px',
-          flexShrink: 0,
-          ...(isMobile ? { padding: '0 8px', gap: '8px' } : null),
-        }}
-      >
-        {/* Chế độ xem: hai công tắc, mỗi lần chỉ một nhóm sáng.
-            CAM ⇄ 2 Mặt (bản vẽ phẳng) và 2D ⇄ 3D (ảnh thật). Bấm nhóm đang sáng thì
-            gạt sang lựa chọn kia; bấm nhóm đang tắt thì chuyển sang nhóm đó ở lựa chọn đầu. */}
-        {isMobile ? (
-          // Ô chọn vẽ giống hệt nút bên cạnh: tắt kiểu mặc định của iOS (to, đậm, mũi tên
-          // riêng) rồi tự vẽ mũi tên nhỏ — không thì nó lạc tông cả thanh.
-          <span style={{ position: 'relative', flexShrink: 0 }}>
-            <select
-              value={boardState.activeView}
-              onChange={(e) => BoardDataModel.setActiveView(e.target.value as BoardState['activeView'])}
-              style={{
-                ...drawerBtn(true),
-                appearance: 'none',
-                WebkitAppearance: 'none',
-                paddingRight: '24px',
-                lineHeight: 1.2,
-              }}
-            >
-              <option value="CAM">CAM</option>
-              <option value="Both">2 Mặt</option>
-              <option value="Real">2D</option>
-              <option value="3D">3D</option>
-            </select>
-            <span style={{ position: 'absolute', right: 9, top: '50%', transform: 'translateY(-55%)', pointerEvents: 'none', fontSize: 10, color: '#ffffff' }}>
-              ▼
-            </span>
-          </span>
-        ) : (() => {
-          const v = boardState.activeView
-          const groups = [
-            { a: 'CAM', b: 'Both', aLabel: 'CAM', bLabel: '2 Mặt', tip: 'CAM ⇄ 2 Mặt (Top + Bot đã lật gương)' },
-            { a: 'Real', b: '3D', aLabel: '2D', bLabel: '3D', tip: '2D ⇄ 3D' },
-          ] as const
-          return (
-            <div style={{ display: 'flex', gap: '8px', flexShrink: 0 }}>
-              {groups.map((g) => {
-                const on = v === g.a || v === g.b
-                const chip = (lit: boolean): React.CSSProperties => ({
-                  padding: '2px 10px',
-                  borderRadius: '12px',
-                  fontSize: '12px',
-                  fontWeight: 500,
-                  whiteSpace: 'nowrap',
-                  backgroundColor: lit ? '#3b82f6' : 'transparent',
-                  color: lit ? '#ffffff' : '#94a3b8',
-                })
-                return (
-                  <button
-                    key={g.a}
-                    title={g.tip}
-                    onClick={() => BoardDataModel.setActiveView(!on ? g.a : v === g.a ? g.b : g.a)}
-                    style={{
-                      display: 'flex',
-                      backgroundColor: '#0f172a',
-                      borderRadius: '14px',
-                      padding: '2px',
-                      border: `1px solid ${on ? '#3b82f6' : '#334155'}`,
-                      cursor: 'pointer',
-                      opacity: on ? 1 : 0.75,
-                    }}
-                  >
-                    <span style={chip(v === g.a)}>{g.aLabel}</span>
-                    <span style={chip(v === g.b)}>{g.bLabel}</span>
-                  </button>
-                )
-              })}
-            </div>
-          )
-        })()}
-
-        {/* Điện thoại mở từ hai bo trở lên: chọn bo bằng dropdown. Dải tab ngang phải
-            vuốt mới thấy bo sau, mà thanh này đã chật vì còn nút chế độ xem. */}
-        {isMobile && boardState.boards.length > 1 && (
-          <span style={{ position: 'relative', flex: 1, minWidth: 0, display: 'flex' }}>
-            <select
-              value={boardState.activeBoardId ?? ''}
-              onChange={(e) => switchBoard(e.target.value)}
-              style={{
-                ...drawerBtn(false),
-                flex: 1,
-                minWidth: 0,
-                appearance: 'none',
-                WebkitAppearance: 'none',
-                paddingRight: '32px',
-                lineHeight: 1.2,
-                textOverflow: 'ellipsis',
-              }}
-            >
-              {boardState.boards.map((b) => (
-                <option key={b.id} value={b.id}>
-                  {b.projectName}
-                </option>
-              ))}
-            </select>
-            {/* Không đặt ✕ đóng bo ở đây: nằm sát ô chọn và nút + thì ngón tay bấm nhầm.
-                Điện thoại đóng bo qua menu Tệp → Đóng bo đang xem (có Hoàn tác). */}
-            <span style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', color: '#94a3b8', display: 'flex' }}>
-              <Icon name="chevronDown" size={14} />
-            </span>
-          </span>
-        )}
-        {isMobile && boardState.boards.length > 1 && addBoardBtn}
-
-        {/* Tab các bo đang mở — thả nhiều ZIP thì mỗi ZIP một bo */}
-        {!(isMobile && boardState.boards.length > 1) && boardState.boards.length > 0 && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: '4px', overflowX: 'auto', ...(isMobile ? { flex: 1, minWidth: 0 } : { flexShrink: 0 }) }}>
-            {boardState.boards.map((b) => {
-              const isActive = b.id === boardState.activeBoardId
-              return (
-                <div
-                  key={b.id}
-                  role="button"
-                  tabIndex={0}
-                  aria-pressed={isActive}
-                  onClick={() => switchBoard(b.id)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' || e.key === ' ') {
-                      e.preventDefault()
-                      switchBoard(b.id)
-                    }
-                  }}
-                  title={b.projectName}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                    padding: '2px 2px 2px 10px',
-                    borderRadius: '4px',
-                    fontSize: '12px',
-                    cursor: 'pointer',
-                    whiteSpace: 'nowrap',
-                    backgroundColor: isActive ? '#1e293b' : 'transparent',
-                    color: isActive ? '#38bdf8' : '#94a3b8',
-                    border: `1px solid ${isActive ? '#334155' : 'transparent'}`,
-                  }}
-                >
-                  <span style={{ maxWidth: '180px', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                    {b.projectName}
-                  </span>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      closeBoardWithUndo(b.id)
-                    }}
-                    title="Đóng bo này (có Hoàn tác)"
-                    aria-label={`Đóng ${b.projectName}`}
-                    style={{
-                      backgroundColor: 'transparent',
-                      border: 'none',
-                      borderRadius: '3px',
-                      color: '#94a3b8',
-                      cursor: 'pointer',
-                      width: 24,
-                      height: 24,
-                      padding: 0,
-                      marginLeft: '2px',
-                    }}
-                  >
-                    <Icon name="x" size={14} />
-                  </button>
-                </div>
-              )
-            })}
-            {!isMobile && addBoardBtn}
-          </div>
-        )}
-        {/* Màn gọn: nút + đứng NGOÀI dải tab — trong dải thì tên bo dài đẩy nó ra khỏi
-            phần nhìn thấy (dải cuộn ngang). */}
-        {isMobile && boardState.boards.length === 1 && addBoardBtn}
-
-        {/* Điện thoại: một nút mở bảng trượt từ đáy, trong đó có hai tab Lớp / Thông tin.
-            Hai ngăn kéo hai bên hẹp quá, bảng thông tin không đủ bề ngang để đọc. */}
-        {isMobile && (
-          <button
-            onClick={() => setDrawer((d) => (d ? null : 'info'))}
-            style={{ ...drawerBtn(drawer !== null), marginLeft: 'auto' }}
-          >
-            <IconLabel icon={drawer ? 'x' : 'layers'} size={15}>{drawer ? 'Đóng' : 'Lớp · Thông tin'}</IconLabel>
-          </button>
-        )}
-      </div>
-
-      </div>
+      <Toolbars
+        board={boardState}
+        isMobile={isMobile}
+        drawer={drawer}
+        setDrawer={setDrawer}
+        fileMenuOpen={fileMenuOpen}
+        setFileMenuOpen={setFileMenuOpen}
+        onPickFiles={openPicker}
+        onCloseBoard={closeBoardWithUndo}
+        onCloseAllBoards={closeAllBoardsWithUndo}
+        onSwitchBoard={switchBoard}
+        onOpenQuotation={() => setShowQuotation(true)}
+        onOpenSettings={() => setShowSettings(true)}
+        addBoardBtn={addBoardBtn}
+      />
 
       {/* 3. MAIN WORKSPACE: 3-COLUMN SPLIT */}
       <div style={{ display: 'flex', flex: 1, overflow: 'hidden', position: 'relative' }}>
         {opening && <OpeningSkeleton name={opening.name} label={opening.label} />}
         {/* ================= COLUMN 1: LEFT LAYERS PANEL ================= */}
-        <div
-          style={{
-            width: '240px',
-            backgroundColor: '#181a20',
-            borderRight: '1px solid #282b34',
-            display: isMobile && drawer !== 'layers' ? 'none' : 'flex',
-            flexDirection: 'column',
-            overflow: 'hidden',
-            ...(isMobile ? SHEET : null),
-          }}
-        >
-          {/* Layers header & tabs */}
-          {isMobile ? sheetTabs : (
-          <div
-            style={{
-              display: 'flex',
-              borderBottom: '1px solid #282b34',
-              backgroundColor: '#14161b',
-            }}
-          >
-            <div
-              style={{
-                flex: 1,
-                padding: '8px',
-                textAlign: 'center',
-                fontSize: '12px',
-                fontWeight: 600,
-                color: '#38bdf8',
-                borderBottom: '2px solid #38bdf8',
-              }}
-            >
-              Lớp ({boardState.layers.length})
-            </div>
-          </div>
-          )}
-
-          {/* Side Filter Tabs (All / Top / Bottom) */}
-          {boardState.layers.length > 0 && (
-            <div
-              className="tap-dense"
-              style={{
-                display: 'flex',
-                padding: '6px 8px',
-                gap: '6px',
-                backgroundColor: '#16181e',
-                borderBottom: '1px solid #282b34',
-              }}
-            >
-              {(['all', 'top', 'bottom'] as const).map((side) => {
-                const isActive = boardState.sideFilter === side
-                return (
-                  <button
-                    key={side}
-                    onClick={() => BoardDataModel.setSideFilter(side)}
-                    style={{
-                      flex: 1,
-                      backgroundColor: isActive ? '#2563eb' : '#1e293b',
-                      color: isActive ? '#ffffff' : '#94a3b8',
-                      border: 'none',
-                      borderRadius: '4px',
-                      minHeight: '26px',
-                      padding: '3px 0',
-                      fontSize: '12px',
-                      fontWeight: isActive ? 600 : 400,
-                      cursor: 'pointer',
-                      transition: 'all 0.15s ease',
-                    }}
-                  >
-                    {side === 'all' ? 'Tất cả' : side === 'top' ? 'Mặt Top' : 'Mặt Bot'}
-                  </button>
-                )
-              })}
-            </div>
-          )}
-
-          {/* Quick Visibility Controls */}
-          {boardState.layers.length > 0 && (
-            <div
-              className="tap-dense"
-              style={{
-                display: 'flex',
-                gap: '6px',
-                padding: '4px 8px',
-                borderBottom: '1px solid #282b34',
-                backgroundColor: '#121418',
-              }}
-            >
-              {/* Trước là hai chữ 11px cao 14px, gần như không bấm trúng trên điện thoại. */}
-              <button style={S_LAYERS.quick} onClick={() => BoardDataModel.setAllLayersVisible(true)}>
-                Hiện tất cả
-              </button>
-              <button style={S_LAYERS.quick} onClick={() => BoardDataModel.setAllLayersVisible(false)}>
-                Ẩn tất cả
-              </button>
-            </div>
-          )}
-
-          {/* Layers List Table */}
-          <div style={{ flex: 1, overflowY: 'auto', padding: '4px' }}>
-            {boardState.layers.length === 0 ? (
-              <div style={{ padding: '20px 10px', textAlign: 'center', color: '#64748b', fontSize: '12px' }}>
-                Chưa mở bo nào.
-              </div>
-            ) : (
-              boardState.layers.map((layer, index) => {
-                const isVisible = boardState.visibleLayers.has(layer.id)
-                const isActive = boardState.activeLayerId === layer.id
-                // Nhiều lớp cùng loại (3 file khoan, nhiều lớp inner…) sẽ có cùng
-                // displayName → thêm phần tên riêng để phân biệt được trên panel.
-                const isDuplicate =
-                  boardState.layers.filter((l) => l.displayName === layer.displayName).length > 1
-                const label =
-                  isDuplicate && layer.shortName ? `${layer.displayName} · ${layer.shortName}` : layer.displayName
-                return (
-                  <div
-                    key={layer.id}
-                    onClick={() => BoardDataModel.setActiveLayer(layer.id)}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      padding: '5px 8px',
-                      borderRadius: '4px',
-                      marginBottom: '2px',
-                      backgroundColor: isActive
-                        ? 'rgba(56, 189, 248, 0.12)'
-                        : isVisible
-                        ? 'rgba(255,255,255,0.03)'
-                        : 'transparent',
-                      border: isActive ? '1px solid rgba(56, 189, 248, 0.4)' : '1px solid transparent',
-                      opacity: isVisible ? 1 : 0.4,
-                      fontSize: '12px',
-                      gap: '8px',
-                      cursor: 'pointer',
-                      transition: 'background 0.1s ease',
-                    }}
-                  >
-                    {/* Index */}
-                    <span style={{ width: '14px', color: '#64748b', fontSize: '11px', textAlign: 'right' }}>
-                      {index + 1}
-                    </span>
-
-                    {/* Visibility Checkbox — bọc trong label có đệm để vùng bấm to hơn ô 15px. */}
-                    <label
-                      onClick={(e) => e.stopPropagation()}
-                      style={{ display: 'flex', alignItems: 'center', padding: '4px', margin: '-4px', cursor: 'pointer' }}
-                    >
-                      <input
-                        type="checkbox"
-                        aria-label={`Hiện lớp ${label}`}
-                        checked={isVisible}
-                        onChange={() => BoardDataModel.toggleLayer(layer.id)}
-                        style={{ margin: 0, accentColor: layer.color }}
-                      />
-                    </label>
-
-                    {/* Ô màu — bấm để đổi màu lớp (áp dụng cho chế độ CAM 2D) */}
-                    <label
-                      title="Đổi màu lớp (chế độ CAM)"
-                      onClick={(e) => e.stopPropagation()}
-                      style={{
-                        width: '12px',
-                        height: '12px',
-                        borderRadius: '3px',
-                        backgroundColor: layer.color,
-                        border: '1px solid rgba(255,255,255,0.2)',
-                        flexShrink: 0,
-                        cursor: 'pointer',
-                        display: 'block',
-                        position: 'relative',
-                      }}
-                    >
-                      <input
-                        type="color"
-                        value={layer.color}
-                        onChange={(e) => BoardDataModel.setLayerColor(layer.id, e.target.value)}
-                        style={{
-                          position: 'absolute',
-                          inset: 0,
-                          opacity: 0,
-                          width: '100%',
-                          height: '100%',
-                          padding: 0,
-                          border: 'none',
-                          cursor: 'pointer',
-                        }}
-                      />
-                    </label>
-
-                    {/* Display Name */}
-                    <div
-                      style={{
-                        flex: 1,
-                        display: 'flex',
-                        flexDirection: 'column',
-                        overflow: 'hidden',
-                      }}
-                    >
-                      <span
-                        style={{
-                          whiteSpace: 'nowrap',
-                          overflow: 'hidden',
-                          textOverflow: 'ellipsis',
-                          fontWeight: isVisible ? 600 : 400,
-                          color: isVisible ? '#f1f5f9' : '#64748b',
-                        }}
-                        title={`${layer.filename}  —  ${layer.type}/${layer.side}`}
-                      >
-                        {label}
-                      </span>
-                      <span
-                        style={{
-                          fontSize: '10px',
-                          color: '#64748b',
-                          whiteSpace: 'nowrap',
-                          overflow: 'hidden',
-                          textOverflow: 'ellipsis',
-                        }}
-                        title={layer.filename}
-                      >
-                        {layer.userType ? '✎ ' : ''}
-                        {layer.shortName || layer.filename}
-                      </span>
-                      {isActive && <LayerTypeSelect layer={layer} />}
-                    </div>
-
-                    {/* Solo Button */}
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        BoardDataModel.soloLayer(layer.id)
-                      }}
-                      style={{
-                        backgroundColor: 'transparent',
-                        color: '#94a3b8',
-                        border: 'none',
-                        borderRadius: '3px',
-                        padding: '2px 4px',
-                        fontSize: '12px',
-                        cursor: 'pointer',
-                        flexShrink: 0,
-                      }}
-                      title="Chỉ xem lớp này (ẩn các lớp khác)"
-                      aria-label={`Chỉ xem lớp ${label}`}
-                    >
-                      {/* Điện thoại không rê chuột xem được chú thích → hiện chữ. */}
-                      {isMobile ? <IconLabel icon="target" size={15}>Riêng</IconLabel> : <Icon name="target" size={15} />}
-                    </button>
-                  </div>
-                )
-              })
-            )}
-          </div>
-
-          {/* Chẩn đoán: file bị bỏ qua / không đọc được — trước đây chỉ ghi console.warn
-              nên người dùng không biết vì sao thiếu lớp. */}
-          {(boardState.failedFiles.length > 0 ||
-            boardState.ignoredFiles.length > 0 ||
-            boardState.layers.some((l) => l.drillFix || l.drillUnmatched)) && (
-            <div
-              style={{
-                borderTop: '1px solid #282b34',
-                padding: '6px 10px',
-                fontSize: '10px',
-                lineHeight: 1.5,
-                color: '#64748b',
-                backgroundColor: '#121418',
-                maxHeight: '120px',
-                overflowY: 'auto',
-                flexShrink: 0,
-              }}
-            >
-              {boardState.failedFiles.length > 0 && (
-                <div style={{ color: '#f87171' }}>
-                  ⚠ {boardState.failedFiles.length} file không đọc được:{' '}
-                  <span title={boardState.failedFiles.map((f) => `${f.name}: ${f.reason}`).join(' | ')}>
-                    {boardState.failedFiles.map((f) => f.name).join(', ')}
-                  </span>
-                </div>
-              )}
-              {/* File khoan app đã tự đọc lại (sai định dạng số / lệch gốc so với Gerber).
-                  Lệch gốc là lỗi thật của file xuất — xưởng khoan theo file sẽ khoan lệch —
-                  nên phải nói rõ để người lập báo khách, không chỉ âm thầm sửa trên màn hình. */}
-              {boardState.layers
-                .filter((l) => l.drillFix)
-                .map((l) => {
-                  const f = l.drillFix!
-                  const shift = f.dxMm || f.dyMm
-                  const how =
-                    f.via === 'pad'
-                      ? `khớp ${Math.round((f.padHit ?? 0) * 100)}% pad đồng`
-                      : f.via === 'sibling'
-                        ? 'theo file khoan cùng bộ'
-                        : 'theo khung bo — chưa kiểm được bằng pad'
-                  return (
-                    <div key={l.id} style={{ color: '#fbbf24' }} title={l.filename}>
-                      ⚠ {l.filename.split(/[\\/]/).pop()}:{' '}
-                      {f.reading && `không khai định dạng số, app đọc theo ${drillReadingLabel(f.reading)}`}
-                      {f.reading && shift ? '; ' : ''}
-                      {shift
-                        ? `lệch gốc ${f.dxMm > 0 ? '+' : ''}${f.dxMm.toFixed(1)}, ${f.dyMm > 0 ? '+' : ''}${f.dyMm.toFixed(1)} mm so với Gerber — app đã dời cho khớp`
-                        : ''}{' '}
-                      ({how}).{shift ? ' Nên báo khách kiểm lại file khoan.' : ''}
-                    </div>
-                  )
-                })}
-              {boardState.layers
-                .filter((l) => l.drillUnmatched)
-                .map((l) => (
-                  <div key={l.id} style={{ color: '#f87171' }} title={l.filename}>
-                    ⚠ {l.filename.split(/[\\/]/).pop()}: lỗ khoan nằm ngoài bo, không cách đọc nào khớp
-                    pad — file khoan có thể sai, kiểm lại với khách.
-                  </div>
-                ))}
-              {boardState.ignoredFiles.length > 0 && (
-                <div title={boardState.ignoredFiles.join(' | ')}>
-                  ℹ {boardState.ignoredFiles.length} file phụ trợ đã bỏ qua (report / aperture / BOM)
-                </div>
-              )}
-            </div>
-          )}
-        </div>
+        <LayerPanel
+          board={boardState}
+          isMobile={isMobile}
+          drawer={drawer}
+          tabs={sheetTabs}
+          sheetStyle={SHEET}
+        />
 
         {/* ================= COLUMN 2: CENTER CANVAS VIEW ================= */}
-        <div
-          onClick={() => drawer && setDrawer(null)}
-          style={{
-            flex: 1,
-            minWidth: 0,
-            position: 'relative',
-            backgroundColor: '#000000',
-            display: 'flex',
-            flexDirection: 'column',
-          }}
-        >
-          {/* Empty State / Drop Zone Prompt */}
-          {!boardState.isLoaded && !isLoading && (
-            <div
-              style={{
-                flex: 1,
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                justifyContent: 'center',
-                border: isDraggingOver ? '2px dashed #38bdf8' : '2px dashed #282b34',
-                margin: isMobile ? '8px' : '16px',
-                padding: isMobile ? '0 12px' : undefined,
-                textAlign: 'center',
-                borderRadius: '8px',
-                backgroundColor: isDraggingOver ? 'rgba(56, 189, 248, 0.05)' : '#0d0e12',
-                cursor: 'pointer',
-              }}
-              onClick={() => openPicker(false)}
-            >
-              <div style={{ marginBottom: '12px', color: '#38bdf8' }}><Icon name="folder" size={48} /></div>
-              <h2 style={{ margin: '0 0 8px 0', fontSize: '18px', color: '#f1f5f9' }}>
-                Thả file Gerber vào đây
-              </h2>
-              <p style={{ margin: 0, fontSize: '13px', color: '#64748b' }}>
-                Altium, KiCad, Eagle, EasyEDA — file .ZIP, .RAR hoặc file lẻ (.GTL, .GBL, .GKO, .DRL…)
-              </p>
-              <div style={{ display: 'flex', gap: '10px', marginTop: '16px' }}>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    openPicker(false)
-                  }}
-                  style={{
-                    backgroundColor: '#2563eb',
-                    color: '#ffffff',
-                    border: 'none',
-                    borderRadius: '6px',
-                    padding: '8px 18px',
-                    fontSize: '13px',
-                    fontWeight: 600,
-                    cursor: 'pointer',
-                  }}
-                >
-                  Chọn file…
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* Một viewer duy nhất phục vụ cả CAM 2D / Real 2D / 3D.
-              Chế độ "2 Mặt" dựng hai cảnh độc lập cạnh nhau: trái nhìn từ trên
-              (Top), phải nhìn từ dưới lên nên là ảnh lật gương (Bot) — đúng quy
-              ước bản vẽ lắp ráp của nhà máy.
-              Màn gọn đang dựng đứng (điện thoại/máy tính bảng cầm dọc): xếp TOP trên, BOT
-              dưới — chia trái/phải thì mỗi mặt chỉ rộng ~174px, bỏ trống 3/4 chiều cao.
-              Ảnh "Chụp" vẫn ghép trái/phải như cũ. */}
-          {boardState.isLoaded &&
-            (boardState.activeView === 'Both' ? (
-              <div
-                ref={splitRef}
-                style={{
-                  flex: 1,
-                  display: 'flex',
-                  flexDirection: splitStacked ? 'column' : 'row',
-                  minHeight: 0,
-                  position: 'relative',
-                  // Khoảng trắng giữa hai khung: bỏ đường kẻ ngăn rồi thì lúc zoom vào,
-                  // hai nền bo chạm nhau và đọc thành một khối liền. Dải nền cùng màu
-                  // với nền canvas nên tách được mà không phải vẽ lại vạch ngăn.
-                  gap: `${SPLIT_GAP_PX}px`,
-                  backgroundColor: '#eeeeee',
-                }}
-              >
-                <div style={{ flex: 1, minWidth: 0, minHeight: 0 }}>
-                  <Viewer2DWebGL
-                    viewOverride="Real"
-                    faceSide="top"
-                    hideBadge
-                    fitPadding={SPLIT_FIT_PADDING}
-                    captureRef={captureTopRef}
-                  />
-                </div>
-                <div style={{ flex: 1, minWidth: 0, minHeight: 0 }}>
-                  <Viewer2DWebGL
-                    viewOverride="Real"
-                    faceSide="bottom"
-                    hideBadge
-                    fitPadding={SPLIT_FIT_PADDING}
-                    captureRef={captureBotRef}
-                  />
-                </div>
-
-                {/* Chụp cả hai mặt đúng như đang nhìn (kể cả đang zoom) vào clipboard */}
-                <button
-                  onClick={captureTwoSides}
-                  disabled={capturing}
-                  title={
-                    isMobile
-                      ? 'Chụp ảnh hai mặt bo rồi gửi (Zalo…) hoặc lưu ảnh'
-                      : 'Copy ảnh hai mặt bo vào clipboard, đúng khung đang nhìn (nét gấp đôi màn hình)'
-                  }
-                  aria-label="Chụp ảnh hai mặt"
-                  style={{
-                    position: 'absolute',
-                    top: 10,
-                    right: 10,
-                    zIndex: 6,
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: 6,
-                    minWidth: 36,
-                    height: 32,
-                    padding: '0 10px',
-                    fontSize: 12,
-                    fontWeight: 600,
-                    borderRadius: 6,
-                    cursor: capturing ? 'wait' : 'pointer',
-                    color: '#e2e8f0',
-                    backgroundColor: 'rgba(15,23,42,0.85)',
-                    border: '1px solid #334155',
-                  }}
-                >
-                  {/* Có chữ bên cạnh icon: điện thoại không rê chuột xem chú thích được. */}
-                  <Icon name="camera" size={16} />
-                  {capturing ? 'Đang chụp…' : copied ? (isMobile ? 'Xong' : 'Đã copy') : 'Chụp'}
-                </button>
-
-                {/* Nhãn kích thước nổi giữa hai khung, sát bo — thanh chạy hết chiều
-                    ngang ở đáy trông rời rạc khi chụp màn hình. */}
-                <BoardBadge
-                  bounds={boardState.bounds}
-                  name={boardState.projectName ?? ''}
-                  layerCount={boardState.layersOverride ?? boardState.layerCount}
-                  panel={splitSize}
-                  stacked={splitStacked}
-                />
-              </div>
-            ) : (
-              // Lọc "Bot Side" ở 2D/3D: phải NHÌN TỪ DƯỚI LÊN (lật gương như khung Bot của
-              // 2 Mặt). Chỉ ẩn lớp mặt trên thì camera vẫn nhìn từ trên, lõi bo + mask che
-              // hết đồng/lụa mặt dưới — bo FRIWO 55807.931-90FE chỉ thấy mảng xanh với lỗ.
-              // CAM giữ nhìn từ trên: đó là chỗ soi file đúng toạ độ gốc.
-              <Viewer2DWebGL
-                faceSide={boardState.sideFilter === 'bottom' && boardState.activeView !== 'CAM' ? 'bottom' : 'top'}
-              />
-            ))}
-
-          {/* Error notice if any */}
-          {errorMessage && (
-            <div
-              style={{
-                position: 'absolute',
-                top: '12px',
-                left: '50%',
-                transform: 'translateX(-50%)',
-                backgroundColor: '#dc2626',
-                color: '#ffffff',
-                padding: '8px 18px',
-                borderRadius: '6px',
-                fontSize: '13px',
-                zIndex: 60,
-                boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
-              }}
-            >
-              {errorMessage}
-            </div>
-          )}
-        </div>
+        <BoardView
+          board={boardState}
+          isMobile={isMobile}
+          isLoading={isLoading}
+          isDraggingOver={isDraggingOver}
+          drawer={drawer}
+          onCloseDrawer={() => setDrawer(null)}
+          onPickFiles={() => openPicker(false)}
+          splitRef={splitRef}
+          splitStacked={splitStacked}
+          splitSize={splitSize}
+          captureTopRef={captureTopRef}
+          captureBotRef={captureBotRef}
+          capturing={capturing}
+          copied={copied}
+          onCapture={captureTwoSides}
+          errorMessage={errorMessage}
+        />
 
         {/* ================= COLUMN 3: RIGHT PCB ANALYSIS PANEL ================= */}
         <div
@@ -1317,142 +545,18 @@ export const Layout: React.FC = () => {
 }
 
 /** Khoá cách đọc (reader.ts, drillReadings) → chữ cho người đọc: "lz35" → "3.5", "div4" → "4 số lẻ". */
-const drillReadingLabel = (key: string): string => {
-  const lz = /^lz(\d)(\d)$/.exec(key)
-  if (lz) return `${lz[1]}.${lz[2]}`
-  const div = /^div(\d)$/.exec(key)
-  return div ? `${div[1]} số lẻ` : key
-}
 
 /** Bảng trượt từ đáy trên điện thoại: full bề ngang, cao 72% để vẫn thấy một phần bo. */
 const SHEET: React.CSSProperties = { position: 'absolute', left: 0, right: 0, bottom: 0, height: '72%', width: '100%', zIndex: 40, borderTop: '1px solid #334155', borderRadius: '12px 12px 0 0', boxShadow: '0 -6px 20px rgba(0,0,0,0.55)' }
 
-const drawerBtn = (on: boolean): React.CSSProperties => ({
-  flexShrink: 0,
-  backgroundColor: on ? '#2563eb' : '#1e293b',
-  color: on ? '#ffffff' : '#cbd5e1',
-  border: '1px solid #334155',
-  borderRadius: '14px',
-  padding: '4px 10px',
-  fontSize: '12px',
-  fontWeight: 500,
-  cursor: 'pointer',
-  whiteSpace: 'nowrap',
-})
 
-const S_MENU: Record<string, React.CSSProperties> = {
-  panel: {
-    position: 'absolute',
-    top: 'calc(100% + 4px)',
-    left: 0,
-    zIndex: 91,
-    minWidth: 240,
-    padding: 4,
-    backgroundColor: '#1e2129',
-    border: '1px solid #334155',
-    borderRadius: 6,
-    boxShadow: '0 8px 24px rgba(0,0,0,0.45)',
-  },
-  sep: { height: 1, margin: '4px 6px', backgroundColor: '#334155' },
-}
+/**
+ * Ô chọn (chế độ xem, chọn bo) trên màn gọn: vẽ GIỐNG nút chip bên cạnh — iOS tự vẽ
+ * select to/đậm/mũi tên riêng nên phải tắt appearance và tự vẽ mũi tên.
+ */
 
-const MenuItem: React.FC<{ label: string; hint?: string; disabled?: boolean; danger?: boolean; onClick: () => void }> = ({
-  label,
-  hint,
-  disabled,
-  danger,
-  onClick,
-}) => {
-  const [hover, setHover] = useState(false)
-  return (
-    <button
-      role="menuitem"
-      disabled={disabled}
-      onClick={onClick}
-      onMouseEnter={() => setHover(true)}
-      onMouseLeave={() => setHover(false)}
-      style={{
-        display: 'flex',
-        width: '100%',
-        alignItems: 'baseline',
-        justifyContent: 'space-between',
-        gap: 16,
-        minHeight: 32,
-        padding: '6px 10px',
-        border: 'none',
-        borderRadius: 4,
-        fontSize: 13,
-        textAlign: 'left',
-        cursor: disabled ? 'default' : 'pointer',
-        color: disabled ? '#475569' : danger ? '#fca5a5' : '#e2e8f0',
-        backgroundColor: hover && !disabled ? (danger ? '#7f1d1d' : '#2563eb') : 'transparent',
-        whiteSpace: 'nowrap',
-      }}
-    >
-      <span>{label}</span>
-      {hint && <span style={{ fontSize: 11, color: hover && !disabled ? '#dbeafe' : '#94a3b8' }}>{hint}</span>}
-    </button>
-  )
-}
-
-const S_LAYERS: Record<'quick', React.CSSProperties> = {
-  quick: {
-    flex: 1,
-    minHeight: 26,
-    padding: '2px 6px',
-    borderRadius: 4,
-    border: '1px solid #2c313c',
-    backgroundColor: 'transparent',
-    color: '#cbd5e1',
-    fontSize: 12,
-    cursor: 'pointer',
-  },
-}
 
 /** Nút của thanh trên cùng: chữ phụ trong suốt, nút phụ viền, nút chính nền đặc. */
-const S_BAR: Record<'ghost' | 'secondary' | 'primary', React.CSSProperties> = {
-  ghost: {
-    display: 'inline-flex',
-    alignItems: 'center',
-    gap: 4,
-    minHeight: 28,
-    padding: '0 8px',
-    border: 'none',
-    backgroundColor: 'transparent',
-    borderRadius: 4,
-    fontSize: 13,
-    cursor: 'pointer',
-  },
-  secondary: {
-    display: 'inline-flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    minHeight: 28,
-    minWidth: 28,
-    padding: '0 10px',
-    borderRadius: 4,
-    border: '1px solid #475569',
-    backgroundColor: 'transparent',
-    color: '#e2e8f0',
-    fontSize: 13,
-    fontWeight: 600,
-    cursor: 'pointer',
-  },
-  // #047857: chữ trắng 5.5:1. Màu cũ #10b981 chỉ 2.5:1, dưới mức 4.5:1.
-  primary: {
-    display: 'inline-flex',
-    alignItems: 'center',
-    minHeight: 28,
-    padding: '0 12px',
-    borderRadius: 4,
-    border: 'none',
-    backgroundColor: '#047857',
-    color: '#ffffff',
-    fontSize: 13,
-    fontWeight: 600,
-    cursor: 'pointer',
-  },
-}
 
 /**
  * Màn chờ khi mở file: phủ ĐỤC cả ba cột (danh sách lớp, khung xem, thông tin bo) bằng
@@ -1500,139 +604,10 @@ const OpeningSkeleton: React.FC<{ name: string; label?: string }> = ({ name, lab
   )
 }
 
-// Lề khi fit bo trong khung chia đôi — dùng chung cho viewer và nhãn kích thước
-// để hai bên tính ra cùng một vị trí mép bo.
-const SPLIT_FIT_PADDING = 1.4
-/** Khoảng trắng giữa hai khung Top/Bot, cũng là khoảng trắng trong ảnh chụp. */
-const SPLIT_GAP_PX = 28
 
 
-/**
- * Nhãn kích thước + số lớp, bám ngay dưới mép bo.
- * Bo được fit vào khung theo cùng công thức của viewer: chiều cao thế giới nhìn thấy
- * là max(cao, rộng/tỉ-lệ-khung) × hệ số lề. Bo bè ngang sẽ fit theo chiều rộng nên chỉ
- * chiếm một dải mỏng giữa khung — neo nhãn vào đáy khung thì nó rơi rất xa bo.
- */
-const BoardBadge: React.FC<{
-  bounds: BoardState['bounds']
-  name: string
-  layerCount: number
-  panel: { w: number; h: number } | null
-  /** TOP trên / BOT dưới: nhãn nằm ở khe giữa hai mặt. */
-  stacked?: boolean
-}> = ({ bounds, name, layerCount, panel, stacked }) => {
-  if (!bounds) return null
-
-  let top = '88%'
-  if (stacked) {
-    top = '50%'
-  } else if (panel && panel.w > 0 && panel.h > 0) {
-    const aspect = panel.w / 2 / panel.h // mỗi mặt chiếm nửa chiều ngang
-    // Phải TRÙNG fitPadding truyền cho hai khung, nếu lệch thì nhãn rơi sai chỗ.
-    const span = Math.max(bounds.heightMM, bounds.widthMM / aspect) * SPLIT_FIT_PADDING
-    const frac = 0.5 + bounds.heightMM / 2 / span
-    // Kẹp trong khung, chừa 96px dưới cho nút "Vừa khung" (cao 32–40px, cách đáy 10px) và
-    // chính nhãn — khung thấp (điện thoại xoay ngang) thì nhãn từng lòi khỏi mép dưới và
-    // đè lên nút.
-    top = `min(calc(${Math.min(frac, 0.95) * 100}% + 20px), calc(100% - 96px))`
-  }
-
-  return (
-    <div
-      style={{
-        position: 'absolute',
-        left: '50%',
-        top,
-        transform: stacked ? 'translate(-50%, -50%)' : 'translateX(-50%)',
-        display: 'flex',
-        alignItems: 'center',
-        gap: '10px',
-        padding: '8px 20px',
-        borderRadius: 999,
-        backgroundColor: 'rgba(15,23,42,0.9)',
-        border: '1px solid #334155',
-        boxShadow: '0 2px 10px rgba(0,0,0,0.35)',
-        // To bằng nhãn trong ảnh copy trên màn rộng; cửa sổ hẹp thì co lại cho khỏi tràn
-        // ra ngoài khung xem.
-        fontSize: 'clamp(11px, 1.15vw, 16px)',
-        maxWidth: 'calc(100% - 16px)',
-        fontWeight: 600,
-        color: '#e2e8f0',
-        whiteSpace: 'nowrap',
-        pointerEvents: 'none',
-        zIndex: 6,
-      }}
-    >
-      {/* Cùng chữ với nhãn trong ảnh copy (captureBoard.ts) — nhìn sao chụp ra vậy. */}
-      {name && (
-        <>
-          <span style={{ maxWidth: '22vw', overflow: 'hidden', textOverflow: 'ellipsis' }}>{name}</span>
-          <span style={{ color: '#475569' }}>|</span>
-        </>
-      )}
-      <span>{layerCount} lớp</span>
-      <span style={{ color: '#475569' }}>|</span>
-      <span>
-        {bounds.widthMM.toFixed(2)} x {bounds.heightMM.toFixed(2)} mm
-      </span>
-    </div>
-  )
-}
 
 /**
  * Chọn tay loại của một lớp khi app nhận diện sai (file khoan đuôi lạ, viền nằm trong
  * file tài liệu…). Đổi xong cả bộ file được đọc lại theo loại mới.
  */
-function LayerTypeSelect({ layer }: { layer: ParsedGerberLayer }) {
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState('')
-  const current = layer.userType ?? layerKeyOf(layer)
-  const change = async (key: string) => {
-    setBusy(true)
-    setError('')
-    try {
-      await BoardDataModel.retypeLayer(layer.id, key)
-    } catch (e: any) {
-      setError(e?.message || String(e))
-    } finally {
-      setBusy(false)
-    }
-  }
-  return (
-    <div onClick={(e) => e.stopPropagation()} style={{ marginTop: 4, display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>
-      <span style={{ fontSize: 10, color: '#94a3b8' }}>Loại lớp:</span>
-      <select
-        value={current}
-        disabled={busy}
-        onChange={(e) => change(e.target.value)}
-        title="App nhận diện sai thì chọn lại — cả bộ file sẽ được đọc lại theo loại này"
-        style={{
-          fontSize: 11,
-          padding: '1px 4px',
-          borderRadius: 4,
-          border: '1px solid #334155',
-          backgroundColor: '#0f172a',
-          color: '#e2e8f0',
-          cursor: 'pointer',
-        }}
-      >
-        {LAYER_CHOICES.map((c) => (
-          <option key={c.key} value={c.key}>
-            {c.label}
-          </option>
-        ))}
-      </select>
-      {layer.userType && !busy && (
-        <button
-          onClick={() => change('')}
-          title="Bỏ chọn tay, để app tự nhận diện"
-          style={{ fontSize: 10, padding: '1px 5px', borderRadius: 4, border: '1px solid #334155', background: 'transparent', color: '#94a3b8', cursor: 'pointer' }}
-        >
-          ↺ Tự nhận
-        </button>
-      )}
-      {busy && <span style={{ fontSize: 10, color: '#38bdf8' }}>Đang đọc lại…</span>}
-      {error && <span style={{ fontSize: 10, color: '#f87171' }}>{error}</span>}
-    </div>
-  )
-}

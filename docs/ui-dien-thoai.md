@@ -69,6 +69,22 @@ giao diện cũng phải đối chiếu danh sách này TRƯỚC khi commit.
 - Chữ trong tờ: font Times trên iPhone rộng hơn Times New Roman một chút — dòng
   nào không được gãy thì `whiteSpace: nowrap` và để cỡ dư ~10%.
 
+## 5b. Dựng giao diện bằng gì
+
+- **Token** `src/ui/theme.ts`: `C` (màu theo vai trò), `FS` (cỡ chữ), `TAP` (sàn vùng
+  chạm), `RADIUS`. Lấy màu từ đây, đừng gõ mã hex mới trong file giao diện — có test
+  canh số mã hex không được tăng.
+- **Nút** `src/ui/Button.tsx`: `variant` primary/secondary/ghost/danger/chip ×
+  `size` md/sm/icon. Nút chỉ có icon phải có `aria-label` (test canh).
+- **Các mảng giao diện** đã tách khỏi `Layout.tsx` (1638 → ~610 dòng):
+  `ui/Toolbars.tsx` (hai thanh trên), `ui/LayerPanel.tsx` (cột lớp),
+  `ui/BoardView.tsx` (khung xem + 2 Mặt + chụp). `Layout.tsx` chỉ còn giữ state và nối
+  chúng lại. Thêm việc mới thì thêm vào đúng file đó, đừng dồn về Layout.
+- **Test giao diện** `test/ui-buttons.test.tsx` (hợp đồng Button + luật viết code) và
+  `test/ui-render.test.tsx` (dựng thật trong jsdom: thanh công cụ, cột lớp, Hoàn tác,
+  nút Back). Chạy bằng `npm test`. jsdom KHÔNG tính layout nên cỡ nút thật vẫn phải đo
+  tay theo mục 7.
+
 ## 6. Nút bấm
 
 Đã làm đợt 22/09/2026 (xem `docs/bao-cao/2026-09-22-danh-gia-ux-nut-bam.md`):

@@ -2,6 +2,7 @@
  * Form nhập báo giá. Bốn cột lấy sẵn từ bo đang mở (tên, số lớp, kích thước,
  * màu phủ); số lượng / thành tiền / ghi chú người lập tự nhập.
  */
+import { C } from '../../ui/theme'
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import type { Board, BoardState } from '../../models/BoardDataModel'
 import { MASK_COLORS } from '../../models/MaskColors'
@@ -1132,7 +1133,7 @@ const S: Record<string, React.CSSProperties> = {
     maxHeight: '92vh',
     display: 'flex',
     flexDirection: 'column',
-    backgroundColor: '#181a20',
+    backgroundColor: C.panel,
     border: '1px solid #334155',
     borderRadius: '8px',
     boxShadow: '0 12px 40px rgba(0,0,0,0.55)',
@@ -1144,7 +1145,7 @@ const S: Record<string, React.CSSProperties> = {
     flexWrap: 'wrap',
     gap: '8px 12px',
     padding: '10px 12px',
-    backgroundColor: '#14161b',
+    backgroundColor: C.panelAlt,
     borderBottom: '1px solid #282b34',
   },
   body: { padding: '12px', overflowY: 'auto', flex: 1 },
@@ -1167,14 +1168,14 @@ const S: Record<string, React.CSSProperties> = {
     flexWrap: 'wrap',
     gap: '8px',
     padding: '10px 12px',
-    backgroundColor: '#14161b',
+    backgroundColor: C.panelAlt,
     borderTop: '1px solid #282b34',
     justifyContent: 'flex-end',
   },
   sectionTitle: {
     fontSize: '12px',
     fontWeight: 600,
-    color: '#38bdf8',
+    color: C.accent,
     margin: '14px 0 6px',
   },
   grid: {
@@ -1183,10 +1184,10 @@ const S: Record<string, React.CSSProperties> = {
     gap: '8px',
   },
   input: {
-    backgroundColor: '#0f172a',
+    backgroundColor: C.input,
     border: '1px solid #334155',
     borderRadius: '4px',
-    color: '#e2e8f0',
+    color: C.text,
     fontSize: '12px',
     padding: '5px 7px',
     width: '100%',
@@ -1196,7 +1197,7 @@ const S: Record<string, React.CSSProperties> = {
   th: {
     textAlign: 'left',
     padding: '4px 6px',
-    color: '#94a3b8',
+    color: C.muted,
     fontSize: '11px',
     fontWeight: 600,
     borderBottom: '1px solid #334155',
@@ -1204,10 +1205,10 @@ const S: Record<string, React.CSSProperties> = {
   },
   td: { padding: '3px 6px', borderBottom: '1px solid #22252e', verticalAlign: 'middle' },
   cellInput: {
-    backgroundColor: '#0f172a',
+    backgroundColor: C.input,
     border: '1px solid #334155',
     borderRadius: '3px',
-    color: '#e2e8f0',
+    color: C.text,
     fontSize: '12px',
     padding: '4px 6px',
     width: '100%',
@@ -1222,12 +1223,12 @@ const S: Record<string, React.CSSProperties> = {
     color: '#cbd5e1',
   },
   toggle: {
-    backgroundColor: '#1e293b',
-    color: '#94a3b8',
+    backgroundColor: C.raised,
+    color: C.muted,
     // Viết dạng dài: toggleOn chỉ đổi borderColor, trộn với `border` viết tắt là React cảnh báo.
     borderWidth: '1px',
     borderStyle: 'solid',
-    borderColor: '#334155',
+    borderColor: C.border,
     borderRadius: '4px',
     padding: '4px 10px',
     fontSize: '12px',
@@ -1237,7 +1238,7 @@ const S: Record<string, React.CSSProperties> = {
   smallBtn: {
     flexShrink: 0,
     whiteSpace: 'nowrap',
-    backgroundColor: '#1e293b',
+    backgroundColor: C.raised,
     color: '#cbd5e1',
     border: '1px solid #334155',
     borderRadius: '4px',
@@ -1257,7 +1258,7 @@ const S: Record<string, React.CSSProperties> = {
     padding: 0,
     textAlign: 'center',
     textAlignLast: 'center',
-    backgroundColor: '#1e293b',
+    backgroundColor: C.raised,
     color: '#cbd5e1',
     border: '1px solid #334155',
     borderRadius: '3px',
@@ -1271,7 +1272,7 @@ const S: Record<string, React.CSSProperties> = {
     width: '28px',
     height: '28px',
     backgroundColor: 'transparent',
-    color: '#f87171',
+    color: C.dangerText,
     border: 'none',
     borderRadius: '4px',
     cursor: 'pointer',
@@ -1289,8 +1290,8 @@ const S: Record<string, React.CSSProperties> = {
     cursor: 'pointer',
   },
   secondaryBtn: {
-    backgroundColor: '#334155',
-    color: '#e2e8f0',
+    backgroundColor: C.border,
+    color: C.text,
     border: 'none',
     borderRadius: '4px',
     padding: '6px 14px',
@@ -1320,7 +1321,7 @@ const S: Record<string, React.CSSProperties> = {
   },
   viewBtn: {
     backgroundColor: 'transparent',
-    color: '#94a3b8',
+    color: C.muted,
     border: 'none',
     padding: '6px 12px',
     fontSize: '12px',
@@ -1328,8 +1329,8 @@ const S: Record<string, React.CSSProperties> = {
     cursor: 'pointer',
   },
   viewBtnOn: {
-    backgroundColor: '#1e293b',
-    color: '#e2e8f0',
+    backgroundColor: C.raised,
+    color: C.text,
   },
   previewBar: {
     display: 'flex',
@@ -1337,11 +1338,11 @@ const S: Record<string, React.CSSProperties> = {
     justifyContent: 'space-between',
     padding: '4px 4px 8px',
     fontSize: '12px',
-    color: '#94a3b8',
+    color: C.muted,
   },
   previewClose: {
     backgroundColor: 'transparent',
-    color: '#94a3b8',
+    color: C.muted,
     border: '1px solid #334155',
     borderRadius: '4px',
     display: 'inline-flex',
@@ -1360,7 +1361,7 @@ const S: Record<string, React.CSSProperties> = {
     minWidth: '210px',
     display: 'flex',
     flexDirection: 'column',
-    backgroundColor: '#0f172a',
+    backgroundColor: C.input,
     border: '1px solid #334155',
     borderRadius: '4px',
     boxShadow: '0 8px 20px rgba(0,0,0,0.5)',
@@ -1382,12 +1383,12 @@ const S: Record<string, React.CSSProperties> = {
   },
   // Ghi chú chọn được nhiều dòng nên mỗi dòng là một hàng ngang có ô đánh dấu.
   noteMenuItem: { flexDirection: 'row', alignItems: 'center', gap: '6px' },
-  menuItemOn: { backgroundColor: '#14303a', color: '#e2e8f0' },
+  menuItemOn: { backgroundColor: '#14303a', color: C.text },
   noteMenuBtn: {
-    backgroundColor: '#1e293b',
+    backgroundColor: C.raised,
     border: '1px solid #334155',
     borderRadius: '3px',
-    color: '#94a3b8',
+    color: C.muted,
     cursor: 'pointer',
     fontSize: '10px',
     padding: '0 5px',

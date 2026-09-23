@@ -10,7 +10,9 @@ import {
   assemblyPCBToThreeJS,
   NewRenderByElement,
 } from 'web-gerber'
-import { Icon } from '../../ui/Icon'
+
+import { Button } from '../../ui/Button'
+import { C, RADIUS } from '../../ui/theme'
 import { useIsMobile } from '../../ui/useIsMobile'
 
 /**
@@ -1418,7 +1420,9 @@ export const Viewer2DWebGL: React.FC<Viewer2DWebGLProps> = ({
 
       {/* Màn gọn: chỉ icon (2 Mặt có hai nút, để chữ thì chiếm cả đáy khung); còn cử
           chỉ chạm đúp cũng về vừa khung. */}
-      <button
+      <Button
+        icon="fit"
+        size={isMobile ? 'icon' : 'md'}
         onClick={() => fitViewRef.current?.()}
         title="Đưa khung nhìn về vừa khít bo"
         aria-label="Vừa khung"
@@ -1427,25 +1431,13 @@ export const Viewer2DWebGL: React.FC<Viewer2DWebGLProps> = ({
           right: 10,
           bottom: 10,
           zIndex: 5,
-          display: 'inline-flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          gap: 6,
-          minHeight: 32,
-          minWidth: 32,
-          padding: isMobile ? 0 : '0 12px',
-          fontSize: 12,
-          fontWeight: 600,
-          borderRadius: 6,
-          cursor: 'pointer',
-          color: '#e2e8f0',
+          borderRadius: RADIUS.md,
           backgroundColor: 'rgba(15,23,42,0.85)',
-          border: '1px solid #334155',
+          borderColor: C.border,
         }}
       >
-        <Icon name="fit" size={15} />
-        {isMobile ? null : ' Vừa khung'}
-      </button>
+        {isMobile ? null : 'Vừa khung'}
+      </Button>
       {hideBadge ? (
         <div style={faceTag} title={fromBelow ? 'Mặt Bot, nhìn từ dưới lên (đã lật gương)' : 'Mặt Top, nhìn từ trên xuống'}>{fromBelow ? 'BOT' : 'TOP'}</div>
       ) : (
