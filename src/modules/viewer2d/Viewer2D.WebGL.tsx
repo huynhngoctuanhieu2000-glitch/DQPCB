@@ -129,7 +129,15 @@ const MAX_CACHED_BOARDS = 5
  * muốn chờ.
  */
 const HEAVY_SHAPES = 50000
-export const isHeavyLayer = (raw: any) => (raw?.imageTree?.children?.length ?? 0) > HEAVY_SHAPES
+/**
+ * Trên mức này thì KHÔNG cho vẽ, kể cả khi bấm "vẽ luôn": lớp in lụa 150.500 hình của
+ * "P84390-S02" ngốn hết bộ nhớ trang (4.4 GB) và treo hẳn — bấm thử 6 phút không xong.
+ */
+const IMPOSSIBLE_SHAPES = 120000
+const shapeCount = (raw: any) => raw?.imageTree?.children?.length ?? 0
+export const isHeavyLayer = (raw: any) => shapeCount(raw) > HEAVY_SHAPES
+/** Lớp lớn tới mức không dựng nổi — badge không cho bấm "vẽ luôn". */
+export const isTooBigLayer = (raw: any) => shapeCount(raw) > IMPOSSIBLE_SHAPES
 /** layers của bo → hình đã dựng của bo đó. Thứ tự trong Map = thứ tự dùng (cuối = mới nhất). */
 const boardCaches = new Map<object, Map<string, BuildEntry>>()
 /**
@@ -479,7 +487,7 @@ export const Viewer2DWebGL: React.FC<Viewer2DWebGLProps> = ({
   const [totalMs, setTotalMs] = useState<number | null>(null)
   const [failed, setFailed] = useState<string[]>([])
   /** Lớp quá nặng đã bỏ qua, và cờ người lập bấm "vẽ luôn" (xem HEAVY_SHAPES). */
-  const [heavySkipped, setHeavySkipped] = useState<string[]>([])
+  const [heavySkipped, setHeavySkipped] = useState<{ name: string; tooBig: boolean }[]>([])
   const [drawHeavy, setDrawHeavy] = useState(false)
   // Badge: file có ghép không (và nhận ra bằng cách nào), mũi khoan nhỏ nhất. Tính một lần
   // cho mỗi bộ lớp (detectPanel tự nhớ kết quả).
@@ -525,7 +533,7 @@ export const Viewer2DWebGL: React.FC<Viewer2DWebGLProps> = ({
     const t0 = performance.now()
     const bad: string[] = []
     /** Lớp bỏ qua vì quá nặng — badge cho bấm vẽ nếu người lập muốn chờ. */
-    const heavy: string[] = []
+    const heavy: { name: string; tooBig: boolean }[] = []
     const palette = realPalette(board.maskColor)
     const cache = cacheFor(board.layers)
     pruneCaches(board.layers)
@@ -567,8 +575,8 @@ export const Viewer2DWebGL: React.FC<Viewer2DWebGLProps> = ({
     for (const raw of board.layers) {
       const id = { type: raw.type, side: raw.side }
       if (!inScene(raw, drillUse)) continue
-      if (isHeavyLayer(raw) && !drawHeavy) {
-        heavy.push(raw.filename)
+      if (isHeavyLayer(raw) && (!drawHeavy || isTooBigLayer(raw))) {
+        heavy.push({ name: raw.filename, tooBig: isTooBigLayer(raw) })
         continue
       }
 
@@ -833,7 +841,7 @@ export const Viewer2DWebGL: React.FC<Viewer2DWebGLProps> = ({
     const addExtra = (raw: any) => {
       if (!camMode || byFile.has(raw.filename) || !raw.imageTree) return
       // Lớp nặng đã bị vòng chính bỏ qua thì đừng dựng lại ở đây (xem HEAVY_SHAPES).
-      if (isHeavyLayer(raw) && !drawHeavy) return
+      if (isHeavyLayer(raw) && (!drawHeavy || isTooBigLayer(raw))) return
       try {
         const swatch = parseInt(String(raw.color).replace('#', ''), 16)
         const color = Number.isNaN(swatch) ? CAM_FALLBACK : swatch
@@ -1517,17 +1525,23 @@ export const Viewer2DWebGL: React.FC<Viewer2DWebGLProps> = ({
           )}
           {heavySkipped.length > 0 && (
             <div style={{ color: '#fbbf24', marginTop: 4 }}>
-              ⚠ {heavySkipped.length} lớp quá nặng, tạm không vẽ:{' '}
-              {heavySkipped.map((f) => f.split(/[\/]/).pop()).join(', ')}
-              <Button
-                variant="chip"
-                size="sm"
-                onClick={() => setDrawHeavy(true)}
-                title="Dựng cả lớp nặng — có thể mất vài phút và app đứng hình trong lúc dựng"
-                style={{ marginTop: 4 }}
-              >
-                Vẽ luôn
-              </Button>
+              ⚠ {heavySkipped.length} lớp quá nặng, không vẽ:{' '}
+              {heavySkipped
+                .map((f) => `${f.name.split(/[\/]/).pop()}${f.tooBig ? ' (quá lớn, không vẽ được)' : ''}`)
+                .join(', ')}
+              {heavySkipped.some((f) => !f.tooBig) && (
+                <Button
+                  variant="chip"
+                  size="sm"
+                  onClick={() => {
+                    if (window.confirm('Lớp này rất nặng: dựng có thể mất vài phút và app đứng hình trong lúc đó. Vẫn vẽ?')) setDrawHeavy(true)
+                  }}
+                  title="Dựng cả lớp nặng — có thể mất vài phút và app đứng hình trong lúc dựng"
+                  style={{ marginTop: 4 }}
+                >
+                  Vẽ luôn
+                </Button>
+              )}
             </div>
           )}
           {failed.length > 0 && (
