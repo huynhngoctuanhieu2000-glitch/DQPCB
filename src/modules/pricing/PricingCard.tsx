@@ -525,7 +525,18 @@ export const PricingCard: React.FC<{
       )}
 
       {smallBoardWarn && <div style={S.warn}>⚠ {smallBoardWarn}</div>}
-      {multiBoards && !panelOn && (
+      {/* Nhiều bo nhưng KHÁC THIẾT KẾ thì không phải file ghép: mỗi thiết kế một giá, không
+          nhân theo set được (bộ "Bo Dem Linhgragon ESP32-S3", 24/09/2026 — 3 bo, 2 thiết kế). */}
+      {multiBoards && multiBoards.designs > 1 && (
+        <div style={S.warn}>
+          ⚠ File có <b>{multiBoards.count} bo thuộc {multiBoards.designs} thiết kế khác nhau</b>
+          {multiBoards.designList
+            ? ` (${multiBoards.designList.slice(0, 3).map((d) => `${d.count} × ${d.widthMM.toFixed(1)} × ${d.heightMM.toFixed(1)} mm`).join(', ')}${multiBoards.designList.length > 3 ? '…' : ''})`
+            : ''}
+          {' '}— không phải file ghép bo giống nhau. Mỗi thiết kế một giá: nên tách thành từng dòng báo giá.
+        </div>
+      )}
+      {multiBoards && multiBoards.designs <= 1 && !panelOn && (
         <div style={S.warn}>
           ⚠ File có <b>{multiBoards.count}{multiBoards.partial ? '+' : ''} bo</b> (
           {multiBoards.method === 'outline' ? 'viền rời' : 'bo lặp lại'}) — có vẻ đã ghép sẵn. Bảng tra chỉ cho bo

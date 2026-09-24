@@ -42,6 +42,30 @@ describe('detectPanel — bo lặp lại (panel chỉ ngăn bằng rãnh / V-cut
     expect(p.verdict).toBe('no')
   })
 
+  it('nhiều bo rời khác thiết kế → đếm số thiết kế, không coi là ghép bo giống nhau', () => {
+    // Bộ "Bo Dem Linhgragon ESP32-S3" (24/09/2026): 1 bo lớn + 2 bo nhỏ giống hệt nhau.
+    const outline = (parts: any[]) => ({ type: "outline", filename: "profile", imageTree: { units: "mm", parts } })
+    const box = (x: number, y: number, w: number, h: number) => {
+      const c = [[x, y], [x + w, y], [x + w, y + h], [x, y + h]]
+      return { children: c.map((pt, i) => ({ segments: [{ type: "line", start: pt, end: c[(i + 1) % 4] }] })) }
+    }
+    const big = board(0, 0)
+    const small = (ox: number) => {
+      const pads: any[] = []
+      for (let i = 0; i < 12; i++) pads.push(circle(ox + 2 + (i % 4) * 3, 45 + Math.floor(i / 4) * 3, 0.4))
+      return pads
+    }
+    const layers = [
+      layer("copper", [...big.pads, ...small(0), ...small(20)]),
+      layer("silkscreen", big.silk),
+      outline([box(0, 0, 30, 20), box(0, 43, 15, 8), box(20, 43, 15, 8)]),
+    ]
+    const p = detectPanel(layers as any, { bounds: { widthMM: 35, heightMM: 51 } })
+    expect(p.count).toBe(3)
+    expect(p.designs).toBe(2)
+    expect(p.designList?.map((d) => d.count).sort()).toEqual([1, 2])
+    expect(p.detail).toContain("2 thiết kế")
+  })
   it('tên file có "ghep" mà không thấy lặp → chỉ "có thể"', () => {
     const p = detectPanel(set([board(0, 0)]) as any, { names: ['Khach Ghep 2x2.zip'], bounds: { widthMM: 30, heightMM: 20 } })
     expect(p.verdict).toBe('maybe')

@@ -14,7 +14,7 @@ import {
 import { Button } from '../../ui/Button'
 import { buildFastLayer } from './fastLayer'
 import { C, RADIUS } from '../../ui/theme'
-import { useIsMobile } from '../../ui/useIsMobile'
+import { isLowMemoryDevice, useIsMobile } from '../../ui/useIsMobile'
 
 /**
  * web-gerber bundle three.js 0.175 vào trong dist của nó (không import ngoài).
@@ -116,22 +116,38 @@ const SCENE_TYPES = new Set(['copper', 'soldermask', 'silkscreen', 'outline', 'd
  *
  * Cache giữ RIÊNG cho từng bo (khoá là `board.layers`). Trước đây chỉ giữ một bo: mở 3 file,
  * đang xem file 3 bấm lại file 1 là dọn sạch rồi dựng lại từ đầu — FRIWO 55807 mất 3.3 s mỗi
- * lần bấm qua, bấm lại lần 2 vẫn 3.2 s (khảo sát 22/09/2026). Giữ tối đa MAX_CACHED_BOARDS
+ * lần bấm qua, bấm lại lần 2 vẫn 3.2 s (khảo sát 22/09/2026). Giữ tối đa maxCachedBoards()
  * bo dùng gần nhất; bo đã đóng (hoặc đọc lại vì chọn tay loại lớp) thì giải phóng GPU.
  */
 type BuildEntry = { obj: any; cutouts: any[] }
 /** Lớp dựng ra rỗng — vẫn ghi vào cache để biết "đã dựng", khỏi dựng lại mỗi lần. */
 const EMPTY_ENTRY: BuildEntry = { obj: null, cutouts: [] }
-const MAX_CACHED_BOARDS = 5
 /**
- * Lớp quá nhiều hình thì KHÔNG dựng: bo "P84390-S02" (FRIWO, 23/09/2026) có lớp in lụa
- * 150.500 hình (file 6.4 MB) — dựng hết bộ nhớ ("Array buffer allocation failed"), và lần
- * dựng đó ngốn 198 giây, suốt thời gian ấy app đứng hình. Badge có nút bấm để vẽ nếu vẫn
- * muốn chờ.
+ * Số bo giữ hình trong bộ nhớ. Điện thoại chỉ được ~0.5–1 GB mỗi tab: bo "Bo Dem Linhgragon
+ * ESP32-S3" (file 144 KB!) đã ngốn 529 MB, giữ 5 bo là tab bị hệ điều hành giết (24/09/2026).
  */
-const HEAVY_SHAPES = 50000
+const maxCachedBoards = () => (isLowMemoryDevice() ? 1 : 5)
+/**
+ * Lớp nhiều hình hơn mức này dựng bằng đường nhanh (xem fastLayer.ts): `renderThree` tốn
+ * ~1.200 đỉnh cho MỖI hình, nên lớp in lụa 8.309 hình của bo "Bo Dem" ra 9.9 triệu đỉnh.
+ * Hạ từ 50.000 xuống 2.000 (24/09/2026): cả bo đó còn 556.564 đỉnh thay vì 14.327.408, bộ
+ * nhớ trang 529 → 107 MB.
+ */
+const HEAVY_SHAPES = 2000
+/**
+ * Trên mức này thì dựng kiểu cũ là hết bộ nhớ (lụa 150.220 hình của "P84390-S02" ra 180
+ * triệu đỉnh), nên vẽ nhanh bằng mọi giá — kể cả lớp có hình đảo cực.
+ */
+const HUGE_SHAPES = 50000
 const shapeCount = (raw: any) => raw?.imageTree?.children?.length ?? 0
-export const isHeavyLayer = (raw: any) => shapeCount(raw) > HEAVY_SHAPES
+/** Lớp có hình đảo cực (vùng khoét trong mảng đồng): đường nhanh bỏ qua chúng nên vẽ sai. */
+const hasClearPolarity = (raw: any) =>
+  (raw?.imageTree?.children ?? []).some((c: any) => c?.polarity === 'clear')
+export const isHeavyLayer = (raw: any) => {
+  const n = shapeCount(raw)
+  if (n > HUGE_SHAPES) return true
+  return n > HEAVY_SHAPES && !hasClearPolarity(raw)
+}
 /** layers của bo → hình đã dựng của bo đó. Thứ tự trong Map = thứ tự dùng (cuối = mới nhất). */
 const boardCaches = new Map<object, Map<string, BuildEntry>>()
 /**
@@ -165,7 +181,7 @@ const disposeCache = (cache: Map<string, BuildEntry>) => {
 
 /**
  * Dọn cache của bo không còn mở (đóng bo, hoặc bo đã đọc lại nên có mảng layers mới) và
- * của bo dùng lâu nhất khi giữ quá MAX_CACHED_BOARDS bo. Bo `keep` (đang xem) không bao giờ bị dọn.
+ * của bo dùng lâu nhất khi giữ quá maxCachedBoards() bo. Bo `keep` (đang xem) không bao giờ bị dọn.
  */
 const pruneCaches = (keep?: object) => {
   const open = new Set<object>(BoardDataModel.getState().boards.map((b) => b.layers))
@@ -175,7 +191,7 @@ const pruneCaches = (keep?: object) => {
     boardCaches.delete(layers)
   }
   for (const [layers, cache] of boardCaches) {
-    if (boardCaches.size <= MAX_CACHED_BOARDS) break
+    if (boardCaches.size <= maxCachedBoards()) break
     if (layers === keep) continue
     disposeCache(cache)
     boardCaches.delete(layers)
@@ -289,12 +305,15 @@ const whenIdle = (fn: () => void) => {
  * (đổi bo / đổi chế độ) thì lượt cũ tự dừng.
  */
 const schedulePrebuild = () => {
+  // Máy ít bộ nhớ thì KHÔNG dựng sẵn: mở file thứ hai trên điện thoại là app lặng lẽ dựng lại
+  // cả file thứ nhất ở nền, cộng vào là tab bị giết (24/09/2026). Đổi bo thì chịu màn chờ.
+  if (isLowMemoryDevice()) return
   const run = ++prebuildRun
   const s = BoardDataModel.getState()
   const camMode = s.activeView === 'CAM'
   const active = s.boards.find((b) => b.id === s.activeBoardId)
   // Bo mở gần nhất dựng trước; chừa một chỗ cho bo đang xem.
-  const others = s.boards.filter((b) => b !== active).reverse().slice(0, MAX_CACHED_BOARDS - 1)
+  const others = s.boards.filter((b) => b !== active).reverse().slice(0, maxCachedBoards() - 1)
   const queue: (() => void)[] = []
   for (const b of others) {
     const palette = realPalette(b.maskColor)
@@ -1531,7 +1550,7 @@ export const Viewer2DWebGL: React.FC<Viewer2DWebGLProps> = ({
             >
               Ghép:{' '}
               {panel.verdict === 'yes'
-                ? `Có — ${panel.count}${panel.partial ? '+' : ''} bo${panel.cols * panel.rows === panel.count && panel.count > 1 ? ` (${panel.cols}×${panel.rows})` : ''} · ${panel.method === 'outline' ? 'viền rời' : 'bo lặp lại'}`
+                ? `Có — ${panel.count}${panel.partial ? '+' : ''} bo${panel.cols * panel.rows === panel.count && panel.count > 1 ? ` (${panel.cols}×${panel.rows})` : ''} · ${panel.designs > 1 ? `${panel.designs} thiết kế` : panel.method === 'outline' ? 'viền rời' : 'bo lặp lại'}`
                 : panel.verdict === 'maybe'
                   ? panel.method === 'repeat'
                     ? `có thể — ${panel.count}+ bo giống nhau (một phần lặp lại)`

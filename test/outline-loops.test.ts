@@ -142,3 +142,49 @@ describe('countBoards — file ghép sẵn nhiều bo', () => {
     expect(countBoards([...layersOf(parts), ...pads])?.count).toBe(2)
   })
 })
+
+describe('vòng nhỏ trong thân bo (24/09/2026)', () => {
+  const layersOf = (parts: any[]) => [{ type: 'outline', imageTree: { units: 'mm', parts } }]
+  const panel = rect(0, 0, 165, 168)
+
+  it('nửa bo chỉ bằng 2% tấm nhưng có mạch thì không bị khoét thủng', () => {
+    // Tấm FRIWO "55807.930-90FE": 30 bo 26 × 23 mm trong khung 165 × 168 — mỗi bo bằng 2.2%
+    // tấm nên trúng nhánh "nhỏ = lỗ" và biến mất hết ở 2 Mặt / 2D / 3D.
+    const sub = rect(10, 10, 26, 23)
+    const copper = copperSamplePoints(copperAt([[15, 15], [20, 20], [25, 25], [30, 28]]))
+    const r = splitOutlineLoops([panel, sub], { copperPoints: copper })
+    expect(r.body).toEqual([panel, sub])
+    expect(r.cutouts).toEqual([])
+  })
+
+  it('chữ chú thích vẽ bằng nét 0 thì chỉ vẽ nét, không khoét', () => {
+    // Pulsonix ghi "Non-plated holes" ngay trong lớp viền bằng khẩu độ C,0.00001.
+    const pen = (part: any, w: number) => ({
+      children: part.children.map((c: any) => ({ segments: c.segments.map((s: any) => ({ ...s, _w: w })) })),
+    })
+    /** Vòng theo danh sách đỉnh (chữ "L" — hình lõm, khác hẳn lỗ tròn/chữ nhật). */
+    const loop = (pts: number[][], w: number) => ({
+      children: pts.map((p, i) => ({ segments: [{ type: 'line', start: p, end: pts[(i + 1) % pts.length], _w: w }] })),
+    })
+    const body = pen(rect(0, 0, 165, 168), 0.3)
+    const letterL = loop([[50, 50], [50.3, 50], [50.3, 51.7], [51.4, 51.7], [51.4, 52], [50, 52]], 0.00025)
+    const letterBar = loop([[60, 50], [60.25, 50], [60.25, 52], [60, 52]], 0.00025)
+    const screwHole = pen(rect(70, 70, 2.4, 2.4), 0.00025) // lỗ bắt ốc cũng vẽ nét 0 — phải giữ
+    const realHole = pen(rect(80, 80, 6, 3), 0.25)
+    const r = splitOutlineLoops([body, letterL, letterBar, screwHole, realHole], { copperPoints: [] })
+    expect(r.body).toEqual([body])
+    expect(r.lines).toEqual([letterBar, letterL])
+    expect(r.cutouts).toEqual([screwHole, realHole])
+  })
+
+  it('bo con bằng 9.5% bo lớn vẫn được đếm là bo', () => {
+    // Bộ "Bo Dem Linhgragon ESP32-S3": 1 bo 120 × 102 + 2 bo 53.9 × 21.6 (9.5% bo lớn).
+    const parts = [rect(0, 0, 120, 102), rect(0, 103, 53.9, 21.6), rect(54.6, 103, 53.9, 21.6)]
+    const copper = copperAt([
+      [10, 10], [20, 20], [30, 30], [40, 40],
+      [5, 108], [15, 112], [25, 116], [35, 120],
+      [60, 108], [70, 112], [80, 116], [90, 120],
+    ])
+    expect(countBoards([...layersOf(parts), ...copper])?.count).toBe(3)
+  })
+})

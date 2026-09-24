@@ -3,7 +3,7 @@
  *
  * Toàn bộ file này là của DQPCB. Dùng cho badge ở khung xem và nhắc nhở ở thẻ giá.
  */
-import { copperSamplePoints, countBoards } from './outlineLoops'
+import { boardBoxes, copperSamplePoints, countBoards } from './outlineLoops'
 
 /** Một lỗ tròn (mm). */
 interface Hole {
@@ -67,6 +67,10 @@ export interface PanelInfo {
   detail: string
   /** Chỉ một phần bo lặp lại (có bo khác mẫu / xoay): `count` là số tối thiểu. */
   partial?: boolean
+  /** Số THIẾT KẾ khác nhau (bo giống hệt nhau tính là một). */
+  designs: number
+  /** Từng thiết kế: kích thước bo (mm) và số bản trên tấm. Chỉ có khi đếm được theo viền. */
+  designList?: { widthMM: number; heightMM: number; count: number }[]
 }
 
 /** Một điểm đại diện cho mỗi hình của các lớp loại `type` (mm), kể cả vùng tô (chữ in lụa). */
@@ -89,9 +93,86 @@ const samplePoints = (layers: { type: string; imageTree?: any }[], type: string)
 
 const NAME_HINT = /(^|[^a-z])(ghep|panel|pnl|array|mang|x\d+pcs)([^a-z]|$)/i
 
+/** Sai số khi so hai điểm của hai bo với nhau (mm). */
+const DESIGN_MATCH_MM = 0.15
+/** Tỉ lệ điểm khớp tối thiểu để coi hai bo là cùng một thiết kế. */
+const DESIGN_MATCH_RATIO = 0.8
+/** Hai bo lệch kích thước quá mức này (mm) thì chắc chắn khác thiết kế. */
+const DESIGN_SIZE_TOL_MM = 0.3
+
+/**
+ * Gom các bo trên tấm thành từng THIẾT KẾ.
+ *
+ * Khác với `findRepeats` (tìm một bước lặp chung cho CẢ tấm, chỉ trả lời được "có lặp
+ * không"), ở đây so từng bo với nhau: cắt lấy điểm mạch nằm trong ô bao của bo rồi dời về
+ * gốc của chính bo đó. Bộ "Bo Dem Linhgragon ESP32-S3" (24/09/2026) có 3 bo: hai bo nhỏ
+ * khớp nhau 100%, bo lớn khớp 0–5% → 3 bo, 2 thiết kế.
+ *
+ * Có thử cả xoay 90/180/270° vì panel hay xoay bo cho khít tấm. Không thử lật gương: bo lật
+ * là bo khác mặt, không phải cùng thiết kế.
+ */
+const groupDesigns = (
+  layers: (DrillLayer & { imageTree?: any })[],
+  boxes: number[][],
+): { widthMM: number; heightMM: number; count: number }[] => {
+  const all = (() => {
+    const cu = copperSamplePoints(layers)
+    return cu.length >= 20 ? cu : samplePoints(layers, 'silkscreen')
+  })()
+  const size = (b: number[]) => [b[2] - b[0], b[3] - b[1]]
+  // Lấy ĐỦ điểm để làm bảng tra, chỉ lấy thưa phía đi hỏi: lấy thưa cả hai phía thì hai bo
+  // giống hệt nhau vẫn trượt nhau (bo "DeltaX" 526 và 528 điểm — lấy cách một điểm ra hai
+  // tập lệch pha, khớp 0%).
+  const localOf = (b: number[]) =>
+    all.filter(([x, y]) => x >= b[0] && x <= b[2] && y >= b[1] && y <= b[3]).map(([x, y]) => [x - b[0], y - b[1]])
+  const turn = (pts: number[][], [w, h]: number[], q: number) =>
+    q === 1 ? pts.map(([x, y]) => [h - y, x])
+    : q === 2 ? pts.map(([x, y]) => [w - x, h - y])
+    : q === 3 ? pts.map(([x, y]) => [y, w - x])
+    : pts
+  const ratio = (a: number[][], has: (x: number, y: number) => boolean) =>
+    a.length === 0 ? 0 : a.filter(([x, y]) => has(x, y)).length / a.length
+  /**
+   * Dời theo TRỌNG TÂM chứ không theo góc ô bao: viền bo vẽ mỗi bản một kiểu (bo xoay 90°
+   * của "CHAT_BOT" lệch góc vài phần mười mm) thì neo theo góc làm lệch hết điểm — khớp
+   * tụt còn 35% dù là cùng một thiết kế.
+   */
+  const centre = (p: number[][]) =>
+    p.length ? [p.reduce((s, q) => s + q[0], 0) / p.length, p.reduce((s, q) => s + q[1], 0) / p.length] : [0, 0]
+  const alignTo = (p: number[][], target: number[]) => {
+    const c = centre(p)
+    return p.map(([x, y]) => [x - c[0] + target[0], y - c[1] + target[1]])
+  }
+
+  const groups: { box: number[]; pts: number[][]; mid: number[]; has: (x: number, y: number) => boolean; count: number }[] = []
+  for (const box of boxes) {
+    const [w, h] = size(box)
+    const pts = localOf(box)
+    const hit = groups.find((g) => {
+      const [gw, gh] = size(g.box)
+      for (const q of [0, 1, 2, 3]) {
+        const [tw, th] = q % 2 ? [h, w] : [w, h]
+        if (Math.abs(tw - gw) > DESIGN_SIZE_TOL_MM || Math.abs(th - gh) > DESIGN_SIZE_TOL_MM) continue
+        const turned = alignTo(turn(pts, [w, h], q), g.mid)
+        if (
+          ratio(thin(turned, 400), g.has) >= DESIGN_MATCH_RATIO &&
+          ratio(thin(g.pts, 400), pointSet(turned, DESIGN_MATCH_MM)) >= DESIGN_MATCH_RATIO
+        ) return true
+      }
+      // Bo không có điểm mạch nào (lớp đồng thiếu): chỉ so kích thước.
+      return pts.length === 0 && g.pts.length === 0 && Math.abs(w - gw) <= DESIGN_SIZE_TOL_MM && Math.abs(h - gh) <= DESIGN_SIZE_TOL_MM
+    })
+    if (hit) hit.count++
+    else groups.push({ box, pts, mid: centre(pts), has: pointSet(pts, DESIGN_MATCH_MM), count: 1 })
+  }
+  return groups.map((g) => {
+    const [w, h] = size(g.box)
+    return { widthMM: +w.toFixed(2), heightMM: +h.toFixed(2), count: g.count }
+  })
+}
+
 /** Bảng băm điểm (mm) theo ô 0.1 mm, dò cả 8 ô quanh để chịu sai số làm tròn. */
-const pointSet = (pts: number[][]) => {
-  const Q = 0.1
+const pointSet = (pts: number[][], Q = 0.1) => {
   const k = (x: number, y: number) => `${Math.round(x / Q)},${Math.round(y / Q)}`
   const st = new Set(pts.map(([x, y]) => k(x, y)))
   return (x: number, y: number) => {
@@ -210,11 +291,23 @@ const detectPanelUncached = (
 ): PanelInfo => {
   const byOutline = countBoards(layers)
   if (byOutline && byOutline.count >= 2) {
+    // Nhiều bo rời KHÔNG chắc là panel bo giống nhau: bộ "Bo Dem Linhgragon ESP32-S3"
+    // (24/09/2026) có 1 bo lớn + 2 bo nhỏ giống hệt nhau — 3 bo nhưng 2 THIẾT KẾ, mỗi thiết
+    // kế một giá, không nhân theo set được.
+    const designList = groupDesigns(layers, boardBoxes(layers) ?? [])
+    const mm = (n: number) => n.toFixed(1).replace(/\.0$/, '')
+    const shown = designList.slice(0, 3).map((d) => `${d.count} × ${mm(d.widthMM)} × ${mm(d.heightMM)} mm`)
+    const sizes = shown.join(', ') + (designList.length > shown.length ? `, và ${designList.length - shown.length} thiết kế nữa` : '')
     return {
       verdict: 'yes',
       ...byOutline,
       method: 'outline',
-      detail: `viền có ${byOutline.count} bo tách rời`,
+      designs: designList.length || 1,
+      designList,
+      detail:
+        designList.length > 1
+          ? `viền có ${byOutline.count} bo tách rời, ${designList.length} thiết kế khác nhau (${sizes})`
+          : `viền có ${byOutline.count} bo tách rời`,
     }
   }
 
@@ -239,6 +332,7 @@ const detectPanelUncached = (
       return {
         verdict: pct >= 90 ? 'yes' : 'maybe',
         count: rep.cols * rep.rows,
+        designs: 1,
         cols: rep.cols,
         rows: rep.rows,
         method: 'repeat',
@@ -252,7 +346,7 @@ const detectPanelUncached = (
 
   const hinted = (opts.names ?? []).find((n) => NAME_HINT.test((n.split(/[\\/]/).pop() ?? n).replace(/[_\-.]+/g, ' ')))
   if (hinted) {
-    return { verdict: 'maybe', count: 1, cols: 1, rows: 1, method: 'name', detail: `tên file "${hinted.split(/[\\/]/).pop()}" có chữ ghép/panel` }
+    return { verdict: 'maybe', count: 1, cols: 1, rows: 1, designs: 1, method: 'name', detail: `tên file "${hinted.split(/[\\/]/).pop()}" có chữ ghép/panel` }
   }
-  return { verdict: 'no', count: 1, cols: 1, rows: 1, method: 'none', detail: 'không thấy viền rời hay bo lặp lại' }
+  return { verdict: 'no', count: 1, cols: 1, rows: 1, designs: 1, method: 'none', detail: 'không thấy viền rời hay bo lặp lại' }
 }

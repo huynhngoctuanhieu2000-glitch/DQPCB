@@ -29,6 +29,14 @@ export const OUTLINE_CUTOUT_MAX_RATIO = 0.05
 const OPEN_GAP_MM = 0.5
 /** Số điểm đồng tối thiểu bên trong một vòng để coi vòng đó là bo con (có mạch). */
 const COPPER_POINTS_FOR_BODY = 3
+/** Nét mảnh hơn mức này (mm) coi như "vẽ cho người đọc" — chữ chú thích, không phải nét gia công. */
+const ANNOTATION_PEN_MM = 0.02
+/** Thân bo phải được vẽ bằng nét dày ít nhất mức này (mm) thì mới đem luật nét ra dùng. */
+const REAL_PEN_MM = 0.05
+/** Vòng to hơn mức này (mm²) thì không coi là chữ, dù nét mảnh và lõm. */
+const ANNOTATION_MAX_MM2 = 10
+/** Vòng hẹp hơn mức này (mm) thì không phay được — là nét chữ, không phải lỗ. */
+const ANNOTATION_THIN_MM = 0.5
 
 /** Diện tích hình chữ nhật bao của một vòng outline, theo đơn vị của file. */
 export const loopArea = (part: any): number => {
@@ -44,6 +52,40 @@ export const loopArea = (part: any): number => {
   }
   if (!Number.isFinite(minX)) return 0
   return (maxX - minX) * (maxY - minY)
+}
+
+/**
+ * Bề rộng nét gốc (mm) đã vẽ ra vòng này — `stitchOutline` gắn `_w` lên từng đoạn. Vòng ghép
+ * từ vùng tô (G36) không có nét nên trả 0.
+ */
+export const loopPen = (part: any, scale = 1): number => {
+  let w = 0
+  for (const child of part?.children ?? []) {
+    for (const seg of child?.segments ?? []) {
+      if (typeof seg?._w === 'number') w = Math.max(w, seg._w * scale)
+    }
+  }
+  return w
+}
+
+/**
+ * Vòng LỒI (lỗ tròn, rãnh thuôn, chữ nhật) hay LÕM (nét chữ gấp khúc, vòng chữ "o" có khe
+ * nối trong-ngoài)? Dùng để tách chữ chú thích khỏi lỗ phay thật — cả hai đều có thể vẽ bằng
+ * khẩu độ 0.
+ */
+const isConvexLoop = (poly: number[][]): boolean => {
+  let sign = 0
+  const n = poly.length
+  if (n < 4) return true
+  for (let i = 0; i < n; i++) {
+    const a = poly[i], b = poly[(i + 1) % n], c = poly[(i + 2) % n]
+    const cross = (b[0] - a[0]) * (c[1] - b[1]) - (b[1] - a[1]) * (c[0] - b[0])
+    if (Math.abs(cross) < 1e-9) continue
+    const s = cross > 0 ? 1 : -1
+    if (sign === 0) sign = s
+    else if (s !== sign) return false
+  }
+  return true
 }
 
 /** Đỉnh của vòng (điểm đầu mỗi đoạn), đã nhân `scale` để về mm. */
@@ -85,7 +127,12 @@ export const copperSamplePoints = (layers: { type: string; imageTree?: any }[]):
       const s = c?.shape
       let p: number[] | undefined
       if (s && Number.isFinite(s.cx) && Number.isFinite(s.cy)) p = [s.cx, s.cy]
-      else if (s && Number.isFinite(s.x) && Number.isFinite(s.y)) p = [s.x, s.y]
+      // Pad chữ nhật: lấy TÂM, không lấy góc. Góc thì khi bo bị xoay 90° điểm mẫu nhảy sang
+      // vị trí khác (lệch đúng một cạnh pad), nên hai bản của cùng một thiết kế không khớp
+      // nhau — bo xoay của "CHAT_BOT" chỉ khớp 35% (24/09/2026).
+      else if (s && Number.isFinite(s.x) && Number.isFinite(s.y)) {
+        p = [s.x + (Number.isFinite(s.xSize) ? s.xSize / 2 : 0), s.y + (Number.isFinite(s.ySize) ? s.ySize / 2 : 0)]
+      }
       else if (s?.points?.[0]) p = s.points[0]
       else if (c?.segments?.[0]?.start) p = c.segments[0].start
       if (p) out.push([p[0] * scale, p[1] * scale])
@@ -169,6 +216,16 @@ export const splitOutlineLoops = (
     return false
   }
 
+  const hasCopperInside = (i: number) => {
+    const poly = polys[i]
+    if (poly.length < 3) return false
+    let inside = 0
+    for (const p of copper) {
+      if (pointInPolygon(p, poly) && ++inside >= COPPER_POINTS_FOR_BODY) return true
+    }
+    return false
+  }
+
   const isCutout = (i: number): boolean => {
     if (straddles(i)) return true
     const small = areas[i] / biggest < OUTLINE_CUTOUT_MAX_RATIO
@@ -177,14 +234,13 @@ export const splitOutlineLoops = (
     // (lỗ mouse-bite ở tab giữa các bo không nằm trong bo nào — hồi quy "Dual USB
     // Switch-Panel" mất hơn 30 lỗ khi coi mọi vòng lẻ là thân bo).
     if (host === -1) return small && !railLike(i)
+    // Bên trong có mạch thì đó là MIẾNG VẬT LIỆU, không phải lỗ — kể cả khi bé so với
+    // vòng lớn nhất. Trước đây phép thử này chỉ chạy cho vòng lớn, nên tấm FRIWO
+    // "55807.930-90FE" (24/09/2026) bị khoét thủng cả 30 nửa bo: mỗi nửa chỉ bằng 2.2%
+    // tấm nên trúng nhánh "nhỏ = lỗ" ngay trước khi kịp xét đồng.
+    if (hasCopperInside(i)) return false
     if (small) return true
-    const poly = polys[i]
-    if (poly.length < 3) return false
-    let inside = 0
-    for (const p of copper) {
-      if (pointInPolygon(p, poly) && ++inside >= COPPER_POINTS_FOR_BODY) return false
-    }
-    return true
+    return polys[i].length >= 3
   }
 
   // Nét HỞ nằm trong một vòng khác là đường phay/rãnh cắt vẽ bằng một nét (bo
@@ -216,6 +272,34 @@ export const splitOutlineLoops = (
       if (straddles(i)) notches.push(part)
     } else body.push(part)
   })
+
+  // Chữ chú thích vẽ ngay trong lớp viền — Pulsonix ghi "Non-plated holes", "V-Cut" kèm nét
+  // chỉ dẫn (FRIWO P84390, 24/09/2026). Mỗi chữ cái là một vòng kín nằm trong thân bo nên bị
+  // khoét thủng bo ở 2 Mặt / 2D / 3D: 104 trong 117 "lỗ" của bộ đó là chữ.
+  //
+  // Ba dấu hiệu cùng lúc, thiếu một cái là không dám đụng vào:
+  //  1. BỀ RỘNG NÉT gần như không có (Pulsonix vẽ chữ bằng C,0.00001 — 0.00025 mm), trong khi
+  //     chính thân bo được vẽ bằng nét thật 0.15–0.3 mm. File nào vẽ cả viền bằng nét 0 thì
+  //     luật này không chạy.
+  //  2. BÉ (dưới ANNOTATION_MAX_MM2).
+  //  3. HÌNH LÕM, hoặc hẹp tới mức không phay được. Lỗ bắt ốc cũng hay vẽ bằng nét 0: bo
+  //     "chery-3x6-v3" có 8 lỗ tròn 2.4 mm (5.8 mm²) — tròn nên LỒI, giữ nguyên là lỗ; còn
+  //     nét chữ thì gấp khúc, hoặc chỉ là vạch 0.2 × 2 mm.
+  const bodyPen = Math.max(0, ...body.map((p) => loopPen(p, scale)))
+  if (bodyPen >= REAL_PEN_MM) {
+    for (let k = cutouts.length - 1; k >= 0; k--) {
+      const part = cutouts[k]
+      if (notches.includes(part)) continue
+      if (loopPen(part, scale) >= ANNOTATION_PEN_MM) continue
+      if (loopArea(part) * scale * scale >= ANNOTATION_MAX_MM2) continue
+      const poly = loopPolygon(part, scale)
+      const box = bbox(poly)
+      const thin = Math.min(box[2] - box[0], box[3] - box[1]) < ANNOTATION_THIN_MM
+      if (!thin && isConvexLoop(poly)) continue
+      cutouts.splice(k, 1)
+      lines.push(part)
+    }
+  }
   return body.length > 0 ? { body, cutouts, lines, notches } : { body: parts, cutouts: [], lines: [], notches: [] }
 }
 
@@ -261,20 +345,36 @@ const overlapRatio = (a: number[], b: number[]) => {
  * Trả thêm số cột / số hàng (gom tâm theo trục) để điền sẵn ô "số bo mỗi cạnh".
  * CHAT_BOT_1 (Nguyen Van Quang, 22/09/2026): 4 bo ghép mà vẫn đi bảng tra giá bo lẻ.
  */
-export const countBoards = (
-  layers: { type: string; imageTree?: any }[],
-): { count: number; cols: number; rows: number } | null => {
+export const boardBoxes = (layers: { type: string; imageTree?: any }[]): number[][] | null => {
   const ol = layers.find((l) => l.type === 'outline' && l.imageTree?.parts?.length)
   if (!ol) return null
   const scale = ol.imageTree.units === 'in' ? 25.4 : 1
   const parts = ol.imageTree.parts
-  const body = parts.length > 1 ? splitOutlineLoops(parts, { scale, copperPoints: copperSamplePoints(layers) }).body : parts
-  const boxes = body.map((p: any) => bbox(loopPolygon(p, scale))).filter((b: number[]) => Number.isFinite(b[0]))
-  if (boxes.length === 0) return null
-  const area = (b: number[]) => (b[2] - b[0]) * (b[3] - b[1])
-  const biggest = Math.max(...boxes.map(area))
-  let boards = boxes.filter((b: number[]) => Math.min(b[2] - b[0], b[3] - b[1]) >= 8 && area(b) >= biggest * 0.1)
-  const centre = (b: number[]) => [(b[0] + b[2]) / 2, (b[1] + b[3]) / 2]
+  const copper = copperSamplePoints(layers)
+  const body = parts.length > 1 ? splitOutlineLoops(parts, { scale, copperPoints: copper }).body : parts
+  const polys = body.map((p: any) => loopPolygon(p, scale))
+  const pairs = body
+    .map((_: any, i: number) => ({ poly: polys[i], box: bbox(polys[i]) }))
+    .filter((e: any) => Number.isFinite(e.box[0]) && Math.min(e.box[2] - e.box[0], e.box[3] - e.box[1]) >= 8)
+  if (pairs.length === 0) return null
+
+  // Bo thật thì bên trong có mạch; khung, rail và tai bo thì không. Trước đây lọc bằng
+  // "nhỏ hơn 10% vòng lớn nhất thì bỏ" — bộ "Bo Dem Linhgragon ESP32-S3" (24/09/2026) có
+  // hai bo con 53.9 × 21.6 mm, mỗi cái bằng 9.5% bo lớn, trượt đúng nửa bước nên app đọc
+  // thành MỘT bo. Không bo nào có mạch (thiếu lớp đồng) thì giữ nguyên như cũ.
+  const withCopper = pairs.filter((e: any) => {
+    let n = 0
+    for (const p of copper) if (pointInPolygon(p, e.poly) && ++n >= COPPER_POINTS_FOR_BODY) return true
+    return false
+  })
+  let boxes = (withCopper.length > 0 ? withCopper : pairs).map((e: any) => e.box)
+
+  // Vòng dính liền cạnh nhau KHÔNG gộp lại: panel V-cut là các bo chạm nhau đúng kiểu đó.
+  // Tấm FRIWO "55807.930-90FE" có 30 vòng xếp thành 15 cặp chạm nhau — đo lại thì hai nửa
+  // của một cặp khớp nhau 100% (cùng chiều), tức là hai BO giống nhau, không phải hai nửa
+  // của một bo: tấm đó 30 bo (5 × 6). Bản đọc theo "bo lặp lại" trước đây ra 15 bo là nhầm
+  // bước lặp (24/09/2026).
+
   // Khung / rail bao quanh bo thì không phải bo, kể cả khi chỉ bao MỘT bo: FRIWO
   // "P84241-S02" (23/09/2026) là một bo 160 × 174 mm nằm trong khung 170 × 199 mm — app đếm
   // 2 bo và nhắc "file ghép sẵn". Chỉ bỏ khi vẫn còn bo khác, để bo đơn không bị bỏ sạch.
@@ -284,9 +384,17 @@ export const countBoards = (
     inner !== outer &&
     inner[0] >= outer[0] - 1 && inner[1] >= outer[1] - 1 &&
     inner[2] <= outer[2] + 1 && inner[3] <= outer[3] + 1
-  const framed = boards.filter((b: number[]) => !boards.some((o: number[]) => wraps(b, o)))
-  if (framed.length > 0) boards = framed
-  if (boards.length === 0) return null
+  const framed = boxes.filter((b: number[]) => !boxes.some((o: number[]) => wraps(b, o)))
+  if (framed.length > 0) boxes = framed
+  return boxes
+}
+
+export const countBoards = (
+  layers: { type: string; imageTree?: any }[],
+): { count: number; cols: number; rows: number } | null => {
+  const boards = boardBoxes(layers)
+  if (!boards || boards.length === 0) return null
+  const centre = (b: number[]) => [(b[0] + b[2]) / 2, (b[1] + b[3]) / 2]
 
   // Gom tâm theo từng trục: hai tâm cách nhau dưới nửa bề rộng bo là cùng cột/hàng.
   const groups = (vals: number[], tol: number) => {
