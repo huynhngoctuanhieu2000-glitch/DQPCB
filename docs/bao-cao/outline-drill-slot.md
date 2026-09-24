@@ -38,8 +38,10 @@ nằm trong `src/lib/gerber-reader/` (`geometry.ts`, `outlineLoops.ts`, `identif
 | **Khấc mép** | Vòng nhỏ (≤ 10% vòng bị vắt qua) có đỉnh nằm hẳn trong và đỉnh nằm hẳn ngoài (cách mép > 0.2 mm) một vòng lớn hơn → **lỗ khoét**, không tính vào kích thước *(22/09, `5a8b10f`, Dao Quoc Thai: 70.01 → 66.28 mm)* |
 | **"Nằm trong"** | Tâm ô bao nằm trong vòng lớn hơn **và** ≥ 50% ô bao chồng lên (khấc lấn mép vài phần trăm mm vẫn tính là trong) |
 | Không nằm trong vòng nào | **Thân bo** nếu to (≥ 5% vòng lớn nhất) hoặc dài như rail (≥ nửa một cạnh của cả tấm); vòng nhỏ khác (lỗ mouse-bite giữa các bo) → **lỗ khoét** |
-| Nằm trong, < 5% vòng lớn nhất | **Lỗ khoét** |
-| Nằm trong, ≥ 5% | Có ≥ 3 pad/đường mạch bên trong → **bo con**; không có → **lỗ khoét** (rãnh LED "3W NHUA XANH" 9.1%). Không đếm mảng phủ (CAM350 phủ đồng tràn qua chỗ phay) |
+| Nằm trong, có ≥ 3 pad/đường mạch bên trong | **Bo con** — dù bé cỡ nào. Không đếm mảng phủ (CAM350 phủ đồng tràn qua chỗ phay). Trước 24/09 phép thử này chỉ chạy cho vòng ≥ 5%, nên 30 nửa bo của tấm FRIWO "55807.930" (mỗi nửa 2.2% tấm) bị khoét thủng ở 2 Mặt / 2D / 3D *(24/09, `a6a79fc`)* |
+| Nằm trong, không có mạch, < 5% vòng lớn nhất | **Lỗ khoét** |
+| Nằm trong, không có mạch, ≥ 5% | **Lỗ khoét** (rãnh LED "3W NHUA XANH" 9.1%) |
+| **Chữ chú thích** | Lỗ khoét vẽ bằng nét gần như 0 (Pulsonix: `C,0.00001`) trong khi thân bo vẽ bằng nét thật ≥ 0.05 mm, nhỏ hơn 10 mm², và **lõm** hoặc hẹp dưới 0.5 mm → chỉ **vẽ nét**, không khoét. Lỗ bắt ốc cũng hay vẽ nét 0 nhưng **lồi** nên vẫn thủng (bo "chery-3x6-v3": 8 lỗ tròn 2.4 mm) *(24/09, `a6a79fc`, FRIWO P84390 "Non-plated holes": 117 lỗ → 9)* |
 
 ### A4. Vẽ
 
@@ -117,10 +119,26 @@ Lưu ý:
 
 | Thứ tự | Dấu hiệu | Kết luận |
 |---|---|---|
-| 1 | **Viền rời**: lớp viền có ≥ 2 bo tách nhau (bỏ rail, mảnh vụn, khung ngoài) | Có |
+| 1 | **Viền rời**: lớp viền có ≥ 2 bo tách nhau. Bỏ vòng cạnh ngắn < 8 mm, vòng **không có mạch bên trong** (rail, tai bo, khung) và khung bao trọn bo khác. Từ 24/09 không còn luật "bỏ vòng nhỏ hơn 10% vòng lớn nhất" — bộ "Bo Dem Linhgragon ESP32-S3" có hai bo con bằng 9.5% bo lớn, trượt nửa bước nên app đọc thành 1 bo *(`a6a79fc`)* | Có |
 | 2 | **Cả bo lặp lại** theo một bước cỡ một bo. Chấm bằng **chữ in lụa** (bo ghép lặp y hệt cả tên linh kiện; kênh giống nhau trong một bo thì tên mỗi kênh khác nhau), bo không có lụa thì bằng đồng. Bước ≥ 15% cạnh ngắn của tấm (loại hàng chân linh kiện bội 2.54 mm). Không dùng lỗ khoan (file khoan không khai định dạng thì toạ độ lỗ là đoán) | Khớp ≥ 90% → Có · 60–90% → Có thể |
 | 3 | Tên file chứa "ghep", "panel", "array"… | Có thể |
 | — | Không có dấu hiệu nào | Không |
+
+### E1. Mấy THIẾT KẾ trên một tấm (24/09, `a6a79fc`)
+
+Nhiều bo rời không đồng nghĩa "panel bo giống nhau": bộ "Bo Dem Linhgragon ESP32-S3" có
+1 bo lớn + 2 bo nhỏ giống hệt nhau → **3 bo, 2 thiết kế**, mỗi thiết kế một giá.
+
+`findRepeats` không trả lời được câu đó (nó tìm MỘT bước lặp cho cả tấm), nên `groupDesigns`
+so từng bo với nhau:
+
+1. Cắt lấy điểm mạch nằm trong ô bao từng bo, dời về **trọng tâm** của chính bo đó (neo theo
+   góc ô bao thì bo xoay lệch vài phần mười mm là trượt hết — "CHAT_BOT" tụt còn 35%).
+2. Ô bao lệch ≤ 0.3 mm (thử cả xoay 90/180/270°) **và** khớp ≥ 80% hai chiều → cùng thiết kế.
+3. Điểm mẫu của pad chữ nhật lấy **tâm**, không lấy góc — lấy góc thì bo xoay 90° có điểm
+   mẫu nhảy sang vị trí khác.
+
+Badge ghi `Ghép: Có — 3 bo · 2 thiết kế`; thẻ giá nhắc tách báo giá thay vì gợi ý nhân số set.
 
 - Số bo theo mỗi hướng = độ trải của các điểm khớp / bước + 1, không quá (bề ngang tấm / bước) + 1.
 - Hướng thứ hai tìm riêng trong các bước không song song với hướng thứ nhất (panel dài theo
