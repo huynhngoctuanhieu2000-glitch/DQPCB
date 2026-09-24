@@ -10,9 +10,11 @@ import type { Quotation } from './QuotationModel'
 import { grandTotal, subtotal, vatAmount } from './QuotationModel'
 import { brandingFor } from './branding'
 import { ZoomBox } from '../../ui/ZoomBox'
+import { COL_PX, SHEET_W } from './sheetLayout'
 
 /**
- * Bề rộng 9 cột, coi như px trên bảng rộng 1062px — đúng khổ in (xem PREVIEW_W).
+ * Bề rộng 9 cột lấy từ `sheetLayout.ts` — file Excel dùng đúng bộ số đó, đổi từ px
+ * sang ký tự / point, nên xem trước thấy sao thì in từ Excel ra vậy.
  *
  * Theo tỉ lệ của form mẫu (bản Excel gửi khách thật, vd báo giá FRIWO 22/09/2026):
  * TÊN FILE và GHI CHÚ chiếm phần lớn bề ngang, gần bằng nhau — tên bo và ghi chú là
@@ -23,8 +25,8 @@ import { ZoomBox } from '../../ui/ZoomBox'
  * Khối cột D–I (KÍCH THƯỚC → GHI CHÚ) còn là ô tên công ty ở đầu trang (colSpan 6),
  * phải đủ cho dòng tên đỏ 18px không xuống hàng.
  */
-const COL_WIDTHS = [38, 298, 60, 93, 72, 36, 89, 72, 304]
-const TOTAL_W = COL_WIDTHS.reduce((a, b) => a + b, 0)
+const COL_WIDTHS = COL_PX
+const TOTAL_W = SHEET_W
 
 /**
  * Bề rộng dựng bản xem trước (px). Bằng đúng bề ngang in được của khổ A4 ngang, lề
