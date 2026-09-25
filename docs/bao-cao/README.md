@@ -16,6 +16,7 @@ Mỗi báo cáo gắn với bộ file thật trong `D:\JobDatMach` để kiểm 
 | [2026-09-24-khao-sat-friwo-2-bo-con-lai.md](2026-09-24-khao-sat-friwo-2-bo-con-lai.md) | Khảo sát + đã sửa (`a6a79fc`): 2 bộ FRIWO còn lại — vòng nhỏ trong thân bo (nửa bo V-cut, chữ chú thích trong lớp viền) bị coi là lỗ phay nên khoét thủng ở 2 Mặt/2D/3D |
 | [2026-09-24-khao-sat-vang-app-va-bo-dem.md](2026-09-24-khao-sat-vang-app-va-bo-dem.md) | Khảo sát + đã sửa (`a6a79fc`): điện thoại văng khi mở file nặng (144 KB → 14,3 triệu đỉnh, 529 MB) và bộ "Bo Dem" có 3 bo rời nhưng không báo file ghép (luật bỏ vòng nhỏ hơn 10%) |
 | [2026-09-24-bao-gia-excel-in-khac-pdf.md](2026-09-24-bao-gia-excel-in-khac-pdf.md) | Đã sửa (`a6fbb71`): file Excel tải về in ra khác PDF xuất thẳng — cột rộng gấp 1.8 lần, cỡ chữ ghi bằng point nên in co còn nửa trang; mã QR chồng nhau |
+| [2026-09-25-chu-in-lua-rong-ruot.md](2026-09-25-chu-in-lua-rong-ruot.md) | Khảo sát + đã sửa: chữ in lụa chỉ còn viền rỗng (bo nhỏ nhìn như mất chữ) — lớp in lụa chuyển sang vẽ bằng lưới nhanh; và lưới nhanh bị cull mất mặt sau |
 | [dinh-dang-file.md](dinh-dang-file.md) | App đang đọc được những định dạng nào, nhận diện lớp theo thứ tự nào |
 | [outline-drill-slot.md](outline-drill-slot.md) | Quan trọng: cách đọc viền bo (outline), lỗ khoan (drill) và lỗ slot/rãnh |
 

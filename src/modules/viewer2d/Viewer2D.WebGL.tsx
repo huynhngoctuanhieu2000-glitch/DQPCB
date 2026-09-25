@@ -143,10 +143,24 @@ const shapeCount = (raw: any) => raw?.imageTree?.children?.length ?? 0
 /** Lớp có hình đảo cực (vùng khoét trong mảng đồng): đường nhanh bỏ qua chúng nên vẽ sai. */
 const hasClearPolarity = (raw: any) =>
   (raw?.imageTree?.children ?? []).some((c: any) => c?.polarity === 'clear')
+/** Lớp quá nhiều hình — chỉ dùng để ghi lên badge, xem `useFastLayer` cho quyết định vẽ. */
 export const isHeavyLayer = (raw: any) => {
   const n = shapeCount(raw)
   if (n > HUGE_SHAPES) return true
   return n > HEAVY_SHAPES && !hasClearPolarity(raw)
+}
+/**
+ * Lớp nào vẽ bằng lưới nhanh (fastLayer) thay cho `renderThree`.
+ *
+ * Lớp IN LỤA thì luôn luôn: `renderThree` vẽ vùng tô thành VIỀN RỖNG, nên nét chữ chỉ còn
+ * cái khung — bo nhỏ "mach-remote-esc" (15 × 25 mm, 25/09/2026) nhìn như mất chữ. Dựng lại
+ * đúng lớp đó từ file bằng cách tô đặc thì ra chữ đặc, khớp với lưới nhanh.
+ */
+const useFastLayer = (raw: any) => {
+  const n = shapeCount(raw)
+  if (n > HUGE_SHAPES) return true
+  if (hasClearPolarity(raw)) return false
+  return raw?.type === 'silkscreen' || n > HEAVY_SHAPES
 }
 /** layers của bo → hình đã dựng của bo đó. Thứ tự trong Map = thứ tự dùng (cuối = mới nhất). */
 const boardCaches = new Map<object, Map<string, BuildEntry>>()
@@ -327,7 +341,7 @@ const schedulePrebuild = () => {
         copperPoints ??= copperSamplePoints(b.layers)
         let made: BuildEntry | null = null
         try {
-          const fast = isHeavyLayer(raw) ? buildFastLayer(raw.imageTree, spec.color) : null
+          const fast = useFastLayer(raw) ? buildFastLayer(raw.imageTree, spec.color) : null
           made = fast ? { obj: fast, cutouts: [] } : buildLayerObject(raw.imageTree, { ...spec, holeColor: HOLE, copperPoints })
         } catch (e) {
           // Dựng hỏng (thường là hết bộ nhớ) thì vẫn ghi vào cache: không thử lại mỗi lần.
@@ -640,7 +654,7 @@ export const Viewer2DWebGL: React.FC<Viewer2DWebGLProps> = ({
           try {
             // Lớp rất nhiều hình dựng bằng đường NHANH (xem fastLayer.ts): renderThree ra
             // 180 triệu đỉnh cho lớp in lụa 150.220 vùng và làm trình duyệt hết bộ nhớ.
-            const fast = isHeavyLayer(raw) ? buildFastLayer(plotted, spec.color) : null
+            const fast = useFastLayer(raw) ? buildFastLayer(plotted, spec.color) : null
             made = fast ? { obj: fast, cutouts: [] } : buildLayerObject(plotted, { ...spec, holeColor: HOLE, copperPoints: copperPoints() })
           } catch (e) {
             // Hết bộ nhớ khi dựng lớp rất nặng: ghi cache rỗng để không dựng lại mỗi lần

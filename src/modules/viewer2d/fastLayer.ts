@@ -36,7 +36,7 @@ type ThreeClasses = {
   Attribute: new (array: Float32Array, itemSize: number) => any
   Mesh: new (geometry: any, material: any) => any
   Group: new () => any
-  Material: new (opts: { color: number }) => any
+  Material: new (opts: { color: number; side?: number }) => any
 }
 let classes: ThreeClasses | null = null
 
@@ -213,6 +213,9 @@ export const buildFastLayer = (tree: any, color: number): GerberObject3D | null 
   // trong Scene có groupOrder 0 nên luôn bị vẽ trước — ở Real/3D thì lớp mask và đồng phủ
   // đè lên, in lụa coi như biến mất (23/09). renderThree cũng trả về Group.
   const group = new cls.Group()
-  group.add(new cls.Mesh(geometry, new cls.Material({ color })))
+  // side: 2 = DoubleSide. Vùng tô trong file có thể vẽ theo chiều kim đồng hồ — mặc định
+  // three chỉ vẽ mặt trước nên nửa số hình biến mất: lớp lụa EasyEDA của bo "mach-remote-esc"
+  // (25/09/2026) chỉ còn vài nét (293 vùng, 5.382 đỉnh dựng ra nhưng gần như không thấy gì).
+  group.add(new cls.Mesh(geometry, new cls.Material({ color, side: 2 })))
   return group as GerberObject3D
 }
