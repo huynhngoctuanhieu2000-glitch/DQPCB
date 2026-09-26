@@ -416,9 +416,15 @@ const stripDiacritics = (s: string): string =>
     .replace(/đ/g, 'd')
     .replace(/Đ/g, 'D')
 
-/** Tên file gợi ý: "Bao gia <khach> <ngay>.xlsx", không dấu, đã bỏ ký tự cấm của Windows. */
+/**
+ * Tên file gợi ý: "Bao gia <khach> <ngay>.xlsx", không dấu, đã bỏ ký tự cấm của Windows.
+ *
+ * Báo giá công ty (có VAT) thêm chữ VAT ngay sau tên khách — "Bao gia Cong ty Viko VAT
+ * 26_09_2026": một khách có thể nhận cả bản lẻ lẫn bản VAT, nhìn tên file là biết bản nào.
+ */
 export const suggestedFileName = (q: Quotation): string => {
   const who = stripDiacritics(q.customer.name.trim() || 'khach hang')
-  const safe = `Bao gia ${who} ${q.date.replace(/\//g, '_')}`
+  const vat = q.hasVat ? ' VAT' : ''
+  const safe = `Bao gia ${who}${vat} ${q.date.replace(/\//g, '_')}`
   return `${safe.replace(/[\\:*?"<>|/]/g, '-')}.xlsx`
 }
