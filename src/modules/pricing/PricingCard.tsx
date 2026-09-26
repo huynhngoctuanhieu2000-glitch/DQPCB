@@ -235,6 +235,19 @@ export const PricingCard: React.FC<{
     }
   }
 
+  // App đọc lại bo (chọn tay loại lớp ở CAM) thì SỐ LỚP đổi mà id bo giữ nguyên, nên khối
+  // đổi bo ở trên không chạy: thẻ giá cứ ôm số lớp của lần đọc đầu. Bo thiếu một lớp đồng
+  // đọc ra 1 lớp, gán tay xong khung xem đã hiện 2 lớp mà giá vẫn tính như bo 1 lớp — mà bo
+  // 1 lớp thì không nằm trong bảng giá nhà máy nên nút "Bảng tra" khoá luôn (26/09/2026).
+  // Người lập đã tự sửa thông số thì không đạp lên.
+  // Lượt render đang đổi bo thì bỏ qua: `specTouched` và `spec` của bo mới mới đang được
+  // đặt ở khối trên, chạy chen vào đây sẽ đạp lên thông số đã nhập tay của bo vừa mở lại.
+  const [seenLayers, setSeenLayers] = useState(board.layerCount)
+  if (board.activeBoardId === seenBoardId && board.isLoaded && board.layerCount !== seenLayers) {
+    setSeenLayers(board.layerCount)
+    if (!specTouched) setSpec(defaultSpec(board.layerCount))
+  }
+
   // Số lớp chọn tay báo lên model, để nhãn ở 2 Mặt và ảnh copy ghi đúng số lớp sẽ đặt.
   // Trùng số lớp Gerber thì coi như không sửa.
   const layersOverride = specTouched && spec.layers !== board.layerCount ? spec.layers : null
