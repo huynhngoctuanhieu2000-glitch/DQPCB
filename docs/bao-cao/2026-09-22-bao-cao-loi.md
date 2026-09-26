@@ -28,6 +28,7 @@ Tóm tắt:
 | 19 | 2D / 3D mất lõi bo: vùng tô trong lớp viền làm khung bo bị gán sai kiểu | Anh Nhat — Gerber Anh Nhat (+ 2 bộ) | Đã sửa · `dbbea67` |
 | 20 | Mất rãnh của file khoan chỉ có rãnh; khấc mép tính là thân bo (bo rộng thêm); nét viền dày | Dao Quoc Thai 5pcs (+ Ghep, Gateway, Thu Van, 5 bộ đổi kích thước) | Đã sửa · `5a8b10f` |
 | 21 | Lớp in lụa 150k hình treo app 3 phút và lỗi hết bộ nhớ; bo một mặt ghi 2 lớp; khung bao bo tính là bo; chữ trong lớp viền cộng vào kích thước | FRIWO 23/09 — 55807.930, P84241-S02, P84390-S02 | Đã sửa · `7b90b45`, `e52458f` |
+| 22 | Gán tay loại lớp xong, khung xem đã ra 2 lớp mà thẻ giá vẫn tính như bo 1 lớp — nút "Bảng tra" khoá luôn | mọi bộ app đọc thiếu một lớp đồng | Đã sửa · `1253d04` |
 
 ---
 
@@ -410,6 +411,23 @@ tam giác chéo sai; Rosario: rãnh móc câu nhất quán là lỗ).
   điện thoại 375 / 360 và khung 1366 sạch.
 - **Còn lại:** lụa vẽ ở chế độ nhẹ là hình phẳng, không có bề dày như lớp thường — chỉ để
   xem, không dùng để đo.
+
+## 22. Thẻ giá không bám theo số lớp gán tay (26/09, `1253d04`)
+
+- **Hiện tượng:** bộ file app đọc thiếu một lớp đồng → bo ra **1 lớp**. Người lập gán tay
+  loại lớp ở CAM, khung xem đọc lại đúng **2 lớp**, nhưng thẻ giá vẫn giữ số lớp của lần
+  đọc đầu. Bo dưới 10 × 10 cm mà tính là 1 lớp thì không nằm trong bảng giá nhà máy, nên
+  nút **Bảng tra** khoá cứng, không gạt qua lại được.
+- **Nguyên nhân:** `PricingCard` chỉ lấy số lớp khi **đổi bo** (`board.activeBoardId` đổi).
+  Gán tay loại lớp thì app đọc lại CÙNG một bo — id giữ nguyên, số lớp đổi — nên khối đó
+  không chạy.
+- **Sửa:** theo dõi thêm `board.layerCount`; số lớp đổi mà người lập chưa tự sửa thông số
+  thì lấy lại thông số mặc định theo số lớp mới. Bỏ qua đúng lượt render đang đổi bo, kẻo
+  đạp lên thông số đã nhập tay của bo vừa mở lại.
+- **Kiểm:** test mới `test/pricing-card-layers.test.tsx` (bỏ bản sửa ra là test đỏ). Thử
+  trên app với bộ "mach-remote-esc": gán Bot Copper thành lớp tài liệu → thẻ giá về 1 lớp,
+  nút Bảng tra khoá kèm lý do; gán trả lại → về 2 lớp, nút mở lại. Gạt Bảng tra ↔ Công thức
+  qua lại bình thường.
 
 ## Tính năng mới (22/09): nhận biết file ghép, mũi khoan nhỏ nhất — `6249b00`
 
