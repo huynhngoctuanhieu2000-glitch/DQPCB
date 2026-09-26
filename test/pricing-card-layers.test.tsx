@@ -49,16 +49,22 @@ const tableBtn = () => screen.getByRole('button', { name: 'Bảng tra' }) as HTM
 afterEach(cleanup)
 
 describe('PricingCard theo số lớp', () => {
-  it('đọc lại bo ra 2 lớp thì thẻ giá đổi theo và mở khoá nút Bảng tra', () => {
+  it('đọc lại bo ra 2 lớp thì thẻ giá đổi theo; loại ngoài bảng thì khoá nút Bảng tra', () => {
     // Mở app khi chưa có bo, rồi mở bo đọc ra 1 lớp.
     const { rerender, container } = render(card(boardWith(null)))
     rerender(card(boardWith(1)))
     expect(container.textContent).toMatch(/1 lớp/)
-    expect(tableBtn().disabled).toBe(true)
+    expect(tableBtn().disabled).toBe(false)
 
     // Gán tay loại lớp → app đọc lại, vẫn là bo đó nhưng thành 2 lớp.
     rerender(card(boardWith(2)))
     expect(container.textContent).toMatch(/2 lớp/)
+    // Bảng giá nhà máy áp cho cả bo 1 lớp lẫn 2 lớp, nên nút Bảng tra bấm được ở cả hai.
     expect(tableBtn().disabled).toBe(false)
+
+    // Loại không nằm trong bảng (4 lớp) thì vẫn khoá, kèm lý do.
+    rerender(card(boardWith(4)))
+    expect(container.textContent).toMatch(/4 lớp/)
+    expect(tableBtn().disabled).toBe(true)
   })
 })

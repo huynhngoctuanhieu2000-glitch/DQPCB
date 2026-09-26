@@ -145,7 +145,7 @@ export const SettingsPanel: React.FC<{ onClose: () => void }> = ({ onClose }) =>
           {/* ── Bảng giá cố định ────────────────────────── */}
           <Section
             title="Bảng giá dưới 10×10 cm (không ghép panel)"
-            note="Giá là THÀNH TIỀN cả đơn, không phải đơn giá. Nhà máy chỉ nhận đúng các mốc số lượng này — số lượng khác app sẽ báo ngoài bảng để nhập tay. Bảng chỉ có một cột giá nên chỉ áp cho đúng một loại bo; chọn loại khác thì app tự chuyển sang công thức."
+            note="Giá là THÀNH TIỀN cả đơn, không phải đơn giá. Nhà máy chỉ nhận đúng các mốc số lượng này — số lượng khác app sẽ báo ngoài bảng để nhập tay. Bảng chỉ có một cột giá nên chỉ áp cho những loại bo tính cùng một giá — mặc định là bo 1 lớp và 2 lớp; chọn loại khác thì app tự chuyển sang công thức."
           >
             <div style={S.rowWrap}>
               <NumField
@@ -158,19 +158,29 @@ export const SettingsPanel: React.FC<{ onClose: () => void }> = ({ onClose }) =>
                 value={cfg.table.maxHeightMm}
                 onChange={(v) => edit((d) => void (d.table.maxHeightMm = v))}
               />
-              <div style={S.field}>
+              {/* Nhiều loại bo dùng CHUNG một bảng: nhà máy tính bo 1 lớp và 2 lớp dưới
+                  10 × 10 cm cùng một giá (26/09/2026). Tích được nhiều ô. */}
+              <div style={{ ...S.field, minWidth: 260 }}>
                 <span style={S.fieldLabel}>Bảng này áp cho loại bo</span>
-                <select
-                  style={S.input}
-                  value={cfg.table.coversOption}
-                  onChange={(e) => edit((d) => void (d.table.coversOption = e.target.value))}
-                >
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, padding: '4px 0' }}>
                   {cfg.options.map((o) => (
-                    <option key={o.key} value={o.key}>
+                    <label key={o.key} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <input
+                        type="checkbox"
+                        checked={cfg.table.coversOptions.includes(o.key)}
+                        onChange={(e) =>
+                          edit((d) => {
+                            const on = new Set(d.table.coversOptions)
+                            if (e.target.checked) on.add(o.key)
+                            else on.delete(o.key)
+                            d.table.coversOptions = cfg.options.map((x) => x.key).filter((k) => on.has(k))
+                          })
+                        }
+                      />
                       {o.label}
-                    </option>
+                    </label>
                   ))}
-                </select>
+                </div>
               </div>
             </div>
 

@@ -20,11 +20,14 @@ export interface PriceTier {
 
 export interface TableConfig {
   /**
-   * Phương án mà bảng giá này áp. Bảng nhà máy chỉ có một cột giá, không phân biệt
-   * loại bo — nên chọn mạ vàng hay mạch dẻo thì bảng không còn đúng nữa và phải
-   * chuyển sang công thức, kẻo báo giá bo mạ vàng bằng giá bo thường.
+   * Những phương án mà bảng giá này áp. Bảng nhà máy chỉ có một cột giá, không phân biệt
+   * loại bo — nên chọn mạ vàng hay mạch dẻo thì bảng không còn đúng nữa và phải chuyển
+   * sang công thức, kẻo báo giá bo mạ vàng bằng giá bo thường.
+   *
+   * Nhà máy tính bo 1 lớp và 2 lớp dưới 10 × 10 cm cùng một bảng (chốt 26/09/2026), nên
+   * mặc định là cả hai; sửa được trong Cài đặt → Công thức tính tiền.
    */
-  coversOption: string
+  coversOptions: string[]
   maxWidthMm: number
   maxHeightMm: number
   tiers: PriceTier[]
@@ -371,10 +374,20 @@ export function usesTable(input: ComputeInput, cfg: PricingConfig): boolean {
   return (
     !input.forceFormula &&
     !panelised &&
-    input.option === cfg.table.coversOption &&
+    tableCovers(cfg.table, input.option) &&
     fitsTable(input.boardW * 10, input.boardH * 10, cfg.table)
   )
 }
+
+/** Bảng giá nhà máy có áp cho phương án này không. */
+export const tableCovers = (table: TableConfig, option: string | null | undefined): boolean =>
+  !!option && (table.coversOptions ?? []).includes(option)
+
+/** Tên các loại bo mà bảng giá áp, để ghi ra cho người lập đọc. */
+export const tableCoverLabels = (cfg: PricingConfig): string =>
+  (cfg.table.coversOptions ?? [])
+    .map((k) => cfg.options.find((o) => o.key === k)?.label ?? k)
+    .join(', ')
 
 /** Chọn đường giá rồi tính. */
 export function computePrice(input: ComputeInput, cfg: PricingConfig): PriceResult {

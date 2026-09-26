@@ -37,6 +37,8 @@ import {
   computePrice,
   pickStencil,
   fitsTable,
+  tableCoverLabels,
+  tableCovers,
   usesTable,
   type PriceBasis,
   type PriceMode,
@@ -345,8 +347,8 @@ export const PricingCard: React.FC<{
     size && fitsTable(size.w * 10, size.h * 10, cfg.table)
       ? panelOn
         ? 'đã ghép panel'
-        : option && option !== cfg.table.coversOption
-          ? `loại "${cfg.options.find((o) => o.key === option)?.label ?? option}" không nằm trong bảng giá nhà máy (bảng chỉ có ${cfg.options.find((o) => o.key === cfg.table.coversOption)?.label ?? cfg.table.coversOption})`
+        : option && !tableCovers(cfg.table, option)
+          ? `loại "${cfg.options.find((o) => o.key === option)?.label ?? option}" không nằm trong bảng giá nhà máy (bảng có ${tableCoverLabels(cfg)})`
           : null // người lập tự gạt sang Công thức thì không cần giải thích
       : null
 
@@ -360,8 +362,8 @@ export const PricingCard: React.FC<{
       ? 'bo lớn hơn khổ bảng giá nhà máy'
       : panelOn
         ? 'đã ghép panel'
-        : option !== cfg.table.coversOption
-          ? `bảng giá nhà máy chỉ có loại ${cfg.options.find((o) => o.key === cfg.table.coversOption)?.label ?? cfg.table.coversOption}`
+        : !tableCovers(cfg.table, option)
+          ? `bảng giá nhà máy chỉ có loại ${tableCoverLabels(cfg)}`
           : null
 
   const amount =

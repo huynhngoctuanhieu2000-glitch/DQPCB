@@ -4,8 +4,8 @@
   "optionsNote": "OZ2_5/OZ3_5/OZ4_5: sheet gốc không có dòng cho các độ dày đồng này (chỉ có 6 phương án L1/L2/L4/ENIG2/OZ2/FLEX). Hệ số của ba dòng này là NỘI SUY TUYẾN TÍNH từ chênh lệch L2 (1oz) → OZ2 (2oz): mỗi +1oz cộng thêm base +100, area +0.010 (small) / base +100, area +0.005 (large). Chưa đối chiếu với giá xưởng thật cho 2.5oz trở lên — nên xin báo giá thật từ nhà máy rồi thay số trước khi báo giá khách số lượng lớn.",
 
   "table": {
-    "note": "Bảng giá cố định nhà máy, dòng 15-18 của sheet: bo dưới 10x10cm KHÔNG ghép panel. Giá là THÀNH TIỀN cả đơn, không phải đơn giá. coversOption = phương án mà bảng này áp — chọn phương án khác thì phải tính bằng công thức, vì bảng không phân biệt loại bo.",
-    "coversOption": "L2",
+    "note": "Bảng giá cố định nhà máy, dòng 15-18 của sheet: bo dưới 10x10cm KHÔNG ghép panel. Giá là THÀNH TIỀN cả đơn, không phải đơn giá. coversOptions = những phương án mà bảng này áp (nhà máy tính bo 1 lớp và 2 lớp cùng một bảng) — chọn phương án khác thì phải tính bằng công thức, vì bảng không phân biệt loại bo.",
+    "coversOptions": ["L1", "L2"],
     "maxWidthMm": 100,
     "maxHeightMm": 100,
     "tiers": [

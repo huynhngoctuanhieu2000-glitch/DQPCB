@@ -209,15 +209,17 @@ describe('computePrice — chọn đường giá', () => {
   it('bo nhỏ nhưng chọn loại bảng giá không có → công thức', () => {
     // Bảng nhà máy chỉ một cột giá, không phân biệt loại bo. Báo giá bo mạ vàng bằng
     // giá bo thường là sai tiền thật, nên phải rơi sang công thức.
-    for (const key of ['L1', 'L4', 'ENIG2', 'OZ2', 'FLEX']) {
+    for (const key of ['L4', 'ENIG2', 'OZ2', 'FLEX']) {
       const r = computePrice({ boardW: 8, boardH: 6, qty: 10, option: key }, CFG)
       expect(r.kind, key).toBe('formula')
     }
     expect(computePrice({ boardW: 8, boardH: 6, qty: 10, option: 'L2' }, CFG).kind).toBe('table')
+    // Nhà máy tính bo 1 lớp và 2 lớp dưới 10 x 10 cm cùng một bảng (26/09/2026).
+    expect(computePrice({ boardW: 8, boardH: 6, qty: 10, option: 'L1' }, CFG).kind).toBe('table')
   })
 
-  it('đổi coversOption trong cấu hình thì bảng áp cho loại khác', () => {
-    const cfg: PricingConfig = { ...CFG, table: { ...CFG.table, coversOption: 'L1' } }
+  it('đổi danh sách loại bo trong cấu hình thì bảng áp theo đúng danh sách', () => {
+    const cfg: PricingConfig = { ...CFG, table: { ...CFG.table, coversOptions: ['L1'] } }
     expect(computePrice({ boardW: 8, boardH: 6, qty: 10, option: 'L1' }, cfg).kind).toBe('table')
     expect(computePrice({ boardW: 8, boardH: 6, qty: 10, option: 'L2' }, cfg).kind).toBe('formula')
   })
