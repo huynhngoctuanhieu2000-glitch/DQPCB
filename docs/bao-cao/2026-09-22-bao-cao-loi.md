@@ -28,7 +28,7 @@ Tóm tắt:
 | 19 | 2D / 3D mất lõi bo: vùng tô trong lớp viền làm khung bo bị gán sai kiểu | Anh Nhat — Gerber Anh Nhat (+ 2 bộ) | Đã sửa · `dbbea67` |
 | 20 | Mất rãnh của file khoan chỉ có rãnh; khấc mép tính là thân bo (bo rộng thêm); nét viền dày | Dao Quoc Thai 5pcs (+ Ghep, Gateway, Thu Van, 5 bộ đổi kích thước) | Đã sửa · `5a8b10f` |
 | 21 | Lớp in lụa 150k hình treo app 3 phút và lỗi hết bộ nhớ; bo một mặt ghi 2 lớp; khung bao bo tính là bo; chữ trong lớp viền cộng vào kích thước | FRIWO 23/09 — 55807.930, P84241-S02, P84390-S02 | Đã sửa · `7b90b45`, `e52458f` |
-| 22 | Gán tay loại lớp xong, khung xem đã ra 2 lớp mà thẻ giá vẫn tính như bo 1 lớp — nút "Bảng tra" khoá luôn | mọi bộ app đọc thiếu một lớp đồng | Đã sửa · `1253d04` |
+| 22 | Gán tay loại lớp xong, khung xem đã ra 2 lớp mà thẻ giá vẫn tính như bo 1 lớp — nút "Bảng tra" khoá luôn; bo 1 lớp dưới 10×10 không tra được bảng | mọi bộ app đọc thiếu một lớp đồng | Đã sửa · `1253d04`, `60a1aea` |
 
 ---
 
@@ -428,6 +428,17 @@ tam giác chéo sai; Rosario: rãnh móc câu nhất quán là lỗ).
   trên app với bộ "mach-remote-esc": gán Bot Copper thành lớp tài liệu → thẻ giá về 1 lớp,
   nút Bảng tra khoá kèm lý do; gán trả lại → về 2 lớp, nút mở lại. Gạt Bảng tra ↔ Công thức
   qua lại bình thường.
+
+**Mở bảng tra cho bo 1 lớp (26/09, `60a1aea`).** Xưởng tính bo **1 lớp và 2 lớp dưới
+10 × 10 cm cùng một bảng**, nên bảng giá nhà máy nhận cả hai: bo 1 lớp không còn rơi sang
+công thức và nút Bảng tra không còn khoá vì lý do số lớp.
+
+- Cấu hình đổi từ MỘT loại bo (`table.coversOption`) sang DANH SÁCH loại bo
+  (`table.coversOptions`), mặc định `["L1", "L2"]`. Cài đặt → Công thức tính tiền giờ là
+  các ô tích, không còn ô chọn một loại.
+- Ai từng đổi ô đó trong Cài đặt thì nay về mặc định 1 + 2 lớp — tích lại nếu muốn khác.
+- Loại thật sự ngoài bảng (4 lớp, mạ vàng, mạch dẻo…), bo quá khổ hay đã ghép panel thì nút
+  Bảng tra vẫn khoá kèm lý do, vì bảng không có giá cho những trường hợp đó.
 
 ## Tính năng mới (22/09): nhận biết file ghép, mũi khoan nhỏ nhất — `6249b00`
 
